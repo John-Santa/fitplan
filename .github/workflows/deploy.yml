@@ -20,16 +20,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # pnpm va ANTES de setup-node: setup-node necesita pnpm en el PATH
+      # para resolver la ruta del store y poder cachearlo.
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: npm
+          node-version: 22
+          cache: pnpm
 
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
 
-      # En Pages de proyecto la app vive en /<repo>/, asi que el base tiene que coincidir.
+      # En Pages de proyecto la app vive en /<repo>/, el base tiene que coincidir.
       - name: Compilar
-        run: npm run build
+        run: pnpm build
         env:
           VITE_BASE: /${{ github.event.repository.name }}/
 

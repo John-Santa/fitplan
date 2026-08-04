@@ -6,3 +6,5 @@ dist-ssr
 .DS_Store
 .vite
 *.log
+*.tsbuildinfo
+.atl
