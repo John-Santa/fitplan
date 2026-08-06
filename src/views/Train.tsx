@@ -112,57 +112,61 @@ export default function Train() {
         </div>
       </div>
 
-      <div className="section-title">Empezar sesión</div>
-      {ROUTINES.map(r => (
-        <div className="card" key={r.id} style={{ marginBottom: 10 }}>
-          <div className="row">
-            <div className="grow">
-              <strong>{r.name}</strong>
-              {suggested?.id === r.id && <span className="pill" style={{ marginLeft: 8 }}>hoy</span>}
-              <div className="muted">{routineDaysLabel(config.weeklyRoutine, r.id)} · {r.zone}</div>
-              <div className="muted num" style={{ fontSize: 12.5 }}>
-                {r.exercises.length} ejercicios · {routineSetCount(r, phase.setsDelta)} series
+      <div className="col-a">
+        <div className="section-title">Empezar sesión</div>
+        {ROUTINES.map(r => (
+          <div className="card" key={r.id} style={{ marginBottom: 10 }}>
+            <div className="row">
+              <div className="grow">
+                <strong>{r.name}</strong>
+                {suggested?.id === r.id && <span className="pill" style={{ marginLeft: 8 }}>hoy</span>}
+                <div className="muted">{routineDaysLabel(config.weeklyRoutine, r.id)} · {r.zone}</div>
+                <div className="muted num" style={{ fontSize: 12.5 }}>
+                  {r.exercises.length} ejercicios · {routineSetCount(r, phase.setsDelta)} series
+                </div>
               </div>
+              <button className="primary" onClick={() => setActive(newSession(r.id, todayISO()))}>
+                Entrenar
+              </button>
             </div>
-            <button className="primary" onClick={() => setActive(newSession(r.id, todayISO()))}>
-              Entrenar
+            <button className="ghost" style={{ marginTop: 10, padding: '7px 12px', fontSize: 13 }} onClick={() => setProgressFor(r.id)}>
+              Ver progresión
             </button>
           </div>
-          <button className="ghost" style={{ marginTop: 10, padding: '7px 12px', fontSize: 13 }} onClick={() => setProgressFor(r.id)}>
-            Ver progresión
-          </button>
-        </div>
-      ))}
+        ))}
+      </div>
 
-      <div className="section-title">Historial</div>
-      {sessions.length === 0 ? (
-        <Empty title="Todavía no hay sesiones">
-          Cuando termines la primera, aquí vas a ver el peso de cada ejercicio — que es lo que necesitas para saber cuándo subir de placa.
-        </Empty>
-      ) : (
-        <div className="tablewrap">
-          {sessions.map(s => {
-            const r = routineById(s.routineId)
-            const sum = sessionSummary(s)
-            return (
-              <div className="list-item" key={s.id} onClick={() => setDetail(s.id)} style={{ cursor: 'pointer' }}>
-                <div className="grow">
-                  <div className="t1">
-                    {r?.name ?? s.routineId}{' '}
-                    {!s.finishedAt && <span className="pill warn">sin terminar</span>}
+      <div className="col-b">
+        <div className="section-title">Historial</div>
+        {sessions.length === 0 ? (
+          <Empty title="Todavía no hay sesiones">
+            Cuando termines la primera, aquí vas a ver el peso de cada ejercicio — que es lo que necesitas para saber cuándo subir de placa.
+          </Empty>
+        ) : (
+          <div className="tablewrap">
+            {sessions.map(s => {
+              const r = routineById(s.routineId)
+              const sum = sessionSummary(s)
+              return (
+                <div className="list-item" key={s.id} onClick={() => setDetail(s.id)} style={{ cursor: 'pointer' }}>
+                  <div className="grow">
+                    <div className="t1">
+                      {r?.name ?? s.routineId}{' '}
+                      {!s.finishedAt && <span className="pill warn">sin terminar</span>}
+                    </div>
+                    <div className="t2 num">
+                      {fmtDate(s.date, true)} · {doneSets(s)} series ·{' '}
+                      {Math.round(sessionVolume(s)).toLocaleString('es-CO')} kg
+                    </div>
+                    {sum.length > 0 && <div className="t2" style={{ marginTop: 2 }}>{sum.slice(0, 2).join(' · ')}</div>}
                   </div>
-                  <div className="t2 num">
-                    {fmtDate(s.date, true)} · {doneSets(s)} series ·{' '}
-                    {Math.round(sessionVolume(s)).toLocaleString('es-CO')} kg
-                  </div>
-                  {sum.length > 0 && <div className="t2" style={{ marginTop: 2 }}>{sum.slice(0, 2).join(' · ')}</div>}
+                  <div className="muted">›</div>
                 </div>
-                <div className="muted">›</div>
-              </div>
-            )
-          })}
-        </div>
-      )}
+              )
+            })}
+          </div>
+        )}
+      </div>
     </>
   )
 }

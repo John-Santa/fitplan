@@ -219,6 +219,78 @@ function writeConfigInPage({ dbName, dbVersion, storeSessions, storeMeasurements
 }
 
 /* ---------------------------------------------------------------------- *
+ * seedMeasurements — write measurement rows directly into IndexedDB
+ *
+ * Same race-free pattern as seedConfig(): navigate with `waitUntil: 'commit'`,
+ * write and fully await the IndexedDB transaction from Node, then do the
+ * real navigation. Needed because on a fresh profile the app only ever
+ * seeds one BASELINE measurement, so the measurements table's intrinsic
+ * width is well under 947px and any breakout/scroll assertion against it
+ * would pass vacuously.
+ * ---------------------------------------------------------------------- */
+
+/**
+ * Write `rows` (an array of partial Measurement objects, each shallow-merged
+ * over a baseline with every optional field populated) into IndexedDB before
+ * the app has a chance to read it. Mirrors seedConfig()'s navigation and
+ * transaction shape exactly.
+ */
+export async function seedMeasurements(page, rows, base) {
+  const target = base || process.env.BASE || 'https://john-santa.github.io/fitplan/'
+
+  await page.goto(target, { waitUntil: 'commit' })
+  await page.evaluate(writeMeasurementsInPage, {
+    dbName: DB_NAME,
+    dbVersion: DB_VERSION,
+    storeSessions: STORE_SESSIONS,
+    storeMeasurements: STORE_MEASUREMENTS,
+    storeExerciseMeta: STORE_EXERCISE_META,
+    storeConfig: STORE_CONFIG,
+    rows,
+  })
+  await page.goto(target, { waitUntil: 'networkidle' })
+
+  return rows
+}
+
+function writeMeasurementsInPage({ dbName, dbVersion, storeSessions, storeMeasurements, storeExerciseMeta, storeConfig, rows }) {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(dbName, dbVersion)
+    req.onupgradeneeded = () => {
+      const db = req.result
+      if (!db.objectStoreNames.contains(storeSessions)) {
+        const s = db.createObjectStore(storeSessions, { keyPath: 'id' })
+        s.createIndex('by-date', 'date')
+        s.createIndex('by-routine', 'routineId')
+      }
+      if (!db.objectStoreNames.contains(storeMeasurements)) {
+        db.createObjectStore(storeMeasurements, { keyPath: 'date' })
+      }
+      if (!db.objectStoreNames.contains(storeExerciseMeta)) {
+        db.createObjectStore(storeExerciseMeta, { keyPath: 'exerciseId' })
+      }
+      if (!db.objectStoreNames.contains(storeConfig)) {
+        db.createObjectStore(storeConfig)
+      }
+    }
+    req.onsuccess = () => {
+      const db = req.result
+      const tx = db.transaction(storeMeasurements, 'readwrite')
+      const store = tx.objectStore(storeMeasurements)
+      for (const row of rows) store.put(row)
+      tx.oncomplete = () => {
+        db.close()
+        resolve()
+      }
+      tx.onerror = () => reject(tx.error)
+      tx.onabort = () => reject(tx.error)
+    }
+    req.onerror = () => reject(req.error)
+    req.onblocked = () => reject(new Error('indexedDB open blocked by another connection to the same database'))
+  })
+}
+
+/* ---------------------------------------------------------------------- *
  * Minimal pass/fail checklist shared by both scripts, so both report a
  * consistent RESUMEN and both exit(1) on failure (CI-friendly).
  * ---------------------------------------------------------------------- */

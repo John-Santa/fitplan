@@ -104,6 +104,12 @@
   --safe-l: env(safe-area-inset-left, 0px);
   --safe-r: env(safe-area-inset-right, 0px);
 
+  /* Desktop shell (§19). --rail-w is load-bearing arithmetic, not taste:
+     200 + 36 (the .main gutters) + 947 (the measurements table) = 1183, which
+     is where the 1200px breakpoint comes from. --read is the paragraph cap. */
+  --rail-w: 200px;
+  --read: 700px;
+
   /* Total rendered height of the fixed/sticky chrome that can occlude
      scrolled-into-view content — same figures already documented in §16
      ("Sticky header: 143.7px → 112px", "Rest timer: 91px → 58px"). Overridden
@@ -236,6 +242,12 @@ a:hover { color: var(--accent-ink); }
   padding-bottom: 7px; margin: var(--sp-6) 0 2px;
 }
 .section-title:first-child { margin-top: var(--sp-2); }
+
+/* A pane wrapper (§19) must not turn its first .section-title into a
+   :first-child that loses its separation. Restores the default 32px at every
+   viewport; §19d then zeroes it on desktop, where panes align at the top. */
+.col-a > .section-title:first-child,
+.col-b > .section-title:first-child { margin-top: var(--sp-6); }
 
 .muted { color: var(--ink-3); font-size: var(--t-meta); }
 .hint { font-size: var(--t-meta); color: var(--ink-3); margin-top: var(--sp-2); }
@@ -832,12 +844,14 @@ figcaption {
   .setnow-grid .micro { line-height: 1; margin-bottom: 4px; }
 }
 
-/* ---------- 17. DESKTOP: the measurements table breaks out of the column --
-   The only exception to .main's 760px max-width, and only for the 15-column
-   table (947px measured). Centered in the viewport with the same 18px
-   gutter the page already uses. Width ≤ 100vw − 36px, so it never overflows
-   the document, classic scrollbar or not.                                  */
-@media (min-width: 1000px) {
+/* ---------- 17. WIDE TABLE BREAKOUT (1000px – 1199.98px, no side rail) ----
+   The only exception to .main's max-width, and only for the 15-column
+   measurements table (947px measured). Upper-bounded at 1199.98px because
+   from 1200px up the side rail exists (§19) and this rule's 100vw would
+   include it, sliding the table under the rail. Above 1200px the content
+   column is >= 964px on its own, so no breakout is needed at all — see
+   ADR-07 for the continuity argument.                                      */
+@media (min-width: 1000px) and (max-width: 1199.98px) {
   .tablewrap.wide {
     --wide: min(100vw - 36px, 1120px);
     width: var(--wide);
@@ -864,3 +878,118 @@ figcaption {
 .dayedit { padding: var(--sp-3) 0 var(--sp-4); }
 .dayedit label { margin-top: var(--sp-3); }
 .dayedit label:first-child { margin-top: 0; }
+
+/* ---------- 19. DESKTOP SHELL (>= 1200px) ----------
+   Bottom tabs on a phone, side rail on a desktop — the same four <button>s
+   in the same <nav>, re-laid-out. No .tsx renders a second nav, so there is
+   exactly one set of accessible names and exactly one aria-current.
+   Content is DISTRIBUTED into two tracks, never stretched: .main is the
+   grid, and anything a view does not mark as .col-a/.col-b is full width.
+   Breakpoint arithmetic: 200 (rail) + 36 (gutters) + 947 (measurements
+   table) = 1183 -> 1200. See ADR-02.                                       */
+
+@media (min-width: 1200px) {
+
+  /* 19a — shell. The rail is fixed and out of flow, so .app only has to
+     reserve its width. --safe-l becomes load-bearing for the first time:
+     the rail is now the left-most element on screen. */
+  .app { padding-inline-start: calc(var(--rail-w) + var(--safe-l)); }
+
+  .tabbar {
+    top: 0; right: auto;
+    width: calc(var(--rail-w) + var(--safe-l));
+    grid-template-columns: 1fr;
+    grid-auto-rows: min-content;
+    align-content: start;
+    gap: 2px;
+    border-top: none;
+    border-right: 1px solid var(--ring);
+    padding:
+      calc(var(--sp-5) + var(--safe-t))
+      var(--sp-3)
+      calc(var(--sp-5) + var(--safe-b))
+      calc(var(--sp-3) + var(--safe-l));
+  }
+  .tabbar button {
+    flex-direction: row; justify-content: flex-start; align-items: center;
+    gap: var(--sp-3);
+    min-height: 52px; padding: 0 var(--sp-4);
+    font-size: 10.5px; letter-spacing: 0.14em;
+  }
+  /* The 3px active mark rotates with the bar: top edge -> leading edge. */
+  .tabbar button::before {
+    top: 0; bottom: 0; left: 0; right: auto; width: 3px; height: auto;
+  }
+
+  /* 19b — content grid. 64/36, not 50/50 and not auto-fit: see ADR-04. */
+  .main {
+    display: grid;
+    grid-template-columns: minmax(0, 64fr) minmax(0, 36fr);
+    column-gap: var(--sp-6);
+    row-gap: 0;
+    align-content: start;
+    align-items: start;
+    max-width: 1440px;
+    /* The 66px tab-bar reserve is gone with the tab bar; --safe-b stays,
+       because a >=1200px tablet in landscape still has a home indicator. */
+    padding-bottom: calc(var(--sp-7) + var(--safe-b));
+  }
+  .main > * { grid-column: 1 / -1; min-width: 0; }
+  .main > .col-a { grid-column: 1; }
+  .main > .col-b { grid-column: 2; }
+
+  /* Blockified grid items would stretch a "<- Volver" pill to 1400px. */
+  .main > button { justify-self: start; }
+  .main > button.block { justify-self: stretch; max-width: var(--read); }
+
+  /* A block that stayed full width still keeps a sane measure. */
+  .main > .card,
+  .main > .tablewrap:not(.wide) { max-width: var(--read); }
+
+  /* The wide measurements table reclaims .main's own 18px side padding —
+     same bleed-past-padding technique §17 already uses at 1000-1199.98px,
+     extended here so the table gets .main's full outer-box width instead of
+     its content box. At exactly 1200px this is the difference between a
+     947px-predicted table fitting with room to spare and one with a
+     realistic populated dataset (measured ~970px) tipping into scroll: the
+     964px content box leaves only 17px of slack (ADR-02's own accepted
+     "Medium" risk), so the extra 36px here is deliberate margin, not
+     decoration. */
+  .main > .tablewrap.wide { width: calc(100% + 36px); margin-inline: -18px; }
+
+  /* Equal intrinsic split for genuine peers (two charts). Same idiom as
+     .tiles (§6) and .formgrid (§8). */
+  .cols {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    column-gap: var(--sp-6);
+    align-items: start;
+  }
+  .cols > * { min-width: 0; }
+
+  /* 19c — reading measure. This single cap is what makes stretching
+     structurally impossible; the columns do the distributing. */
+  p, .hint, .chart-sub { max-width: var(--read); }
+
+  /* 19d — side-by-side panes align at their top edge. */
+  .col-a > .section-title:first-child,
+  .col-b > .section-title:first-child { margin-top: 0; }
+
+  /* 19f — floating chrome starts after the rail, and stops reserving a
+     bottom bar that is no longer at the bottom. */
+  .timer {
+    left: calc(var(--rail-w) + var(--safe-l));
+    bottom: var(--safe-b);
+  }
+  .toast {
+    left: calc(var(--rail-w) + var(--safe-l) + 18px);
+    bottom: calc(var(--sp-4) + var(--safe-b));
+  }
+  .setnow, .setnow input, .setnow .check {
+    scroll-margin-bottom: calc(var(--safe-b) + var(--timer-h));
+  }
+
+  /* 19g — the gym screen keeps its phone shape. ADR-06. */
+  .main:has(.session-head) { display: block; max-width: 760px; }
+  .main:has(.session-head) > * { max-width: none; }
+}

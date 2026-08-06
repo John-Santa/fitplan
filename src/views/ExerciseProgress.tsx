@@ -70,40 +70,44 @@ export default function ExerciseProgress({ routineId, onBack }: { routineId: Rou
         </Empty>
       ) : (
         <>
-          <div className="tiles" style={{ marginTop: 12 }}>
-            <Tile label="Mejor serie" value={latest.weight} unit={`kg × ${latest.reps ?? '—'}`} accent />
-            <div className="tile">
-              <div className="label">Desde el {fmtDate(first.s.date)}</div>
-              <div className="value num">{fmtSigned(gain)} <span>kg</span></div>
+          <div className="col-a">
+            <div className="tiles" style={{ marginTop: 12 }}>
+              <Tile label="Mejor serie" value={latest.weight} unit={`kg × ${latest.reps ?? '—'}`} accent />
+              <div className="tile">
+                <div className="label">Desde el {fmtDate(first.s.date)}</div>
+                <div className="value num">{fmtSigned(gain)} <span>kg</span></div>
+              </div>
             </div>
+
+            <figure>
+              <div className="chart-title">Carga máxima por sesión</div>
+              <div className="chart-sub">La línea que tiene que subir escalón por escalón</div>
+              <Chart series={series} unit="kg" height={220} xLabel={x => fmtDate(x)} />
+            </figure>
+
+            <figure>
+              <div className="chart-title">Volumen del ejercicio</div>
+              <div className="chart-sub">Peso × repeticiones sumado de todas las series</div>
+              <Chart series={volume} unit="kg" height={200} xLabel={x => fmtDate(x)} />
+            </figure>
           </div>
 
-          <figure>
-            <div className="chart-title">Carga máxima por sesión</div>
-            <div className="chart-sub">La línea que tiene que subir escalón por escalón</div>
-            <Chart series={series} unit="kg" height={220} xLabel={x => fmtDate(x)} />
-          </figure>
-
-          <figure>
-            <div className="chart-title">Volumen del ejercicio</div>
-            <div className="chart-sub">Peso × repeticiones sumado de todas las series</div>
-            <Chart series={volume} unit="kg" height={200} xLabel={x => fmtDate(x)} />
-          </figure>
-
-          <div className="section-title">Sesión por sesión</div>
-          {rows.slice().reverse().map(r => {
-            const rango = shouldProgress(r.s.sets.filter(x => x.exerciseId === exId), 2, ex.repsHigh)
-            return (
-              <div className="histrow" key={r.s.id}>
-                <div className="date">{fmtDate(r.s.date, true)}</div>
-                <div className="kg">
-                  <strong>{fmt(r.weight)}</strong>
-                  <span>kg × {r.reps ?? '—'}</span>
+          <div className="col-b">
+            <div className="section-title">Sesión por sesión</div>
+            {rows.slice().reverse().map(r => {
+              const rango = shouldProgress(r.s.sets.filter(x => x.exerciseId === exId), 2, ex.repsHigh)
+              return (
+                <div className="histrow" key={r.s.id}>
+                  <div className="date">{fmtDate(r.s.date, true)}</div>
+                  <div className="kg">
+                    <strong>{fmt(r.weight)}</strong>
+                    <span>kg × {r.reps ?? '—'}</span>
+                  </div>
+                  {rango && <span className="pill good">Rango</span>}
                 </div>
-                {rango && <span className="pill good">Rango</span>}
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
         </>
       )}
     </>

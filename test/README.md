@@ -20,11 +20,13 @@ anywhere but a session scratchpad:
 ## Files
 
 - `lib.mjs` — shared helpers: Chromium executable discovery, the
-  `seedConfig()` IndexedDB helper, and a small pass/fail checklist used by
-  both scripts.
-- `ui-harness.mjs` — the main harness. 6 viewports × navigation tabs × all
-  three routines, worst-case hero strings, light-theme color check, and a
-  `seedConfig()` regression check. ~219 checks.
+  `seedConfig()`/`seedMeasurements()` IndexedDB helpers, and a small
+  pass/fail checklist used by both scripts.
+- `ui-harness.mjs` — the main harness. 8 viewports (6 mobile/tablet + 2
+  desktop, 1200x800 and 1920x1080) × navigation tabs × all three routines,
+  worst-case hero strings, light-theme color check, a `seedConfig()`
+  regression check, and a `seedMeasurements()`-backed desktop table-breakout
+  check. ~478 checks.
 - `occlusion.mjs` — a focused probe for one failure mode: does a fixed
   overlay (rest timer, tab bar) cover the current-set block or its kg input,
   in portrait and landscape.
@@ -142,10 +144,12 @@ end.
 - **Fixed**: the tap-target selector in `geometry()` used to be
   `button,a,input,select,textarea` — a `<details>`/`<summary>` UI or a
   `role="button"` custom control would have been invisible to the 44px
-  check. It now also includes `summary` and `[role="button"]`. Neither
-  matches anything in the app today (no `<details>` or `role="button"`
-  exists yet), so this changed 0 outcomes on the current build — it's pure
-  forward coverage.
+  check. It now also includes `summary` and `[role="button"]`. At the time
+  this was written neither matched anything in the app, so it changed 0
+  outcomes — pure forward coverage. That has since changed: Settings' weekly
+  editor (`fitplan-semana-configurable`) now renders one `<details
+  className="dayrow">` per day, and `summary.list-item` (58px) passes the
+  floor on its own.
 - **Tried, then deliberately excluded: `label`**. `<label htmlFor>` is
   arguably a real tap target (WCAG 2.5.8 treats it as extending the hit area
   of its associated control), so it was tried too. It surfaced 6 new

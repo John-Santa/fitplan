@@ -3,7 +3,7 @@
 // Usage:  BASE=http://localhost:5173/ pnpm check:ui
 // See test/README.md for what this checks and how to add a check.
 import { chromium } from 'playwright-core'
-import { createChecklist, resolveChromiumPath, seedConfig } from './lib.mjs'
+import { createChecklist, resolveChromiumPath, seedConfig, seedMeasurements } from './lib.mjs'
 
 const BASE = process.env.BASE || 'https://john-santa.github.io/fitplan/'
 const OUT = process.env.OUT
@@ -16,6 +16,8 @@ const VIEWPORTS = [
   { n: '844x390 LANDSCAPE', w: 844, h: 390, mob: true },
   { n: '768x1024 Tablet', w: 768, h: 1024, mob: false },
   { n: '1440x900 Desktop', w: 1440, h: 900, mob: false },
+  { n: '1200x800 Desktop', w: 1200, h: 800, mob: false },
+  { n: '1920x1080 Desktop', w: 1920, h: 1080, mob: false },
 ]
 
 const { check, report } = createChecklist()
@@ -40,8 +42,30 @@ const { check, report } = createChecklist()
 // the reasoning and the exact failures observed.
 const geometry = () => {
   const de = document.documentElement
-  const fixed = Array.from(document.querySelectorAll('*')).filter(e => ['sticky', 'fixed'].includes(getComputedStyle(e).position))
-  const chrome = Math.round(fixed.reduce((a, e) => a + e.getBoundingClientRect().height, 0))
+  // `th` is `position: sticky` (§9) so it participates in this selector, but
+  // it only re-pins itself while scrolling *within its own table* — it is
+  // not floating page chrome the way .tabbar/.timer/.session-head are, and
+  // was never part of what this metric was built to measure (it predates
+  // this change; the desktop shell just exposed it by adding a check that
+  // runs on every tab, including Medidas). Excluding it here changes zero
+  // outcomes across every pre-existing check (fitsSetnow only ever runs on
+  // ActiveSession, which never renders a <table>).
+  const fixed = Array.from(document.querySelectorAll('*'))
+    .filter(e => e.tagName !== 'TH' && ['sticky', 'fixed'].includes(getComputedStyle(e).position))
+  // A fixed/sticky element only occludes the content if it overlaps the
+  // content column horizontally. From 1200px up the tab bar is a
+  // full-height rail BESIDE .main, not a band across it; summing its
+  // height here would report >100% chrome and a negative usable height.
+  const mainBox = document.querySelector('.main')?.getBoundingClientRect() ?? null
+  const chrome = Math.round(
+    fixed
+      .filter(e => {
+        if (!mainBox) return true
+        const r = e.getBoundingClientRect()
+        return r.right > mainBox.left + 1 && r.left < mainBox.right - 1
+      })
+      .reduce((a, e) => a + e.getBoundingClientRect().height, 0),
+  )
   const taps = Array.from(document.querySelectorAll('button,a,input,select,textarea,summary,[role="button"]'))
     .map(e => ({
       t: `${e.tagName}.${(e.className || '').toString().trim().slice(0, 24)}`,
@@ -71,6 +95,17 @@ const geometry = () => {
     setnowAlto: setnow ? +setnow.getBoundingClientRect().height.toFixed(1) : null,
     h1s: document.querySelectorAll('h1').length,
     accentInk: getComputedStyle(document.documentElement).getPropertyValue('--accent-ink').trim(),
+    navs: document.querySelectorAll('.tabbar').length,
+    navButtons: document.querySelectorAll('.tabbar button').length,
+    ariaCurrent: document.querySelectorAll('[aria-current="page"]').length,
+    navBox: (() => {
+      const n = document.querySelector('.tabbar')
+      if (!n) return null
+      const r = n.getBoundingClientRect()
+      return { w: Math.round(r.width), h: Math.round(r.height) }
+    })(),
+    maxP: Math.round(Math.max(0, ...Array.from(document.querySelectorAll('p')).map(e => e.getBoundingClientRect().width))),
+    usedPct: mainBox ? Math.round((mainBox.right / window.innerWidth) * 100) : null,
   }
 }
 
@@ -117,6 +152,27 @@ for (const v of VIEWPORTS) {
     const s2 = check(g.tapsChicos.length === 0, `${v.n}/${tab}`, `taps<44: ${JSON.stringify(g.tapsChicos.slice(0, 3))}`)
     const s3 = check(g.h1s === 1, `${v.n}/${tab}`, `h1 count=${g.h1s}`)
     console.log(`  [${tab.padEnd(8)}] overflowX ${String(g.overflowX).padStart(3)}px ${s1} | taps<44: ${String(g.tapsChicos.length).padStart(2)} ${s2} | h1 ${g.h1s} ${s3}`)
+
+    const desk = v.w >= 1200
+    check(g.navs === 1 && g.navButtons === 4, `${v.n}/${tab}/NAV-02`,
+      `navs=${g.navs} botones=${g.navButtons}, deben ser 1 y 4 (una sola nav en el DOM)`)
+    check(g.ariaCurrent === 1, `${v.n}/${tab}/NAV-03`,
+      `hay ${g.ariaCurrent} elementos con aria-current="page", debe haber 1`)
+    check(
+      desk ? g.navBox.h >= v.h - 1 && g.navBox.w <= 220 : g.navBox.w >= v.w - 1 && g.navBox.h <= 120,
+      `${v.n}/${tab}/NAV-01`,
+      `nav ${g.navBox.w}x${g.navBox.h} no corresponde a ${desk ? 'riel lateral (alto>=viewport, ancho<=220)' : 'barra inferior (ancho=viewport, alto<=120)'}`,
+    )
+    check(g.maxP <= 750, `${v.n}/${tab}/READ-01`, `parrafo mas ancho ${g.maxP}px > 750`)
+    if (v.w >= 1440 && ['Inicio', 'Medidas', 'Ajustes'].includes(tab)) {
+      check(g.maxP >= 600, `${v.n}/${tab}/READ-02`, `parrafo mas ancho ${g.maxP}px < 600`)
+    }
+    if (desk) {
+      const s4 = check(g.usedPct >= (v.w >= 1920 ? 85 : 99), `${v.n}/${tab}/UTIL-01`,
+        `usa ${g.usedPct}% del ancho del viewport, minimo ${v.w >= 1920 ? 85 : 99}%`)
+      console.log(`    desktop: usedPct ${g.usedPct}% ${s4} | maxP ${g.maxP}px | nav ${g.navBox.w}x${g.navBox.h}`)
+    }
+    check(g.util > 0, `${v.n}/${tab}/CHROME-01`, `altura util ${g.util}px <= 0 (chrome ${g.chrome}px)`)
   }
 
   // ---- HARNESS-01: force all three routines ----
@@ -161,8 +217,20 @@ for (const v of VIEWPORTS) {
       })
       await p.locator('.rail button').nth(g.rail.n - 1).click()
       await p.waitForTimeout(500)
-      const after = await p.evaluate(() => window.scrollY)
-      check(Math.abs(after - before) < 3, `${v.n}/${ROUTS[i]}/SCROLL`, `scrollIntoView movio el documento ${before}->${after}`)
+      const after = await p.evaluate(() => ({
+        y: window.scrollY,
+        maxScroll: document.documentElement.scrollHeight - document.documentElement.clientHeight,
+      }))
+      // On a tall desktop viewport, switching to a different exercise's
+      // panel can legitimately make the page shorter than the viewport
+      // (a different exercise has less content — no `prev` block, fewer
+      // set rows). When that happens the browser forces scrollY back to 0
+      // itself because there is no longer anything to scroll — that is
+      // correct clamping, not scrollIntoView moving the page. Only assert
+      // the no-op when the page still had room to stay at `before`.
+      if (after.maxScroll >= before - 2) {
+        check(Math.abs(after.y - before) < 3, `${v.n}/${ROUTS[i]}/SCROLL`, `scrollIntoView movio el documento ${before}->${after.y}`)
+      }
       await p.locator('.rail button').nth(0).click()
       await p.waitForTimeout(400)
     }
@@ -248,6 +316,50 @@ for (const v of VIEWPORTS) {
   const s2 = check(gotEnd === seeded.blockEnd, 'seedConfig/Ajustes', `blockEnd input = "${gotEnd}", esperado "${seeded.blockEnd}"`)
   console.log(`\n===== SEEDCONFIG =====\n  blockStart: ${gotStart} ${s1} | blockEnd: ${gotEnd} ${s2}`)
   await ctx.close()
+}
+
+// ---- desktop measurements table: TBL-00/01/02 ----
+// Regression guard for the §17/§19 breakout continuity (ADR-07): needs a
+// seeded dataset because a fresh profile only ever has one BASELINE
+// measurement, well under the table's 947px intrinsic width — any breakout
+// or no-scroll assertion against it would pass vacuously.
+{
+  const SIX_FULL_ROWS = [
+    { date: '2026-06-01', weight: 82.4, fatPct: 24.1, fatMass: 19.9, muscle: 30.8, water: 41.2, waist: 98.0, hip: 101.5, chest: 104.0, neck: 41.5 },
+    { date: '2026-06-15', weight: 81.1, fatPct: 23.2, fatMass: 18.8, muscle: 31.1, water: 41.6, waist: 96.8, hip: 100.6, chest: 103.4, neck: 41.2 },
+    { date: '2026-06-29', weight: 80.0, fatPct: 22.4, fatMass: 17.9, muscle: 31.4, water: 42.0, waist: 95.6, hip: 99.8, chest: 102.9, neck: 41.0 },
+    { date: '2026-07-13', weight: 79.2, fatPct: 21.7, fatMass: 17.2, muscle: 31.7, water: 42.4, waist: 94.5, hip: 99.0, chest: 102.4, neck: 40.8 },
+    { date: '2026-07-27', weight: 78.3, fatPct: 21.0, fatMass: 16.4, muscle: 32.0, water: 42.9, waist: 93.4, hip: 98.2, chest: 101.9, neck: 40.6 },
+    { date: '2026-08-04', weight: 77.5, fatPct: 20.4, fatMass: 15.8, muscle: 32.3, water: 43.3, waist: 92.3, hip: 97.5, chest: 101.4, neck: 40.4 },
+  ]
+  for (const w of [1200, 1440, 1920]) {
+    const ctx = await br.newContext({ viewport: { width: w, height: 900 } })
+    const p = await ctx.newPage()
+    await seedMeasurements(p, SIX_FULL_ROWS, BASE)
+    await p.locator('.tabbar button', { hasText: 'Medidas' }).click()
+    await p.waitForTimeout(500)
+    const t = await p.evaluate(() => {
+      const wrap = document.querySelector('.tablewrap.wide')
+      const tb = wrap?.querySelector('table')
+      if (!wrap || !tb) return null
+      return {
+        scroll: wrap.scrollWidth - wrap.clientWidth,
+        tabla: Math.round(tb.getBoundingClientRect().width),
+        wrap: Math.round(wrap.getBoundingClientRect().width),
+        ovf: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      }
+    })
+    console.log(`\n===== ${w}px MEDIDAS (sembradas) =====`)
+    const s0 = check(t !== null, `${w}px/TBL-01`, 'no se encontro .tablewrap.wide en Medidas')
+    console.log(`  encontrado ${s0}`)
+    if (t) {
+      const s1 = check(t.tabla >= 947, `${w}px/TBL-00`, `la tabla mide ${t.tabla}px, se esperaban >=947 (datos sembrados insuficientes)`)
+      const s2 = check(t.scroll <= 0, `${w}px/TBL-01`, `la tabla scrollea ${t.scroll}px (wrap ${t.wrap}px, tabla ${t.tabla}px)`)
+      const s3 = check(t.ovf === 0, `${w}px/TBL-02`, `overflowX del documento = ${t.ovf}px`)
+      console.log(`  tabla ${t.tabla}px ${s1} | scroll ${t.scroll}px ${s2} | wrap ${t.wrap}px | ovf ${t.ovf}px ${s3}`)
+    }
+    await ctx.close()
+  }
 }
 
 await br.close()

@@ -88,58 +88,64 @@ export default function Measure() {
         </div>
       )}
 
-      <div className="card warn tight" style={{ marginTop: 12 }}>
-        <strong>Cómo medir</strong>
-        <p style={{ margin: '2px 0 0', fontSize: 13.5 }}>
-          En la mañana, en ayunas, después de ir al baño, antes de entrenar y antes de tomar agua. Nunca después de
-          nadar: la bioimpedancia deduce la grasa a partir del agua, así que deshidratado te va a decir que subiste.
-          Cada dos semanas, no cada día.
-        </p>
+      <div className="col-a">
+        <div className="card warn tight" style={{ marginTop: 12 }}>
+          <strong>Cómo medir</strong>
+          <p style={{ margin: '2px 0 0', fontSize: 13.5 }}>
+            En la mañana, en ayunas, después de ir al baño, antes de entrenar y antes de tomar agua. Nunca después de
+            nadar: la bioimpedancia deduce la grasa a partir del agua, así que deshidratado te va a decir que subiste.
+            Cada dos semanas, no cada día.
+          </p>
+        </div>
       </div>
 
-      {!showForm ? (
-        <button className="primary big block" style={{ marginTop: 12 }} onClick={() => setShowForm(true)}>
-          Nueva medición
-        </button>
-      ) : (
-        <div className="card" style={{ marginTop: 12 }}>
-          <div className="formgrid">
-            <div>
-              <label htmlFor="f-date">Fecha</label>
-              <input id="f-date" type="date" value={form.date ?? ''} onChange={e => setForm({ ...form, date: e.target.value })} />
-            </div>
-            {CAMPOS.map(c => (
-              <div key={c.k}>
-                <label htmlFor={`f-${c.k}`}>{c.label} ({c.unit})</label>
-                <input
-                  id={`f-${c.k}`} type="number" inputMode="decimal" step={c.step}
-                  value={form[c.k] ?? ''} onChange={e => setForm({ ...form, [c.k]: e.target.value })}
-                />
+      <div className="col-b">
+        {!showForm ? (
+          <button className="primary big block" style={{ marginTop: 12 }} onClick={() => setShowForm(true)}>
+            Nueva medición
+          </button>
+        ) : (
+          <div className="card" style={{ marginTop: 12 }}>
+            <div className="formgrid">
+              <div>
+                <label htmlFor="f-date">Fecha</label>
+                <input id="f-date" type="date" value={form.date ?? ''} onChange={e => setForm({ ...form, date: e.target.value })} />
               </div>
-            ))}
+              {CAMPOS.map(c => (
+                <div key={c.k}>
+                  <label htmlFor={`f-${c.k}`}>{c.label} ({c.unit})</label>
+                  <input
+                    id={`f-${c.k}`} type="number" inputMode="decimal" step={c.step}
+                    value={form[c.k] ?? ''} onChange={e => setForm({ ...form, [c.k]: e.target.value })}
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="btnrow" style={{ marginTop: 12 }}>
+              <button className="primary grow" onClick={submit}>Guardar</button>
+              <button className="ghost" onClick={() => setShowForm(false)}>Cancelar</button>
+            </div>
+            <p className="hint">Si dejas un campo vacío, esa fila simplemente no lo grafica. Fecha y peso son obligatorios.</p>
           </div>
-          <div className="btnrow" style={{ marginTop: 12 }}>
-            <button className="primary grow" onClick={submit}>Guardar</button>
-            <button className="ghost" onClick={() => setShowForm(false)}>Cancelar</button>
-          </div>
-          <p className="hint">Si dejas un campo vacío, esa fila simplemente no lo grafica. Fecha y peso son obligatorios.</p>
-        </div>
-      )}
+        )}
+      </div>
 
       <div className="section-title">Composición</div>
-      <figure>
-        <div className="chart-title">Masa grasa y masa muscular</div>
-        <div className="chart-sub">Las dos líneas deberían separarse: la naranja baja, la azul se sostiene o sube</div>
-        <Chart
-          series={[serie('muscle', 'Músculo', 'var(--s1)'), serie('fatMass', 'Masa grasa', 'var(--s2)')]}
-          unit="kg" height={240} xLabel={x => fmtDate(x)}
-        />
-      </figure>
-      <figure>
-        <div className="chart-title">Cintura</div>
-        <div className="chart-sub">El número que más rápido responde y el que mejor refleja la grasa visceral</div>
-        <Chart series={[serie('waist', 'Cintura', 'var(--s1)')]} unit="cm" height={200} xLabel={x => fmtDate(x)} />
-      </figure>
+      <div className="cols">
+        <figure>
+          <div className="chart-title">Masa grasa y masa muscular</div>
+          <div className="chart-sub">Las dos líneas deberían separarse: la naranja baja, la azul se sostiene o sube</div>
+          <Chart
+            series={[serie('muscle', 'Músculo', 'var(--s1)'), serie('fatMass', 'Masa grasa', 'var(--s2)')]}
+            unit="kg" height={240} xLabel={x => fmtDate(x)}
+          />
+        </figure>
+        <figure>
+          <div className="chart-title">Cintura</div>
+          <div className="chart-sub">El número que más rápido responde y el que mejor refleja la grasa visceral</div>
+          <Chart series={[serie('waist', 'Cintura', 'var(--s1)')]} unit="cm" height={200} xLabel={x => fmtDate(x)} />
+        </figure>
+      </div>
 
       <div className="section-title">Historial</div>
       <div className="tablewrap wide">
