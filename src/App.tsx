@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { StoreProvider, useStore } from './lib/store'
+import { ErrorScreen } from './components/ErrorScreen'
 import Home from './views/Home'
 import Train from './views/Train'
 import Measure from './views/Measure'
@@ -15,8 +16,12 @@ const TABS: { id: Tab; label: string; icon: ReactNode }[] = [
 ]
 
 function Shell() {
-  const { ready } = useStore()
+  const { ready, dbError } = useStore()
   const [tab, setTab] = useState<Tab>('home')
+
+  if (dbError) {
+    return <ErrorScreen title="No se pudo abrir la base de datos" message={dbError} />
+  }
 
   if (!ready) {
     return (
