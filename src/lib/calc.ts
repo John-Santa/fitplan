@@ -104,3 +104,31 @@ export function weeklyCount(sessions: Session[], weeksBack = 8) {
   }
   return out
 }
+
+/** Rango ISO [inicio, fin] de la semana actual, mismo criterio de limites que usa weeklyCount(). */
+function currentWeekRange(): { start: string; end: string } {
+  const now = new Date()
+  const start = new Date(now.getTime() - 6 * 86400000)
+  return { start: todayISO(start), end: todayISO(now) }
+}
+
+/** Volumen total (kg) de las sesiones de fuerza terminadas en la semana actual. */
+export function weeklyVolume(sessions: Session[]): number {
+  const { start, end } = currentWeekRange()
+  return sessions
+    .filter(s => s.finishedAt && s.date >= start && s.date <= end)
+    .reduce((a, s) => a + sessionVolume(s), 0)
+}
+
+/** Series completadas en las sesiones de fuerza terminadas en la semana actual. */
+export function weeklySetCount(sessions: Session[]): number {
+  const { start, end } = currentWeekRange()
+  return sessions
+    .filter(s => s.finishedAt && s.date >= start && s.date <= end)
+    .reduce((a, s) => a + doneSets(s), 0)
+}
+
+/** Sesiones terminadas dentro del bloque vigente. */
+export function blockSessionCount(sessions: Session[], blockStart: string, blockEnd: string): number {
+  return sessions.filter(s => s.finishedAt != null && s.date >= blockStart && s.date <= blockEnd).length
+}

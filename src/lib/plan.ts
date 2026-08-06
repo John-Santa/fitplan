@@ -242,3 +242,24 @@ export function blockPhase(today: Date, blockStart: string): BlockPhase {
   return { week, label: 'Descarga y remedición', setsDelta: -1, rir: 'peso −20%',
     intent: 'Baja el peso un 20% y mantén las repeticiones. Vuelve a tomar las medidas.' }
 }
+
+export type WeekState = 'done' | 'current' | 'upcoming'
+
+/** Estado de cada semana del bloque de 8, para la barra de la pantalla de inicio. */
+export function blockWeeks(currentWeek: number): { week: number; state: WeekState }[] {
+  return Array.from({ length: 8 }, (_, i) => {
+    const week = i + 1
+    return { week, state: week < currentWeek ? 'done' : week === currentWeek ? 'current' : 'upcoming' }
+  })
+}
+
+/** Series totales de una rutina con el ajuste de la fase. */
+export function routineSetCount(routine: Routine, setsDelta: number): number {
+  return routine.exercises.reduce((a, e) => a + Math.max(1, e.sets + setsDelta), 0)
+}
+
+/** Nombre corto de la rutina ("Empuje"), para el titular de inicio. */
+export function routineShortName(routine: Routine): string {
+  const i = routine.name.indexOf('—')
+  return i === -1 ? routine.name : routine.name.slice(i + 1).trim()
+}

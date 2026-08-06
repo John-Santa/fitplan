@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { RoutineId, Session } from '../types'
-import { ROUTINES, blockPhase, routineById, routineForWeekday } from '../lib/plan'
+import { ROUTINES, blockPhase, routineById, routineForWeekday, routineSetCount } from '../lib/plan'
 import { doneSets, fmtDate, fmtDuration, sessionVolume, todayISO } from '../lib/calc'
 import { useStore } from '../lib/store'
 import ActiveSession, { newSession, sessionSummary } from './ActiveSession'
@@ -121,8 +121,7 @@ export default function Train() {
               {suggested?.id === r.id && <span className="pill" style={{ marginLeft: 8 }}>hoy</span>}
               <div className="muted">{r.weekday} · {r.zone}</div>
               <div className="muted num" style={{ fontSize: 12.5 }}>
-                {r.exercises.length} ejercicios ·{' '}
-                {r.exercises.reduce((a, e) => a + Math.max(1, e.sets + phase.setsDelta), 0)} series
+                {r.exercises.length} ejercicios · {routineSetCount(r, phase.setsDelta)} series
               </div>
             </div>
             <button className="primary" onClick={() => setActive(newSession(r.id, todayISO()))}>
