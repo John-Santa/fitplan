@@ -1,21 +1,22 @@
 import { useState } from 'react'
 import type { Measurement } from '../types'
 import { derive, fmt, fmtDate, progressPct, todayISO } from '../lib/calc'
+import { MEASUREMENT_KEYS, MEASUREMENT_LABELS, MEASUREMENT_STEPS, MEASUREMENT_UNITS } from '../lib/plan'
 import { useDerivedMeasurements, useStore } from '../lib/store'
 import Chart, { type Series } from '../components/Chart'
 import { Tile, useToast } from '../components/ui'
 
-const CAMPOS: { k: keyof Omit<Measurement, 'date'>; label: string; unit: string; step: string }[] = [
-  { k: 'weight', label: 'Peso', unit: 'kg', step: '0.1' },
-  { k: 'fatPct', label: 'Grasa', unit: '%', step: '0.1' },
-  { k: 'fatMass', label: 'Masa grasa', unit: 'kg', step: '0.1' },
-  { k: 'muscle', label: 'Músculo', unit: 'kg', step: '0.1' },
-  { k: 'water', label: 'Agua', unit: 'kg', step: '0.1' },
-  { k: 'waist', label: 'Cintura', unit: 'cm', step: '0.5' },
-  { k: 'hip', label: 'Cadera', unit: 'cm', step: '0.5' },
-  { k: 'chest', label: 'Pecho', unit: 'cm', step: '0.5' },
-  { k: 'neck', label: 'Cuello', unit: 'cm', step: '0.5' },
-]
+/** Deriva de las tablas de plan.ts (MEASUREMENT_LABELS/UNITS/STEPS), en vez
+ *  de repetir a mano una segunda lista de nueve campos: esa duplicacion es
+ *  justo lo que dejaba a esta lista incompleta en silencio cuando se agregaba
+ *  un campo a Measurement sin tocar este archivo. */
+const CAMPOS: { k: keyof Omit<Measurement, 'date'>; label: string; unit: string; step: string }[] =
+  MEASUREMENT_KEYS.map(k => ({
+    k,
+    label: MEASUREMENT_LABELS[k],
+    unit: MEASUREMENT_UNITS[k],
+    step: MEASUREMENT_STEPS[k],
+  }))
 
 export default function Measure() {
   const { config, saveMeasurement, deleteMeasurement } = useStore()

@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import type { DayPlan } from '../types'
-import { exportBackup, getLastBackupAt, importBackup, saveLastBackupAt, wipeAll } from '../lib/db'
+import { downloadBackupFile, exportBackup, getLastBackupAt, importBackup, saveLastBackupAt, wipeAll } from '../lib/db'
 import { useStore } from '../lib/store'
 import { Tile, useToast } from '../components/ui'
 import { daysSince, fmt, fmtDate } from '../lib/calc'
-import { DAY_KINDS, dayTitle, isDayKind, isRoutineId, KIND_LABELS, ROUTINES, suggestRoutineId, weekdayLabel, withDay, withText } from '../lib/plan'
+import { DAY_KINDS, dayTitle, isDayKind, isRoutineId, KIND_LABELS, MEASUREMENT_KEYS, MEASUREMENT_LABELS, MEASUREMENT_UNITS, ROUTINES, suggestRoutineId, weekdayLabel, withDay, withText } from '../lib/plan'
 
 export default function Settings() {
   const { config, saveConfig, reload, sessions, measurements } = useStore()
@@ -19,12 +19,7 @@ export default function Settings() {
 
   const doExport = async () => {
     const data = await exportBackup()
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `fitplan-${data.exportedAt.slice(0, 10)}.json`
-    a.click()
-    setTimeout(() => URL.revokeObjectURL(a.href), 2000)
+    downloadBackupFile(data)
     const now = Date.now()
     await saveLastBackupAt(now)
     setLastBackup(now)
@@ -164,13 +159,9 @@ export default function Settings() {
         <div className="section-title">Metas de la semana 8</div>
         <div className="card">
           <div className="formgrid">
-            {([
-              ['weight', 'Peso (kg)'], ['fatPct', 'Grasa (%)'], ['fatMass', 'Masa grasa (kg)'],
-              ['muscle', 'Músculo (kg)'], ['water', 'Agua (kg)'], ['waist', 'Cintura (cm)'],
-              ['hip', 'Cadera (cm)'], ['chest', 'Pecho (cm)'], ['neck', 'Cuello (cm)'],
-            ] as const).map(([k, label]) => (
+            {MEASUREMENT_KEYS.map(k => (
               <div key={k}>
-                <label htmlFor={`g-${k}`}>{label}</label>
+                <label htmlFor={`g-${k}`}>{MEASUREMENT_LABELS[k]} ({MEASUREMENT_UNITS[k]})</label>
                 <input
                   id={`g-${k}`} type="number" inputMode="decimal" step="0.1" defaultValue={fmt(config.goal[k]).replace(',', '.')}
                   onBlur={e => {
