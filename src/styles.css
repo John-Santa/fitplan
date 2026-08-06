@@ -586,3 +586,43 @@ figcaption {
   text-transform: uppercase;
 }
 .day-badge.today { background: var(--accent); color: var(--on-accent); }
+
+/* Paso 3 — Ajustes: título de la zona de peligro en tono de alerta. */
+.section-title.alert {
+  color: var(--alert);
+  border-bottom-color: var(--alert);
+}
+
+/* Paso 3 — Progresión: tile de acento para "Mejor serie". */
+.tile.accent {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.tile.accent .label { color: var(--on-accent); opacity: 0.72; }
+.tile.accent .value span { color: var(--on-accent); }
+
+/* Paso 3 — Progresión: filas de historial por sesión. */
+.histrow {
+  display: grid;
+  grid-template-columns: 50px 1fr auto;
+  gap: 9px;
+  align-items: center;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--ring);
+}
+.histrow .date {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.histrow .kg {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+.histrow .kg strong { font-size: 22px; font-weight: 800; letter-spacing: -0.035em; }
+.histrow .kg span { font-size: 11px; font-weight: 600; color: var(--ink-3); }

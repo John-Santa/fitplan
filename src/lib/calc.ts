@@ -50,6 +50,9 @@ export function fmtDuration(ms: number): string {
   return `${Math.floor(min / 60)} h ${min % 60} min`
 }
 
+/** Dias transcurridos entre un timestamp epoch y ahora. */
+export const daysSince = (ts: number): number => Math.floor((Date.now() - ts) / 86400000)
+
 export const mmss = (sec: number) =>
   `${Math.floor(Math.max(sec, 0) / 60)}:${String(Math.max(sec, 0) % 60).padStart(2, '0')}`
 

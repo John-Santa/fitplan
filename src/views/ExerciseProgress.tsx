@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import type { RoutineId } from '../types'
 import { routineById } from '../lib/plan'
-import { bestSet, fmt, fmtDate } from '../lib/calc'
+import { bestSet, fmt, fmtDate, fmtSigned, shouldProgress } from '../lib/calc'
 import { useStore } from '../lib/store'
 import Chart, { type Series } from '../components/Chart'
-import { Empty } from '../components/ui'
+import { Empty, Tile } from '../components/ui'
 
 export default function ExerciseProgress({ routineId, onBack }: { routineId: RoutineId; onBack: () => void }) {
   const { sessions } = useStore()
@@ -20,6 +20,10 @@ export default function ExerciseProgress({ routineId, onBack }: { routineId: Rou
     const b = bestSet(s.sets, exId)
     return b && b.weight != null ? [{ s, b, weight: b.weight, reps: b.reps }] : []
   })
+
+  const first = rows[0]
+  const latest = rows[rows.length - 1]
+  const gain = first && latest ? latest.weight - first.weight : 0
 
   const series: Series[] = [
     {
@@ -60,12 +64,20 @@ export default function ExerciseProgress({ routineId, onBack }: { routineId: Rou
         </p>
       </div>
 
-      {rows.length === 0 ? (
+      {rows.length === 0 || !first || !latest ? (
         <Empty title="Sin datos de este ejercicio">
           Aparece aquí después de tu primera sesión terminada con él.
         </Empty>
       ) : (
         <>
+          <div className="tiles" style={{ marginTop: 12 }}>
+            <Tile label="Mejor serie" value={latest.weight} unit={`kg × ${latest.reps ?? '—'}`} accent />
+            <div className="tile">
+              <div className="label">Desde el {fmtDate(first.s.date)}</div>
+              <div className="value num">{fmtSigned(gain)} <span>kg</span></div>
+            </div>
+          </div>
+
           <figure>
             <div className="chart-title">Carga máxima por sesión</div>
             <div className="chart-sub">La línea que tiene que subir escalón por escalón</div>
@@ -78,23 +90,20 @@ export default function ExerciseProgress({ routineId, onBack }: { routineId: Rou
             <Chart series={volume} unit="kg" height={200} xLabel={x => fmtDate(x)} />
           </figure>
 
-          <div className="tablewrap">
-            <table>
-              <thead>
-                <tr><th>Fecha</th><th>Mejor serie</th><th>Reps</th><th>Series</th></tr>
-              </thead>
-              <tbody>
-                {rows.slice().reverse().map(r => (
-                  <tr key={r.s.id}>
-                    <td>{fmtDate(r.s.date, true)}</td>
-                    <td className="num">{fmt(r.weight)} kg</td>
-                    <td className="num">{r.reps}</td>
-                    <td className="num">{r.s.sets.filter(x => x.exerciseId === exId && x.done).length}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <div className="section-title">Sesión por sesión</div>
+          {rows.slice().reverse().map(r => {
+            const rango = shouldProgress(r.s.sets.filter(x => x.exerciseId === exId), 2, ex.repsHigh)
+            return (
+              <div className="histrow" key={r.s.id}>
+                <div className="date">{fmtDate(r.s.date, true)}</div>
+                <div className="kg">
+                  <strong>{fmt(r.weight)}</strong>
+                  <span>kg × {r.reps ?? '—'}</span>
+                </div>
+                {rango && <span className="pill good">Rango</span>}
+              </div>
+            )
+          })}
         </>
       )}
     </>

@@ -76,6 +76,11 @@ export const getConfig = () =>
   tx<Config | undefined>(STORE_CONFIG, 'readonly', s => s.get('config') as IDBRequest<Config | undefined>)
 export const saveConfig = (c: Config) => put(STORE_CONFIG, c, 'config')
 
+/* ---------- respaldo: marca local del ultimo export ---------- */
+export const getLastBackupAt = () =>
+  tx<number | undefined>(STORE_CONFIG, 'readonly', s => s.get('lastBackupAt') as IDBRequest<number | undefined>)
+export const saveLastBackupAt = (ts: number) => put(STORE_CONFIG, ts, 'lastBackupAt')
+
 /* ---------- respaldo ---------- */
 export async function exportBackup(): Promise<Backup> {
   const [sessions, measurements, exerciseMeta, config] = await Promise.all([

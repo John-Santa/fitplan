@@ -1,14 +1,19 @@
-import { useRef, useState } from 'react'
-import { exportBackup, importBackup, wipeAll } from '../lib/db'
+import { useEffect, useRef, useState } from 'react'
+import { exportBackup, getLastBackupAt, importBackup, saveLastBackupAt, wipeAll } from '../lib/db'
 import { useStore } from '../lib/store'
-import { useToast } from '../components/ui'
-import { fmt, fmtDate } from '../lib/calc'
+import { Tile, useToast } from '../components/ui'
+import { daysSince, fmt, fmtDate } from '../lib/calc'
 
 export default function Settings() {
   const { config, saveConfig, reload, sessions, measurements } = useStore()
   const toast = useToast()
   const fileRef = useRef<HTMLInputElement>(null)
   const [height, setHeight] = useState(String(config.heightCm))
+  const [lastBackup, setLastBackup] = useState<number | null>(null)
+
+  useEffect(() => {
+    getLastBackupAt().then(v => setLastBackup(v ?? null))
+  }, [])
 
   const doExport = async () => {
     const data = await exportBackup()
@@ -18,6 +23,9 @@ export default function Settings() {
     a.download = `fitplan-${data.exportedAt.slice(0, 10)}.json`
     a.click()
     setTimeout(() => URL.revokeObjectURL(a.href), 2000)
+    const now = Date.now()
+    await saveLastBackupAt(now)
+    setLastBackup(now)
     toast.show('Respaldo descargado')
   }
 
@@ -46,10 +54,10 @@ export default function Settings() {
           cuenta y nadie más los ve. La contracara es que si borras los datos del navegador o cambias de teléfono, se
           van contigo solo si exportas.
         </p>
-        <p style={{ marginBottom: 12 }}>
-          <strong>Exporta una vez al mes</strong> y guarda el archivo donde tengas respaldo. Son {sessions.length}{' '}
-          sesiones y {measurements.length} mediciones.
-        </p>
+        <div className="tiles" style={{ marginTop: 12, marginBottom: 12 }}>
+          <Tile label="Sesiones" value={sessions.length} dec={0} />
+          <Tile label="Mediciones" value={measurements.length} dec={0} />
+        </div>
         <div className="btnrow">
           <button className="primary" onClick={doExport}>Exportar respaldo</button>
           <button onClick={() => fileRef.current?.click()}>Restaurar</button>
@@ -58,7 +66,10 @@ export default function Settings() {
             onChange={e => { const f = e.target.files?.[0]; if (f) doImport(f); e.target.value = '' }}
           />
         </div>
-        <p className="hint">Restaurar reemplaza todo lo que haya en este dispositivo.</p>
+        <p className="hint">
+          {lastBackup != null && `La última fue hace ${daysSince(lastBackup)} días. `}
+          Restaurar reemplaza todo lo que haya en este dispositivo.
+        </p>
       </div>
 
       <div className="section-title">Configuración</div>
@@ -107,7 +118,7 @@ export default function Settings() {
         </div>
       </div>
 
-      <div className="section-title">Zona de peligro</div>
+      <div className="section-title alert">Zona de peligro</div>
       <div className="card">
         <button
           className="danger block"
