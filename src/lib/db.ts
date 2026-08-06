@@ -1,4 +1,5 @@
 import type { Session, Measurement, ExerciseMeta, Config, Backup } from '../types'
+import { mergeConfig } from './plan'
 
 const DB_NAME = 'fitplan'
 const DB_VERSION = 1
@@ -111,7 +112,7 @@ export async function importBackup(data: unknown, mode: 'replace' | 'merge' = 'r
     ...(b.measurements ?? []).map(m => saveMeasurement(m)),
     ...(b.exerciseMeta ?? []).map(m => saveExerciseMeta(m)),
   ])
-  if (b.config) await saveConfig(b.config)
+  if (b.config) await saveConfig(mergeConfig(b.config))
 }
 
 export async function wipeAll() {

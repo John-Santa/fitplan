@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { RoutineId, Session } from '../types'
-import { ROUTINES, blockPhase, routineById, routineForWeekday, routineSetCount } from '../lib/plan'
+import { ROUTINES, blockPhase, routineById, routineDaysLabel, routineForWeekday, routineSetCount } from '../lib/plan'
 import { doneSets, fmtDate, fmtDuration, sessionVolume, todayISO } from '../lib/calc'
 import { useStore } from '../lib/store'
 import ActiveSession, { newSession, sessionSummary } from './ActiveSession'
@@ -14,7 +14,7 @@ export default function Train() {
   const [progressFor, setProgressFor] = useState<RoutineId | null>(null)
 
   const phase = blockPhase(new Date(), config.blockStart)
-  const suggested = routineForWeekday(new Date().getDay())
+  const suggested = routineForWeekday(config.weeklyRoutine, new Date().getDay())
 
   if (active) {
     return (
@@ -119,7 +119,7 @@ export default function Train() {
             <div className="grow">
               <strong>{r.name}</strong>
               {suggested?.id === r.id && <span className="pill" style={{ marginLeft: 8 }}>hoy</span>}
-              <div className="muted">{r.weekday} · {r.zone}</div>
+              <div className="muted">{routineDaysLabel(config.weeklyRoutine, r.id)} · {r.zone}</div>
               <div className="muted num" style={{ fontSize: 12.5 }}>
                 {r.exercises.length} ejercicios · {routineSetCount(r, phase.setsDelta)} series
               </div>

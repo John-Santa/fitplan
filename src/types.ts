@@ -22,7 +22,6 @@ export interface Routine {
   id: RoutineId
   name: string
   zone: string
-  weekday: string
   warmup: string
   exercises: Exercise[]
 }
@@ -76,11 +75,37 @@ export interface DerivedMeasurement extends Measurement {
   waterOverLean: number | null
 }
 
+export type DayKind = 'training' | 'swim' | 'walk' | 'rest' | 'custom'
+
+interface DayBase {
+  /** Vacio = se deriva al renderizar. Nunca se guarda el nombre de la rutina. */
+  title: string
+  note: string
+}
+
+/** Dia de entreno: la rutina es obligatoria, no opcional. */
+export interface TrainingDay extends DayBase {
+  kind: 'training'
+  routineId: RoutineId
+}
+
+/** Cualquier otro dia: no hay rutina que resolver. */
+export interface OtherDay extends DayBase {
+  kind: Exclude<DayKind, 'training'>
+}
+
+export type DayPlan = TrainingDay | OtherDay
+
+/** Indice 0 = domingo .. 6 = sabado, igual que Date.getDay(). */
+export type WeeklyRoutine = readonly [DayPlan, DayPlan, DayPlan, DayPlan, DayPlan, DayPlan, DayPlan]
+
 export interface Config {
   heightCm: number
   blockStart: string
   blockEnd: string
   goal: Required<Omit<Measurement, 'date'>>
+  /** Plan de los 7 dias, indexado por Date.getDay(). */
+  weeklyRoutine: WeeklyRoutine
 }
 
 export interface Backup {

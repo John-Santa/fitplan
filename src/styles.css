@@ -844,3 +844,23 @@ figcaption {
     margin-inline: calc((100% - var(--wide)) / 2);
   }
 }
+
+/* ---------- 18. AJUSTES: RUTINA SEMANAL ----------
+   Divulgacion nativa: un <details> por dia dentro de la misma tarjeta, sin
+   pantalla intermedia y sin estado en React. El <summary> lleva .list-item, asi
+   que hereda el idioma de dos lineas y los 58px de alto que ya superan el piso
+   de 44px (§13), y los controles heredan los 50px de input/select/textarea
+   (§8). Plano como todo lo demas: sin radio y sin sombra.                    */
+
+.dayrow > summary { cursor: pointer; list-style: none; }
+.dayrow > summary::-webkit-details-marker { display: none; }
+.dayrow > summary .t1, .dayrow > summary .t2 { display: block; }
+.dayrow > summary .caret {
+  display: block; margin-left: auto; flex-shrink: 0;
+  font-size: 20px; font-weight: 700; line-height: 1; color: var(--accent-ink);
+}
+.dayrow[open] > summary .caret { transform: rotate(45deg); }
+.dayrow:last-of-type:not([open]) > summary { border-bottom: none; }
+.dayedit { padding: var(--sp-3) 0 var(--sp-4); }
+.dayedit label { margin-top: var(--sp-3); }
+.dayedit label:first-child { margin-top: 0; }

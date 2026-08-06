@@ -1,9 +1,7 @@
-import { blockPhase, blockWeeks, routineForWeekday, routineSetCount, routineShortName, ROUTINES } from '../lib/plan'
+import { blockPhase, blockWeeks, dayTitle, DONE_TODAY, nextWeekdayFor, routineForWeekday, routineSetCount, routineShortName, ROUTINES, trainingDayCount, weekdayAbbr, WEEKDAYS } from '../lib/plan'
 import { blockSessionCount, fmt, fmtDate, fmtSigned, todayISO, weeklyCount, weeklySetCount, weeklyVolume } from '../lib/calc'
 import { useDerivedMeasurements, useStore } from '../lib/store'
 import { Tile } from '../components/ui'
-
-const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado']
 
 /** Clase de color de una fila de composición, según si el cambio va en la dirección buena. */
 function deltaClass(delta: number | null, deltaGood: 'lower' | 'higher'): 'up' | 'down' | 'flat' {
@@ -18,9 +16,10 @@ export default function Home({ go }: { go: (tab: 'train' | 'measure') => void })
   const now = new Date()
   const phase = blockPhase(now, config.blockStart)
   const dow = now.getDay()
-  const suggested = routineForWeekday(dow)
-  const isSwim = dow === 2 || dow === 4
+  const today = config.weeklyRoutine[dow]
+  const suggested = routineForWeekday(config.weeklyRoutine, dow)
   const doneToday = sessions.some(s => s.date === todayISO() && s.finishedAt)
+  const weeklyTarget = trainingDayCount(config.weeklyRoutine)
 
   const base = rows[0]
   const last = rows[rows.length - 1]
@@ -37,7 +36,7 @@ export default function Home({ go }: { go: (tab: 'train' | 'measure') => void })
   return (
     <>
       <div className="eyebrow">
-        {DIAS[dow]} {fmtDate(todayISO())} · Semana {phase.week} de 8
+        {WEEKDAYS[dow]} {fmtDate(todayISO())} · Semana {phase.week} de 8
       </div>
       <h1 className="hero">
         Hoy
@@ -51,39 +50,23 @@ export default function Home({ go }: { go: (tab: 'train' | 'measure') => void })
 
       <div className="card accent">
         <div className="muted" style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
-          Hoy es {DIAS[dow]}
+          Hoy es {WEEKDAYS[dow]}
         </div>
         {doneToday ? (
           <>
-            <h2 style={{ fontSize: 19, marginTop: 2 }}>Sesión hecha</h2>
-            <p style={{ marginBottom: 0 }}>Ya entrenaste hoy. Lo que queda es dormir 7 horas y media.</p>
+            <h2 style={{ fontSize: 19, marginTop: 2 }}>{DONE_TODAY.title}</h2>
+            <p style={{ marginBottom: 0 }}>{DONE_TODAY.note}</p>
           </>
         ) : suggested ? (
           <>
-            <h2 style={{ fontSize: 19, marginTop: 2 }}>{suggested.name}</h2>
-            <p style={{ marginBottom: 10 }}>{suggested.zone} · 20:30 en el gimnasio</p>
+            <h2 style={{ fontSize: 19, marginTop: 2 }}>{dayTitle(today)}</h2>
+            <p style={{ marginBottom: 10 }}>{suggested.zone}{today.note !== '' && ` · ${today.note}`}</p>
             <button className="primary big block" onClick={() => go('train')}>Empezar la sesión</button>
-          </>
-        ) : isSwim ? (
-          <>
-            <h2 style={{ fontSize: 19, marginTop: 2 }}>Natación</h2>
-            <p style={{ marginBottom: 0 }}>
-              20:00 a 21:00. Cierra el segundo trabajo a las 19:30 y come la fruta o el batido antes de salir. En casa a
-              las 22:30, cena lista para calentar y a dormir a las 23:30.
-            </p>
-          </>
-        ) : dow === 6 ? (
-          <>
-            <h2 style={{ fontSize: 19, marginTop: 2 }}>Caminata larga</h2>
-            <p style={{ marginBottom: 0 }}>60 a 75 minutos a la hora que quieras. Dormir 8 h 45.</p>
           </>
         ) : (
           <>
-            <h2 style={{ fontSize: 19, marginTop: 2 }}>Descanso activo</h2>
-            <p style={{ marginBottom: 0 }}>
-              Estiramiento y caminata liviana. Dedica dos horas a cocinar las cinco cenas de la semana: con cena a las
-              22:15, esta es la tarea más importante del domingo.
-            </p>
+            <h2 style={{ fontSize: 19, marginTop: 2 }}>{dayTitle(today)}</h2>
+            {today.note !== '' && <p style={{ marginBottom: 0 }}>{today.note}</p>}
           </>
         )}
       </div>
@@ -110,7 +93,13 @@ export default function Home({ go }: { go: (tab: 'train' | 'measure') => void })
 
       <div className="section-title">Esta semana</div>
       <div className="tiles">
-        <Tile label="Sesiones de fuerza" value={thisWeek} dec={0} progress={(thisWeek / 3) * 100} goalText="meta 3 por semana" />
+        <Tile
+          label="Sesiones de fuerza"
+          value={thisWeek}
+          dec={0}
+          progress={weeklyTarget > 0 ? (thisWeek / weeklyTarget) * 100 : undefined}
+          goalText={weeklyTarget > 0 ? `meta ${weeklyTarget} por semana` : 'sin entrenos programados'}
+        />
         <Tile label="Del bloque" value={blockFinished} dec={0} />
         <Tile label="Volumen" value={weeklyVolume(finished)} unit="kg" dec={0} />
         <Tile label="Series" value={weeklySetCount(finished)} dec={0} />
@@ -150,16 +139,21 @@ export default function Home({ go }: { go: (tab: 'train' | 'measure') => void })
       )}
 
       <div className="section-title">Las tres rutinas</div>
-      {ROUTINES.map(r => (
-        <div className="list-item" key={r.id}>
-          <div className={r.id === suggested?.id ? 'day-badge today' : 'day-badge'}>{r.weekday.slice(0, 3)}</div>
-          <div className="grow">
-            <div className="t1">{r.name}</div>
-            <div className="t2">{r.zone}</div>
+      {ROUTINES.map(r => {
+        const badgeDow = nextWeekdayFor(config.weeklyRoutine, r.id, dow)
+        return (
+          <div className="list-item" key={r.id}>
+            <div className={r.id === suggested?.id ? 'day-badge today' : 'day-badge'}>
+              {badgeDow == null ? '—' : weekdayAbbr(badgeDow)}
+            </div>
+            <div className="grow">
+              <div className="t1">{r.name}</div>
+              <div className="t2">{r.zone}</div>
+            </div>
+            <div className="muted num">{routineSetCount(r, phase.setsDelta)} ser</div>
           </div>
-          <div className="muted num">{routineSetCount(r, phase.setsDelta)} ser</div>
-        </div>
-      ))}
+        )
+      })}
     </>
   )
 }

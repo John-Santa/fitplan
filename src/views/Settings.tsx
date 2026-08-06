@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
+import type { DayPlan } from '../types'
 import { exportBackup, getLastBackupAt, importBackup, saveLastBackupAt, wipeAll } from '../lib/db'
 import { useStore } from '../lib/store'
 import { Tile, useToast } from '../components/ui'
 import { daysSince, fmt, fmtDate } from '../lib/calc'
+import { DAY_KINDS, dayTitle, isDayKind, isRoutineId, KIND_LABELS, ROUTINES, suggestRoutineId, weekdayLabel, withDay, withText } from '../lib/plan'
 
 export default function Settings() {
   const { config, saveConfig, reload, sessions, measurements } = useStore()
@@ -39,6 +41,9 @@ export default function Settings() {
       toast.show(e instanceof Error ? e.message : 'No se pudo leer el archivo')
     }
   }
+
+  const saveDay = (dow: number, day: DayPlan) =>
+    saveConfig({ ...config, weeklyRoutine: withDay(config.weeklyRoutine, dow, day) })
 
   return (
     <>
@@ -94,6 +99,61 @@ export default function Settings() {
             <input type="date" value={config.blockEnd} onChange={e => saveConfig({ ...config, blockEnd: e.target.value })} />
           </div>
         </div>
+      </div>
+
+      <div className="section-title">Rutina semanal</div>
+      <div className="card">
+        {config.weeklyRoutine.map((day, dow) => (
+          <details className="dayrow" key={dow}>
+            <summary className="list-item">
+              <span className="grow">
+                <span className="t1">{weekdayLabel(dow)}</span>
+                <span className="t2">{KIND_LABELS[day.kind]} · {dayTitle(day)}</span>
+              </span>
+              <span className="caret" aria-hidden="true">+</span>
+            </summary>
+            <div className="dayedit">
+              <label htmlFor={`k-${dow}`}>Tipo de día</label>
+              <select
+                id={`k-${dow}`} value={day.kind}
+                onChange={e => {
+                  const k = e.target.value
+                  if (!isDayKind(k)) return
+                  saveDay(dow, k === 'training'
+                    ? { kind: 'training', routineId: suggestRoutineId(config.weeklyRoutine), title: day.title, note: day.note }
+                    : { kind: k, title: day.title, note: day.note })
+                }}
+              >
+                {DAY_KINDS.map(k => <option key={k} value={k}>{KIND_LABELS[k]}</option>)}
+              </select>
+              {day.kind === 'training' && (
+                <>
+                  <label htmlFor={`r-${dow}`}>Rutina</label>
+                  <select
+                    id={`r-${dow}`} value={day.routineId}
+                    onChange={e => {
+                      const v = e.target.value
+                      if (isRoutineId(v)) saveDay(dow, { kind: 'training', routineId: v, title: day.title, note: day.note })
+                    }}
+                  >
+                    {ROUTINES.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                  </select>
+                </>
+              )}
+              <label htmlFor={`t-${dow}`}>Título</label>
+              <input
+                id={`t-${dow}`} type="text" defaultValue={day.title} placeholder={dayTitle(day)}
+                onBlur={e => saveDay(dow, withText(day, { title: e.target.value.trim() }))}
+              />
+              <label htmlFor={`n-${dow}`}>Nota</label>
+              <textarea
+                id={`n-${dow}`} defaultValue={day.note} placeholder="Opcional"
+                onBlur={e => saveDay(dow, withText(day, { note: e.target.value.trim() }))}
+              />
+            </div>
+          </details>
+        ))}
+        <p className="hint">Deja el título vacío para usar el nombre por defecto del día.</p>
       </div>
 
       <div className="section-title">Metas de la semana 8</div>

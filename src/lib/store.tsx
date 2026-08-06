@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { Config, ExerciseMeta, Measurement, Session } from '../types'
 import * as db from './db'
-import { BASELINE, DEFAULT_CONFIG } from './plan'
+import { BASELINE, DEFAULT_CONFIG, mergeConfig } from './plan'
 import { derive } from './calc'
 
 interface Store {
@@ -38,16 +38,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setSessions(s)
     setMeasurements(m)
     setMetaList(em)
-    setConfig(c ?? DEFAULT_CONFIG)
+    setConfig(mergeConfig(c))
   }, [])
 
   useEffect(() => {
     ;(async () => {
-      const c = await db.getConfig()
-      if (!c) {
+      const stored = await db.getConfig()
+      if (!stored) {
         // Primera apertura: sembramos la configuracion y la linea base.
         await db.saveConfig(DEFAULT_CONFIG)
         await db.saveMeasurement(BASELINE)
+      } else {
+        // Config escrita por una version anterior: la completamos y la
+        // reescribimos una sola vez. La comparacion por JSON es un chequeo de
+        // idempotencia barato, no un contrato de igualdad profunda: si el orden
+        // de claves difiere se reescribe una vez y a partir de ahi coincide.
+        const merged = mergeConfig(stored)
+        if (JSON.stringify(stored) !== JSON.stringify(merged)) await db.saveConfig(merged)
       }
       await reload()
       setReady(true)
