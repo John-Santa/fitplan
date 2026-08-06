@@ -68,7 +68,6 @@
 
   /* compatibilidad con las vistas actuales */
   --good: var(--accent);
-  --good-text: var(--ink-2);
   --warning: var(--accent);
 
   /* escala de espaciado — agrupa y separa, no rellena */
@@ -175,19 +174,6 @@ a:hover { color: var(--accent-ink); }
   max-width: 760px; margin: 0 auto; width: 100%;
 }
 
-/* Barra superior: sin blur, sin transparencia. Etiqueta arriba, título pesado. */
-.topbar {
-  position: sticky; top: 0; z-index: 20;
-  background: var(--plane);
-  border-bottom: 2px solid var(--ink-1);
-  padding: 14px 18px 10px;
-  display: flex; align-items: flex-end; gap: var(--sp-3);
-}
-.topbar h1 { font-size: 30px; }
-.topbar .sub {
-  font-size: var(--t-label); color: var(--accent-ink); font-weight: 700;
-  letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 4px;
-}
 .spacer { flex: 1; }
 
 /* Tabs: bloque sólido, marca de 3px arriba del activo. Alto ≥ 58px. */
@@ -626,3 +612,127 @@ figcaption {
 }
 .histrow .kg strong { font-size: 22px; font-weight: 800; letter-spacing: -0.035em; }
 .histrow .kg span { font-size: 11px; font-weight: 600; color: var(--ink-3); }
+
+/* Paso 4 — Sesión activa: cabecera pegajosa con el contador de series como
+   titular real (h1) y el nombre de la rutina como eyebrow. */
+.session-head {
+  position: sticky; top: var(--safe-t); z-index: 8;
+  background: var(--plane); padding-top: 10px;
+}
+.session-head h1 {
+  display: flex; align-items: baseline; gap: 6px;
+  margin-top: 5px; font-size: 34px; font-stretch: 112%; letter-spacing: -0.035em;
+}
+.session-head h1 span {
+  font-size: 13px; font-weight: 700; letter-spacing: 0.08em; color: var(--ink-3);
+}
+.session-bar { display: flex; height: 5px; margin-top: 12px; }
+.session-bar i { display: block; font-style: normal; background: var(--grid); }
+.session-bar i:first-child { background: var(--accent); }
+
+/* Paso 4 — Sesión activa: riel de 6 o 7 ejercicios, siempre libre. */
+.rail { display: grid; gap: 3px; padding: 10px 0 12px; }
+.rail button {
+  min-height: 44px; border: none; border-radius: var(--r-0); padding: 0;
+  font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: 0.02em;
+  background: var(--surface-1); color: var(--ink-3);
+}
+.rail button.current { background: var(--accent); color: var(--on-accent); }
+.rail button.done { background: var(--accent-dim); color: var(--accent-ink); }
+.rail button.partial { background: var(--surface-1); color: var(--ink-2); box-shadow: inset 0 -3px 0 var(--accent-dim); }
+
+/* Paso 4 — Sesión activa: chips de prescripción del ejercicio actual. */
+.metabar { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 11px; }
+.metabar span {
+  font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.metabar span:first-child { color: var(--ink-2); }
+
+/* Paso 4 — Sesión activa: bloque de progresión (etiqueta sesgada + frase). */
+.tag-skew-wrap { background: var(--accent); color: var(--on-accent); padding: 13px 15px; margin-top: 18px; }
+.tag-skew { display: inline-block; transform: skewX(-9deg); background: var(--on-accent); color: var(--accent); padding: 5px 10px; }
+.tag-skew > span {
+  display: inline-block; transform: skewX(9deg);
+  font-size: 11px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; white-space: nowrap;
+}
+.tag-skew-wrap p { color: var(--on-accent); font-size: 14.5px; font-weight: 600; line-height: 1.4; margin: 9px 0 0; }
+
+/* Paso 4 — Sesión activa: resumen de la sesión anterior (releva a --good-text). */
+.last-perf { margin-top: 22px; padding-bottom: 9px; border-bottom: 2px solid var(--ink-1); }
+.last-perf .label {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-3);
+}
+.last-perf .value {
+  font-size: 15px; font-weight: 700; letter-spacing: -0.01em; margin-top: 8px;
+}
+
+/* Paso 4 — Sesión activa: serie hecha, retirada a gris pero editable. */
+.setrow.done input {
+  border: 2px solid transparent;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 21px; font-weight: 800;
+  text-align: left; padding: 0;
+}
+
+/* Paso 4 — Sesión activa: serie pendiente, discreta pero operable ya
+   (AC-SETS-01 — mismo grid que .setrow.done, ningún reflow al completarse). */
+.setrow.pending .idx { color: var(--ink-3); }
+.setrow.pending input {
+  border: 2px solid var(--ring);
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 21px; font-weight: 800;
+  text-align: left; padding: 4px 6px;
+}
+.setrow.pending input::placeholder { color: var(--ink-3); font-weight: 600; }
+.setrow.pending .check {
+  background: transparent; border: 2px solid var(--ring); color: var(--ink-3);
+  min-width: 44px; min-height: 44px;
+}
+
+/* Paso 4 — Sesión activa: bloque destacado de la serie en curso (62px). */
+.setnow { background: var(--surface-1); margin-top: 14px; padding: 14px 15px 15px; }
+.setnow-head { display: flex; justify-content: space-between; align-items: center; }
+.setnow-head .lbl-current {
+  font-size: 11px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent-ink);
+}
+.setnow-head .lbl-last {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3);
+}
+.setnow-grid { display: grid; grid-template-columns: 1fr 1fr 62px; gap: 9px; align-items: end; margin-top: 12px; }
+.setnow-grid .micro {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 6px;
+}
+.setnow input {
+  width: 100%; text-align: center; min-height: 62px;
+  font-size: 38px; font-weight: 800; letter-spacing: -0.04em; padding: 11px 8px;
+  border: 2px solid var(--ring);
+}
+.setnow input.filled { border-color: var(--ink-1); }
+.setnow .check {
+  height: 62px; border-radius: var(--r-0); background: var(--accent); border: none; color: var(--on-accent);
+  display: grid; place-items: center; padding: 0;
+}
+.setnow .check svg { width: 26px; height: 26px; }
+
+/* Paso 4 — Sesión activa: divulgación "Cómo se ajusta" (incluye el asiento). */
+.disclosure-toggle {
+  display: flex; width: 100%; align-items: center; gap: 10px;
+  background: none; border: none; border-radius: var(--r-0); border-bottom: 1px solid var(--ring);
+  padding: 17px 0; color: var(--ink-1); text-align: left; min-height: 52px; margin-top: 6px;
+}
+.disclosure-toggle .lbl { font-size: 10.5px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; }
+.disclosure-toggle .glyph { margin-left: auto; font-size: 16px; font-weight: 700; color: var(--accent-ink); }
+.disclosure-body { padding: 16px 0 4px; }
+
+/* Paso 4 — Sesión activa: navegación posicional (el riel sigue libre). */
+.navrow { display: flex; gap: 9px; padding: 20px 0 6px; }
+.navrow .back { min-height: 52px; color: var(--ink-3); }
+.navrow .fwd {
+  flex: 1; min-height: 52px; border: none;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  background: var(--inv-bg); color: var(--inv-ink);
+}
+.navrow .fwd.primary { background: var(--accent); color: var(--on-accent); }

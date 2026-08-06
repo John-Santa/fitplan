@@ -95,6 +95,23 @@ export function shouldProgress(sets: SetLog[], expectedSets: number, repsHigh: n
   return done.every(s => (s.reps ?? 0) >= repsHigh)
 }
 
+/** Resumen de la sesion anterior: un solo peso si todas las series lo comparten. */
+export function formatLastPerformance(sets: SetLog[]): string {
+  if (!sets.length) return '—'
+  const w = sets[0].weight
+  return sets.every(s => s.weight === w)
+    ? `${fmt(w)} kg × ${sets.map(s => s.reps ?? '—').join(' · ')}`
+    : sets.map(s => `${fmt(s.weight)} kg × ${s.reps ?? '—'}`).join('  ·  ')
+}
+
+const CARDINALES = ['una', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve']
+
+/** "Cerraste las cuatro series en 12. Hoy va la siguiente placa." */
+export function progressLine(setCount: number, reps: number): string {
+  const series = setCount === 1 ? 'la serie' : `las ${CARDINALES[setCount - 1] ?? setCount} series`
+  return `Cerraste ${series} en ${reps}. Hoy va la siguiente placa.`
+}
+
 /** Racha de semanas con al menos 3 sesiones de fuerza terminadas. */
 export function weeklyCount(sessions: Session[], weeksBack = 8) {
   const out: { week: string; count: number }[] = []

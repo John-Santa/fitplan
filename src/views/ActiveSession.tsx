@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { Exercise, Session, SetLog } from '../types'
 import { MW, routineById } from '../lib/plan'
-import { bestSet, fmt, lastPerformance, shouldProgress } from '../lib/calc'
+import { bestSet, fmt, fmtDate, formatLastPerformance, lastPerformance, progressLine, shouldProgress } from '../lib/calc'
 import { useStore } from '../lib/store'
 import { Check, RestTimer, useToast } from '../components/ui'
 
@@ -13,12 +13,16 @@ interface Props {
   onDiscard: () => void
 }
 
+type RailState = 'current' | 'done' | 'partial' | 'pending'
+type SetRowState = 'done' | 'current' | 'pending'
+
 export default function ActiveSession({ session, setsDelta, onChange, onFinish, onDiscard }: Props) {
   const { sessions, meta, saveMeta } = useStore()
   const routine = routineById(session.routineId)!
   const toast = useToast()
-  const [open, setOpen] = useState<string | null>(routine.exercises[0]?.id ?? null)
+  const [currentIndex, setCurrentIndex] = useState(0)
   const [rest, setRest] = useState<{ sec: number; key: number } | null>(null)
+  const [cueOpen, setCueOpen] = useState<Record<string, boolean>>({})
 
   const targetSets = (e: Exercise) => Math.max(1, e.sets + setsDelta)
 
@@ -35,131 +39,221 @@ export default function ActiveSession({ session, setsDelta, onChange, onFinish, 
   const totalDone = session.sets.filter(s => s.done).length
   const totalTarget = routine.exercises.reduce((a, e) => a + targetSets(e), 0)
 
+  const ex = routine.exercises[currentIndex]
+  const n = targetSets(ex)
+  const mine = setsFor(ex.id)
+  const prev = lastPerformance(sessions, ex.id, session.id)
+  const progress = prev != null && shouldProgress(prev.sets, n, ex.repsHigh)
+  const seat = meta[ex.id]?.seat ?? ''
+  const isCueOpen = cueOpen[ex.id] ?? prev === null
+
+  // Selector presentacional puro: nunca filtra ni bloquea filas, solo decide
+  // cual fila recibe el bloque destacado (AC-SETS-01 — todas las filas se
+  // materializan siempre, en orden, sin importar este valor).
+  const currentSetIndex = Array.from({ length: n }, (_, i) => i).find(i => !mine.find(x => x.setIndex === i)?.done) ?? null
+
+  const rail = routine.exercises.map((e, i) => {
+    const t = targetSets(e)
+    const d = session.sets.filter(s => s.exerciseId === e.id && s.done).length
+    const state: RailState = i === currentIndex ? 'current' : d >= t ? 'done' : d > 0 ? 'partial' : 'pending'
+    return { id: e.id, i, label: String(i + 1).padStart(2, '0'), name: e.name, done: d, target: t, state }
+  })
+
+  const setRows = Array.from({ length: n }, (_, i) => {
+    const s = mine.find(x => x.setIndex === i)
+    const state: SetRowState = s?.done ? 'done' : i === currentSetIndex ? 'current' : 'pending'
+    const ref = prev?.sets[i] ?? prev?.sets[prev.sets.length - 1]
+    return { i, s, ref, state }
+  })
+
+  // Handler unico para las tres filas (hecha, actual, pendiente): sin
+  // disabled y sin guardia sobre la fila anterior — cualquier serie se marca
+  // en cualquier orden (AC-SETS-01).
+  const toggleSet = (i: number, s: SetLog | undefined, ref: SetLog | undefined) => {
+    const next = !s?.done
+    const w = s?.weight ?? ref?.weight ?? null
+    const r = s?.reps ?? ex.repsHigh
+    update(ex.id, i, { done: next, weight: s?.weight ?? w, reps: s?.reps ?? r })
+    if (next) setRest({ sec: ex.restSec, key: Date.now() })
+  }
+
+  const toggleCue = () => setCueOpen(c => ({ ...c, [ex.id]: !isCueOpen }))
+
   return (
     <>
-      <div className="card accent tight">
+      <div className="session-head">
         <div className="row">
           <div className="grow">
-            <h1 className="eyebrow accent">{routine.name}</h1>
-            <div className="muted num">
-              {totalDone} de {totalTarget} series · {routine.zone}
-            </div>
+            <div className="eyebrow accent">{routine.name}</div>
+            <h1>
+              {String(totalDone).padStart(2, '0')}
+              <span>/ {totalTarget} series</span>
+            </h1>
           </div>
           <button className="primary" onClick={onFinish} disabled={totalDone === 0}>
             Terminar
           </button>
         </div>
-        <div className="bar" style={{ marginTop: 9 }}>
-          <i style={{ width: `${totalTarget ? (totalDone / totalTarget) * 100 : 0}%` }} />
+        <div className="session-bar">
+          <i style={{ flex: totalDone }} />
+          <i style={{ flex: totalTarget - totalDone }} />
+        </div>
+        <div className="rail" style={{ gridTemplateColumns: `repeat(${routine.exercises.length}, 1fr)` }}>
+          {rail.map(r => (
+            <button
+              key={r.id}
+              className={r.state === 'pending' ? undefined : r.state}
+              onClick={() => setCurrentIndex(r.i)}
+              aria-label={`${r.i + 1}. ${r.name} — ${r.done} de ${r.target} series`}
+            >
+              {r.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {routine.exercises.map(ex => {
-        const n = targetSets(ex)
-        const mine = setsFor(ex.id)
-        const doneCount = mine.filter(s => s.done).length
-        const prev = lastPerformance(sessions, ex.id, session.id)
-        const progress = prev && shouldProgress(prev.sets, Math.max(1, ex.sets + setsDelta), ex.repsHigh)
-        const isOpen = open === ex.id
-        const seat = meta[ex.id]?.seat ?? ''
-        return (
-          <section key={ex.id} className={`exercise${doneCount >= n ? ' done' : ''}`}>
-            <div className="ex-head" onClick={() => setOpen(isOpen ? null : ex.id)}>
-              <div className="grow">
-                <h3>
-                  {ex.name} {ex.main && <span className="pill">principal</span>}
-                </h3>
-                <div className="meta num">
-                  {n} × {ex.repsLow}–{ex.repsHigh} · descanso {ex.restSec}s
-                  {seat && ` · asiento ${seat}`}
-                </div>
+      <div className="ex-panel">
+        <h2>
+          {ex.name} {ex.main && <span className="pill">principal</span>}
+        </h2>
+        <div className="metabar">
+          <span>{n} × {ex.repsLow}–{ex.repsHigh}</span>
+          <span>Descanso {ex.restSec}s</span>
+          {seat && <span>Asiento {seat}</span>}
+        </div>
+
+        {progress && prev && (
+          <div className="tag-skew-wrap">
+            <div className="tag-skew">
+              <span>Sube peso</span>
+            </div>
+            <p>{progressLine(prev.sets.length, Math.min(...prev.sets.map(s => s.reps ?? ex.repsHigh)))}</p>
+          </div>
+        )}
+
+        {prev ? (
+          <div className="last-perf">
+            <div className="label">La vez pasada · {fmtDate(prev.session.date)}</div>
+            <div className="value num">{formatLastPerformance(prev.sets)}</div>
+          </div>
+        ) : (
+          <p className="hint">Primera vez con este ejercicio. Empieza liviano: la primera serie es de reconocimiento.</p>
+        )}
+
+        {setRows.map(row =>
+          row.state === 'current' ? (
+            <div className="setnow" key={row.i}>
+              <div className="setnow-head">
+                <span className="lbl-current">
+                  Serie {row.i + 1} de {n}
+                </span>
+                {row.i + 1 === n && <span className="lbl-last">La última</span>}
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <div className="num" style={{ fontWeight: 700, fontSize: 15 }}>
-                  {doneCount}/{n}
+              <div className="setnow-grid">
+                <div>
+                  <div className="micro">kg</div>
+                  <input
+                    type="number" inputMode="decimal" step="0.5"
+                    className={`num${row.s?.weight != null ? ' filled' : ''}`}
+                    placeholder={row.ref?.weight != null ? String(row.ref.weight) : '—'}
+                    value={row.s?.weight ?? ''}
+                    onChange={e => update(ex.id, row.i, { weight: e.target.value === '' ? null : Number(e.target.value) })}
+                    aria-label={`Peso serie ${row.i + 1}`}
+                  />
                 </div>
-                {progress && <span className="pill good">sube peso</span>}
+                <div>
+                  <div className="micro">reps</div>
+                  <input
+                    type="number" inputMode="numeric"
+                    className={`num${row.s?.reps != null ? ' filled' : ''}`}
+                    placeholder={String(ex.repsHigh)}
+                    value={row.s?.reps ?? ''}
+                    onChange={e => update(ex.id, row.i, { reps: e.target.value === '' ? null : Number(e.target.value) })}
+                    aria-label={`Repeticiones serie ${row.i + 1}`}
+                  />
+                </div>
+                <button
+                  className="check"
+                  aria-label={row.s?.done ? 'Deshacer serie' : 'Marcar serie'}
+                  onClick={() => toggleSet(row.i, row.s, row.ref)}
+                >
+                  <Check on={!!row.s?.done} />
+                </button>
               </div>
             </div>
+          ) : (
+            <div className={`setrow ${row.state}`} key={row.i}>
+              <div className="idx num">{row.i + 1}</div>
+              <input
+                type="number" inputMode="decimal" step="0.5" className="num"
+                placeholder={row.ref?.weight != null ? String(row.ref.weight) : '—'}
+                value={row.s?.weight ?? ''}
+                onChange={e => update(ex.id, row.i, { weight: e.target.value === '' ? null : Number(e.target.value) })}
+                aria-label={`Peso serie ${row.i + 1}`}
+              />
+              <input
+                type="number" inputMode="numeric" className="num"
+                placeholder={String(ex.repsHigh)}
+                value={row.s?.reps ?? ''}
+                onChange={e => update(ex.id, row.i, { reps: e.target.value === '' ? null : Number(e.target.value) })}
+                aria-label={`Repeticiones serie ${row.i + 1}`}
+              />
+              <button
+                className={`check${row.s?.done ? ' on' : ''}`}
+                aria-label={row.s?.done ? 'Deshacer serie' : 'Marcar serie'}
+                onClick={() => toggleSet(row.i, row.s, row.ref)}
+              >
+                <Check on={!!row.s?.done} />
+              </button>
+            </div>
+          ),
+        )}
 
-            {isOpen && (
-              <div className="ex-body">
-                <p className="hint" style={{ marginBottom: 4 }}>{ex.cue}</p>
-                <p className="hint" style={{ marginTop: 2 }}>
-                  <a href={MW + ex.mwSlug} target="_blank" rel="noopener noreferrer">Ver la ejecución ↗</a>
-                </p>
+        <button className="disclosure-toggle" onClick={toggleCue}>
+          <span className="lbl">Cómo se ajusta</span>
+          <span className="glyph">{isCueOpen ? '−' : '+'}</span>
+        </button>
+        {isCueOpen && (
+          <div className="disclosure-body">
+            <p className="hint" style={{ marginBottom: 12 }}>{ex.cue}</p>
+            <div className="btnrow" style={{ marginBottom: 16 }}>
+              <a href={MW + ex.mwSlug} target="_blank" rel="noopener noreferrer" className="btn primary">
+                Ver en MuscleWiki
+              </a>
+            </div>
+            <label htmlFor={`seat-${ex.id}`}>Número de asiento o ajuste</label>
+            <input
+              id={`seat-${ex.id}`}
+              key={ex.id}
+              type="text"
+              defaultValue={seat}
+              placeholder="p. ej. asiento 4, pin 3"
+              onBlur={e => saveMeta({ exerciseId: ex.id, seat: e.target.value, note: meta[ex.id]?.note ?? '' })}
+            />
+            <p className="hint">Se guarda solo y aparece aquí la próxima sesión.</p>
+          </div>
+        )}
 
-                {prev ? (
-                  <div className="card tight" style={{ margin: '10px 0 0', background: 'var(--plane)' }}>
-                    <div className="muted" style={{ fontWeight: 700, fontSize: 11, letterSpacing: '.05em', textTransform: 'uppercase' }}>
-                      Sesión anterior
-                    </div>
-                    <div className="num" style={{ fontSize: 13.5 }}>
-                      {prev.sets.map(s => `${fmt(s.weight)} kg × ${s.reps}`).join('  ·  ')}
-                    </div>
-                    {progress && (
-                      <div className="num" style={{ fontSize: 13, fontWeight: 600, marginTop: 2 }}>
-                        Completaste el rango: hoy sube a la siguiente placa.
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <p className="hint">Primera vez con este ejercicio. Empieza liviano: la primera serie es de reconocimiento.</p>
-                )}
-
-                <div className="setlabels">
-                  <span>#</span><span>kg</span><span>reps</span><span />
-                </div>
-                {Array.from({ length: n }, (_, i) => {
-                  const s = mine.find(x => x.setIndex === i)
-                  const ref = prev?.sets[i] ?? prev?.sets[prev.sets.length - 1]
-                  return (
-                    <div className="setrow" key={i}>
-                      <div className="idx num">{i + 1}</div>
-                      <input
-                        type="number" inputMode="decimal" step="0.5" className="num"
-                        placeholder={ref?.weight != null ? String(ref.weight) : '—'}
-                        value={s?.weight ?? ''}
-                        onChange={e => update(ex.id, i, { weight: e.target.value === '' ? null : Number(e.target.value) })}
-                        aria-label={`Peso serie ${i + 1}`}
-                      />
-                      <input
-                        type="number" inputMode="numeric" className="num"
-                        placeholder={String(ex.repsHigh)}
-                        value={s?.reps ?? ''}
-                        onChange={e => update(ex.id, i, { reps: e.target.value === '' ? null : Number(e.target.value) })}
-                        aria-label={`Repeticiones serie ${i + 1}`}
-                      />
-                      <button
-                        className={`check${s?.done ? ' on' : ''}`}
-                        aria-label={s?.done ? 'Deshacer serie' : 'Marcar serie'}
-                        onClick={() => {
-                          const next = !s?.done
-                          const w = s?.weight ?? ref?.weight ?? null
-                          const r = s?.reps ?? ex.repsHigh
-                          update(ex.id, i, { done: next, weight: s?.weight ?? w, reps: s?.reps ?? r })
-                          if (next) setRest({ sec: ex.restSec, key: Date.now() })
-                        }}
-                      >
-                        <Check on={!!s?.done} />
-                      </button>
-                    </div>
-                  )
-                })}
-
-                <div style={{ marginTop: 12 }}>
-                  <label htmlFor={`seat-${ex.id}`}>Número de asiento o ajuste</label>
-                  <input
-                    id={`seat-${ex.id}`} type="text" defaultValue={seat} placeholder="p. ej. asiento 4, pin 3"
-                    onBlur={e => saveMeta({ exerciseId: ex.id, seat: e.target.value, note: meta[ex.id]?.note ?? '' })}
-                  />
-                  <p className="hint">Se guarda solo y aparece aquí la próxima sesión.</p>
-                </div>
-              </div>
-            )}
-          </section>
-        )
-      })}
+        <div className="navrow">
+          <button
+            className="back"
+            disabled={currentIndex === 0}
+            onClick={() => setCurrentIndex(i => i - 1)}
+            aria-label={currentIndex > 0 ? `Anterior: ${routine.exercises[currentIndex - 1].name}` : 'Anterior'}
+          >
+            ←
+          </button>
+          {currentIndex < routine.exercises.length - 1 ? (
+            <button className="fwd" onClick={() => setCurrentIndex(i => i + 1)}>
+              Siguiente · {routine.exercises[currentIndex + 1].name}
+            </button>
+          ) : (
+            <button className="fwd primary" onClick={onFinish} disabled={totalDone === 0}>
+              Terminar sesión
+            </button>
+          )}
+        </div>
+      </div>
 
       <div className="card">
         <label htmlFor="notas">Notas de la sesión</label>
@@ -170,9 +264,6 @@ export default function ActiveSession({ session, setsDelta, onChange, onFinish, 
       </div>
 
       <div className="btnrow" style={{ marginBottom: 20 }}>
-        <button className="primary big grow" onClick={onFinish} disabled={totalDone === 0}>
-          Terminar sesión
-        </button>
         <button
           className="danger"
           onClick={() => {
@@ -182,6 +273,8 @@ export default function ActiveSession({ session, setsDelta, onChange, onFinish, 
           Descartar
         </button>
       </div>
+
+      <div style={{ height: rest ? 96 : 0 }} />
 
       {rest && (
         <RestTimer
