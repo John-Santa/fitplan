@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { fmt, fmtSigned, mmss } from '../lib/calc'
 
 export function Tile({
-  label, value, unit, delta, deltaGood, progress, goalText, dec = 1,
+  label, value, unit, delta, deltaGood, progress, goalText, dec = 1, accent = false,
 }: {
   label: string
   value: number | null
@@ -12,6 +12,7 @@ export function Tile({
   progress?: number
   goalText?: string
   dec?: number
+  accent?: boolean
 }) {
   let cls = 'flat'
   if (delta != null && Math.abs(delta) >= 0.05 && deltaGood) {
@@ -19,7 +20,7 @@ export function Tile({
     cls = good ? 'up' : 'down'
   }
   return (
-    <div className="tile">
+    <div className={accent ? 'tile accent' : 'tile'}>
       <div className="label">{label}</div>
       <div className="value num">
         {fmt(value, dec)} {unit && <span>{unit}</span>}
@@ -30,13 +31,11 @@ export function Tile({
         </div>
       )}
       {progress != null && (
-        <>
-          <div className="bar">
-            <i style={{ width: `${Math.round(progress)}%` }} />
-          </div>
-          {goalText && <div className="delta flat" style={{ fontWeight: 500 }}>{goalText}</div>}
-        </>
+        <div className="bar">
+          <i style={{ width: `${Math.max(0, Math.min(100, Math.round(progress)))}%` }} />
+        </div>
       )}
+      {goalText && <div className="delta flat" style={{ fontWeight: 500 }}>{goalText}</div>}
     </div>
   )
 }

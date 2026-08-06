@@ -47,13 +47,12 @@ export default function Train() {
     return (
       <>
         <button className="ghost" onClick={() => setDetail(null)}>← Volver</button>
-        <div className="card" style={{ marginTop: 12 }}>
-          <strong>{r?.name}</strong>
-          <div className="muted num">
-            {fmtDate(s.date, true)} · {doneSets(s)} series · {Math.round(sessionVolume(s)).toLocaleString('es-CO')} kg de volumen
-            {s.finishedAt && ` · ${fmtDuration(s.finishedAt - s.startedAt)}`}
-          </div>
-        </div>
+        <div className="eyebrow">{fmtDate(s.date, true)} · {doneSets(s)} series</div>
+        <h1>{r?.name}</h1>
+        <p className="muted num">
+          {Math.round(sessionVolume(s)).toLocaleString('es-CO')} kg de volumen
+          {s.finishedAt && ` · ${fmtDuration(s.finishedAt - s.startedAt)}`}
+        </p>
         <div className="tablewrap">
           <table>
             <thead>
@@ -101,10 +100,13 @@ export default function Train() {
 
   return (
     <>
+      <div className="eyebrow">Semana {phase.week} de 8</div>
+      <h1>Entrenar</h1>
+
       <div className="card accent tight">
         <div className="row">
           <div className="grow">
-            <strong>Semana {phase.week} de 8 · {phase.label}</strong>
+            <strong>{phase.label}</strong>
             <div className="muted">{phase.rir}{phase.setsDelta !== 0 && ' · una serie menos por ejercicio'}</div>
           </div>
         </div>

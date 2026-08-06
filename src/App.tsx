@@ -14,13 +14,6 @@ const TABS: { id: Tab; label: string; icon: ReactNode }[] = [
   { id: 'settings', label: 'Ajustes', icon: <><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1" /></> },
 ]
 
-const TITLES: Record<Tab, string> = {
-  home: 'Inicio',
-  train: 'Entrenamiento',
-  measure: 'Composición corporal',
-  settings: 'Ajustes',
-}
-
 function Shell() {
   const { ready } = useStore()
   const [tab, setTab] = useState<Tab>('home')
@@ -37,12 +30,6 @@ function Shell() {
 
   return (
     <div className="app">
-      <div className="topbar">
-        <div>
-          <div className="sub">FitPlan</div>
-          <h1>{TITLES[tab]}</h1>
-        </div>
-      </div>
       <main className="main">
         {tab === 'home' && <Home go={setTab} />}
         {tab === 'train' && <Train />}

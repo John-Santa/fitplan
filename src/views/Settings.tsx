@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { exportBackup, importBackup, wipeAll } from '../lib/db'
 import { useStore } from '../lib/store'
 import { useToast } from '../components/ui'
-import { fmt } from '../lib/calc'
+import { fmt, fmtDate } from '../lib/calc'
 
 export default function Settings() {
   const { config, saveConfig, reload, sessions, measurements } = useStore()
@@ -34,6 +34,11 @@ export default function Settings() {
 
   return (
     <>
+      <div className="eyebrow">
+        Bloque {fmtDate(config.blockStart)} – {fmtDate(config.blockEnd, true)}
+      </div>
+      <h1>Ajustes</h1>
+
       <div className="section-title">Tus datos</div>
       <div className="card">
         <p>

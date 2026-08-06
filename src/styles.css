@@ -1,198 +1,505 @@
-:root {
-  color-scheme: light;
-  --surface-1: #fcfcfb;
-  --plane: #f9f9f7;
-  --ink-1: #0b0b0b;
-  --ink-2: #52514e;
-  --ink-3: #898781;
-  --grid: #e1e0d9;
-  --axis: #c3c2b7;
-  --ring: rgba(11, 11, 11, 0.1);
-  --s1: #2a78d6;
-  --s1-soft: #cde2fb;
-  --s2: #eb6834;
-  --good: #0ca30c;
-  --good-text: #006300;
-  --warning: #fab219;
-  --critical: #d03b3b;
-  --field: #ffffff;
-  --nav: rgba(252, 252, 251, 0.94);
-  --safe-b: env(safe-area-inset-bottom, 0px);
+/* ============================================================================
+   FitPlan — styles.css
+   Reemplaza src/styles.css tal cual. No cambia ningún nombre de clase ni de
+   variable que ya usaran las vistas, así que la app sigue funcionando sin
+   tocar un solo .tsx. Los ids de ejercicio de lib/plan.ts no se tocan.
+
+   Sistema: negro y amarillo señal #FBBA00 (Smart Fit), Archivo en mayúsculas
+   para titulares, bloques planos sin sombra, cifras tabulares en todo dato.
+   El oscuro es el modo principal (gimnasio de noche), no una inversión.
+   ========================================================================= */
+
+/* ---------- 1. TIPOGRAFÍA ----------
+   Una sola familia, servida local para que funcione sin conexión.
+   Descarga Archivo (variable, wght 100–900 + wdth 62–125) de
+   fonts.google.com/specimen/Archivo y deja los .woff2 en public/fonts/.
+   Si el archivo no está, cae a la fuente del sistema sin romper nada.        */
+
+@font-face {
+  font-family: 'Archivo';
+  src: url('./assets/fonts/Archivo-Variable.woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-stretch: 62% 125%;
+  font-style: normal;
+  font-display: swap;
 }
-@media (prefers-color-scheme: dark) {
+
+/* ---------- 2. TOKENS ---------- */
+
+:root {
+  color-scheme: dark;
+
+  /* superficies */
+  --plane: #0b0b0b;          /* fondo de la app */
+  --surface-1: #161616;      /* bloque de datos */
+  --surface-2: #202020;      /* bloque sobre bloque */
+  --field: #1b1b1b;          /* campos de formulario */
+  --nav: #0b0b0b;
+
+  /* tinta */
+  --ink-1: #ffffff;          /* dato y titular */
+  --ink-2: #b3b3b3;          /* texto corrido */
+  --ink-3: #8a8a8a;          /* etiqueta y dato secundario */
+
+  /* líneas */
+  --ring: #2b2b2b;           /* filete de 1px */
+  --grid: #232323;           /* riel de barra, línea de tabla */
+  --axis: #3a3a3a;           /* eje de gráfica */
+
+  /* el único acento. Se gana: serie hecha, sube peso, descanso, CTA */
+  --accent: #fbba00;
+  --on-accent: #0b0b0b;      /* tinta sobre amarillo — 10,9:1 */
+  --accent-dim: #3a2c00;     /* relleno tenue del acento */
+  --accent-ink: #fbba00;     /* amarillo COMO TEXTO (ver claro más abajo) */
+
+  /* inversión, para el botón secundario más fuerte */
+  --inv-bg: #ffffff;
+  --inv-ink: #0b0b0b;
+
+  /* alarma. Solo destructivo y dato fuera de rango */
+  --alert: #ff5747;
+  --critical: var(--alert);
+
+  /* datos de gráfica — validados para protanopía y deuteranopía.
+     NO METER EL AMARILLO AQUÍ. */
+  --s1: #3987e5;             /* azul  */
+  --s1-soft: #184f95;
+  --s2: #d95926;             /* naranja */
+
+  /* compatibilidad con las vistas actuales */
+  --good: var(--accent);
+  --good-text: var(--ink-2);
+  --warning: var(--accent);
+
+  /* escala de espaciado — agrupa y separa, no rellena */
+  --sp-1: 3px;
+  --sp-2: 6px;
+  --sp-3: 10px;
+  --sp-4: 15px;
+  --sp-5: 22px;
+  --sp-6: 32px;
+  --sp-7: 46px;
+
+  /* escala de tipo — contraste real entre dato y etiqueta */
+  --t-hero: 52px;
+  --t-display: 40px;
+  --t-data-xl: 46px;
+  --t-data-l: 36px;
+  --t-data-m: 23px;
+  --t-title: 20px;
+  --t-body: 15px;
+  --t-meta: 12.5px;
+  --t-label: 10.5px;
+
+  /* radios: casi nada, salvo las píldoras de acción */
+  --r-0: 0;
+  --r-1: 2px;
+  --r-pill: 999px;
+
+  /* movimiento: solo retroalimentación, nunca espera */
+  --dur-1: 120ms;
+  --dur-2: 180ms;
+
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-t: env(safe-area-inset-top, 0px);
+}
+
+/* El claro no es la inversión del oscuro: es papel blanco, tinta negra y el
+   mismo amarillo, que en claro nunca se usa como texto (1,7:1 sobre blanco)
+   sino como relleno con tinta negra encima. Para texto va --accent-ink.     */
+@media (prefers-color-scheme: light) {
   :root {
-    color-scheme: dark;
-    --surface-1: #1a1a19;
-    --plane: #0d0d0d;
-    --ink-1: #ffffff;
-    --ink-2: #c3c2b7;
-    --ink-3: #898781;
-    --grid: #2c2c2a;
-    --axis: #383835;
-    --ring: rgba(255, 255, 255, 0.1);
-    --s1: #3987e5;
-    --s1-soft: #184f95;
-    --s2: #d95926;
-    --good-text: #0ca30c;
-    --field: #232322;
-    --nav: rgba(26, 26, 25, 0.94);
+    color-scheme: light;
+    --plane: #ffffff;
+    --surface-1: #f4f4f1;
+    --surface-2: #eaeae6;
+    --field: #ffffff;
+    --nav: #ffffff;
+    --ink-1: #0b0b0b;
+    --ink-2: #4d4d4d;
+    --ink-3: #6e6e6e;
+    --ring: #e0e0da;
+    --grid: #ecece7;
+    --axis: #b5b5b0;
+    --accent-dim: #fdf0cc;
+    --accent-ink: #7a5a00;   /* 5,9:1 sobre blanco */
+    --inv-bg: #0b0b0b;
+    --inv-ink: #ffffff;
+    --alert: #c62b1c;
+    --s1: #2a78d6;
+    --s1-soft: #cde2fb;
+    --s2: #eb6834;
   }
 }
 
+/* ---------- 3. BASE ---------- */
+
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body, #root { height: 100%; }
+
 body {
   margin: 0;
   background: var(--plane);
   color: var(--ink-1);
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  font-size: 15px;
-  line-height: 1.55;
+  font-family: 'Archivo', system-ui, -apple-system, sans-serif;
+  font-size: var(--t-body);
+  line-height: 1.5;
   overscroll-behavior-y: none;
+  font-variant-numeric: tabular-nums;
 }
-h1, h2, h3, h4 { margin: 0; letter-spacing: -0.01em; }
-p { margin: 0 0 12px; color: var(--ink-2); }
-a { color: var(--s1); }
-strong { color: var(--ink-1); }
+
+h1, h2, h3, h4 {
+  margin: 0;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  font-stretch: 110%;
+}
+h1 { font-size: var(--t-display); }
+h2 { font-size: 27px; }
+h3 { font-size: var(--t-title); }
+
+p { margin: 0 0 var(--sp-3); color: var(--ink-2); text-wrap: pretty; }
+strong { color: var(--ink-1); font-weight: 800; }
+a { color: var(--ink-1); text-decoration: underline; text-underline-offset: 3px; }
+a:hover { color: var(--accent-ink); }
 .num { font-variant-numeric: tabular-nums; }
 
-/* layout */
+/* ---------- 4. ESQUELETO ---------- */
+
 .app { min-height: 100%; display: flex; flex-direction: column; }
-.main { flex: 1; padding: 14px 14px calc(84px + var(--safe-b)); max-width: 760px; margin: 0 auto; width: 100%; }
-.topbar {
-  position: sticky; top: 0; z-index: 20; background: var(--nav);
-  backdrop-filter: blur(12px); border-bottom: 1px solid var(--ring);
-  padding: 12px 14px; display: flex; align-items: center; gap: 10px;
+.main {
+  flex: 1;
+  padding: calc(var(--sp-4) + var(--safe-t)) 18px calc(var(--sp-7) + 66px + var(--safe-b));
+  max-width: 760px; margin: 0 auto; width: 100%;
 }
-.topbar h1 { font-size: 18px; }
-.topbar .sub { font-size: 12px; color: var(--ink-3); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+
+/* Barra superior: sin blur, sin transparencia. Etiqueta arriba, título pesado. */
+.topbar {
+  position: sticky; top: 0; z-index: 20;
+  background: var(--plane);
+  border-bottom: 2px solid var(--ink-1);
+  padding: 14px 18px 10px;
+  display: flex; align-items: flex-end; gap: var(--sp-3);
+}
+.topbar h1 { font-size: 30px; }
+.topbar .sub {
+  font-size: var(--t-label); color: var(--accent-ink); font-weight: 700;
+  letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 4px;
+}
 .spacer { flex: 1; }
 
+/* Tabs: bloque sólido, marca de 3px arriba del activo. Alto ≥ 58px. */
 .tabbar {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 30;
-  background: var(--nav); backdrop-filter: blur(12px); border-top: 1px solid var(--ring);
+  background: var(--nav); border-top: 1px solid var(--ring);
   display: grid; grid-template-columns: repeat(4, 1fr);
   padding-bottom: var(--safe-b);
 }
 .tabbar button {
-  background: none; border: none; padding: 9px 4px 8px; cursor: pointer;
-  display: flex; flex-direction: column; align-items: center; gap: 3px;
-  color: var(--ink-3); font-size: 11px; font-weight: 600; font-family: inherit;
+  position: relative; background: none; border: none;
+  padding: 12px 4px 12px; cursor: pointer; min-height: 58px;
+  display: flex; flex-direction: column; align-items: center; gap: var(--sp-2);
+  color: var(--ink-3);
+  font: 800 9.5px/1 inherit; letter-spacing: 0.1em; text-transform: uppercase;
+  font-family: inherit;
 }
-.tabbar button.active { color: var(--s1); }
-.tabbar svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.tabbar button::before {
+  content: ''; position: absolute; top: -1px; left: 0; right: 0; height: 3px;
+  background: transparent;
+}
+.tabbar button.active { color: var(--ink-1); }
+.tabbar button.active::before { background: var(--accent); }
+.tabbar svg {
+  width: 20px; height: 20px; fill: none; stroke: currentColor;
+  stroke-width: 2.1; stroke-linecap: round; stroke-linejoin: round;
+}
 
-/* bloques */
-.card { background: var(--surface-1); border: 1px solid var(--ring); border-radius: 13px; padding: 14px 15px; margin-bottom: 12px; }
-.card.accent { border-left: 3px solid var(--s1); }
-.card.warn { border-left: 3px solid var(--warning); }
-.card.tight { padding: 11px 13px; }
-.section-title { font-size: 12px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); margin: 22px 0 8px; }
-.section-title:first-child { margin-top: 4px; }
-.muted { color: var(--ink-3); font-size: 13px; }
-.hint { font-size: 12.5px; color: var(--ink-3); margin-top: 6px; }
+/* ---------- 5. BLOQUES (adiós sopa de tarjetas) ----------
+   Ni sombra, ni radio de 16px, ni borde en todo. Un relleno plano y, cuando
+   hace falta separar, un filete de 1px.                                      */
 
-/* tiles */
-.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
-.tile { background: var(--surface-1); border: 1px solid var(--ring); border-radius: 12px; padding: 11px 13px; }
-.tile .label { font-size: 11px; color: var(--ink-3); letter-spacing: 0.05em; text-transform: uppercase; font-weight: 700; }
-.tile .value { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25; margin-top: 1px; }
-.tile .value span { font-size: 13px; font-weight: 500; color: var(--ink-2); }
-.tile .delta { font-size: 12px; font-weight: 600; }
-.up { color: var(--good-text); }
-.down { color: var(--critical); }
+.card {
+  background: var(--surface-1);
+  border: none; border-radius: var(--r-0);
+  padding: var(--sp-4) var(--sp-4);
+  margin-bottom: 2px;
+}
+.card.tight { padding: 12px var(--sp-4); }
+/* El "accent" ya no es un borde izquierdo decorativo: es el bloque entero. */
+.card.accent { background: var(--accent); color: var(--on-accent); }
+.card.accent p, .card.accent .muted, .card.accent strong { color: var(--on-accent); }
+.card.warn { background: var(--surface-1); border-top: 3px solid var(--accent); }
+
+.section-title {
+  font-size: var(--t-label); font-weight: 800; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--ink-1);
+  border-bottom: 2px solid var(--ink-1);
+  padding-bottom: 7px; margin: var(--sp-6) 0 2px;
+}
+.section-title:first-child { margin-top: var(--sp-2); }
+
+.muted { color: var(--ink-3); font-size: var(--t-meta); }
+.hint { font-size: var(--t-meta); color: var(--ink-3); margin-top: var(--sp-2); }
+
+/* ---------- 6. DATOS ----------
+   Etiqueta de 10px contra dato de 36px: la jerarquía la hace el tamaño.      */
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 2px; }
+.tile { background: var(--surface-1); border: none; border-radius: var(--r-0); padding: var(--sp-4); }
+.tile .label {
+  font-size: 10px; color: var(--ink-3); letter-spacing: 0.14em;
+  text-transform: uppercase; font-weight: 700;
+}
+.tile .value {
+  font-size: var(--t-data-l); font-weight: 800; letter-spacing: -0.045em;
+  line-height: 1; margin-top: var(--sp-2); font-stretch: 110%;
+}
+.tile .value span {
+  font-size: 12px; font-weight: 700; color: var(--ink-3);
+  letter-spacing: 0.04em; text-transform: uppercase;
+}
+.tile .delta { font-size: 11.5px; font-weight: 700; margin-top: 7px; }
+/* Un delta en la dirección correcta no necesita color: es tinta. */
+.up { color: var(--ink-2); }
+.down { color: var(--alert); }
 .flat { color: var(--ink-3); }
-.bar { height: 5px; border-radius: 3px; background: var(--grid); margin-top: 7px; overflow: hidden; }
-.bar i { display: block; height: 100%; background: var(--s1); border-radius: 3px; transition: width .3s; }
 
-/* botones */
+.bar { height: 4px; border-radius: 0; background: var(--grid); margin-top: 9px; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--ink-2); transition: width var(--dur-2) ease-out; }
+.tile .bar i, .card .bar i { background: var(--ink-2); }
+
+/* ---------- 7. BOTONES ----------
+   Todo lo pulsable es una píldora de 44px mínimo. El amarillo es la acción.  */
+
 button, .btn {
-  font-family: inherit; font-size: 14.5px; font-weight: 600; padding: 10px 16px;
-  border-radius: 10px; cursor: pointer; border: 1px solid var(--ring);
-  background: var(--surface-1); color: var(--ink-1);
+  font-family: inherit; font-size: 11.5px; font-weight: 800;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  padding: 0 18px; min-height: 46px;
+  border-radius: var(--r-pill); cursor: pointer;
+  border: 1.5px solid var(--ring);
+  background: none; color: var(--ink-2);
+  transition: filter var(--dur-1) ease-out, background var(--dur-1) ease-out;
 }
-button:disabled { opacity: .45; cursor: default; }
-button.primary { background: var(--s1); border-color: var(--s1); color: #fff; }
-button.ghost { background: none; }
-button.danger { color: var(--critical); border-color: var(--critical); background: none; }
+button:disabled { opacity: 0.4; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+button.primary:hover:not(:disabled) { filter: brightness(1.08); }
+button.ghost { background: none; border-color: transparent; color: var(--ink-2); }
+button.danger { color: var(--alert); border-color: var(--alert); background: none; }
+button.danger:hover { background: var(--alert); color: var(--plane); }
 button.block { width: 100%; display: block; }
-button.big { padding: 14px 18px; font-size: 16px; border-radius: 12px; }
-.btnrow { display: flex; gap: 9px; flex-wrap: wrap; }
+button.big { min-height: 60px; font-size: 13.5px; }
+.btnrow { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
 
-/* formularios */
-label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-3); margin-bottom: 3px; }
-input, select, textarea {
-  width: 100%; padding: 10px 11px; border: 1px solid var(--ring); border-radius: 10px;
-  background: var(--field); color: var(--ink-1); font-size: 16px; font-family: inherit;
-  font-variant-numeric: tabular-nums;
+.pill {
+  display: inline-block; font-size: 9.5px; font-weight: 800;
+  padding: 5px 8px; border-radius: var(--r-0);
+  background: var(--surface-2); color: var(--ink-3);
+  letter-spacing: 0.12em; text-transform: uppercase;
 }
-input:focus, textarea:focus, select:focus { outline: 2px solid var(--s1); outline-offset: -1px; }
-textarea { min-height: 68px; resize: vertical; font-size: 15px; }
-.formgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(122px, 1fr)); gap: 10px 11px; }
+.pill.good { background: var(--accent); color: var(--on-accent); }
+.pill.warn { background: var(--accent-dim); color: var(--accent-ink); }
 
-/* tablas */
-.tablewrap { overflow-x: auto; border: 1px solid var(--ring); border-radius: 12px; background: var(--surface-1); }
-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-th, td { padding: 8px 10px; border-bottom: 1px solid var(--grid); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* ---------- 8. FORMULARIOS ---------- */
+
+label {
+  display: block; font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.14em; color: var(--ink-3); margin-bottom: var(--sp-2);
+}
+input, select, textarea {
+  width: 100%; padding: 13px 12px;
+  border: 2px solid var(--ring); border-radius: var(--r-0);
+  background: var(--field); color: var(--ink-1);
+  font-size: 16px; font-family: inherit; font-weight: 600;
+  font-variant-numeric: tabular-nums; min-height: 50px;
+}
+input:focus, textarea:focus, select:focus {
+  outline: none; border-color: var(--accent);
+}
+textarea { min-height: 72px; resize: vertical; font-size: 15px; font-weight: 400; }
+.formgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(122px, 1fr)); gap: var(--sp-3); }
+
+/* ---------- 9. TABLAS (densas, para leer sentado) ---------- */
+
+.tablewrap { overflow-x: auto; border: none; border-radius: var(--r-0); background: transparent; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; font-weight: 600; }
+th, td {
+  padding: 11px 10px; border-bottom: 1px solid var(--grid);
+  text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums;
+}
 th:first-child, td:first-child { text-align: left; }
-th { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-3); font-weight: 700; background: var(--plane); position: sticky; top: 0; }
+th {
+  font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em;
+  color: var(--ink-3); font-weight: 800;
+  background: var(--plane); position: sticky; top: 0;
+  border-bottom: 1px solid var(--ring);
+}
 tbody tr:last-child td { border-bottom: none; }
-tr.goal td { font-weight: 700; background: var(--plane); }
+tr.goal td { font-weight: 800; background: var(--surface-1); }
 tr.base td { color: var(--ink-3); }
 
-/* ejercicio en sesion */
-.exercise { background: var(--surface-1); border: 1px solid var(--ring); border-radius: 13px; margin-bottom: 12px; overflow: hidden; }
-.exercise.done { border-color: var(--good); }
-.ex-head { padding: 12px 14px; display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
-.ex-head h3 { font-size: 15.5px; line-height: 1.3; }
-.ex-head .meta { font-size: 12.5px; color: var(--ink-3); margin-top: 2px; }
-.ex-body { padding: 0 14px 13px; border-top: 1px solid var(--grid); }
-.pill { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 99px; background: var(--s1-soft); color: var(--s1); letter-spacing: 0.03em; text-transform: uppercase; }
-@media (prefers-color-scheme: dark) { .pill { color: #cde2fb; } }
-.pill.good { background: rgba(12,163,12,.16); color: var(--good-text); }
-.pill.warn { background: rgba(250,178,25,.18); color: #8a6100; }
-@media (prefers-color-scheme: dark) { .pill.warn { color: var(--warning); } }
+/* ---------- 10. SESIÓN ACTIVA ----------
+   La pantalla que define la app: aire, targets grandes, la serie en curso
+   dominando y las hechas retirándose.                                        */
 
-.setrow { display: grid; grid-template-columns: 30px 1fr 1fr 46px; gap: 8px; align-items: center; margin-top: 9px; }
-.setrow .idx { font-size: 13px; font-weight: 700; color: var(--ink-3); text-align: center; }
-.setrow input { padding: 9px 8px; text-align: center; }
+.exercise {
+  background: transparent; border: none; border-radius: var(--r-0);
+  border-bottom: 1px solid var(--ring); margin-bottom: 0; overflow: hidden;
+}
+.exercise.done { border-color: var(--ring); }
+.ex-head {
+  padding: var(--sp-4) 0; display: flex; align-items: flex-start;
+  gap: var(--sp-3); cursor: pointer; min-height: 56px;
+}
+.exercise.done .ex-head { opacity: 0.55; }
+.ex-head h3 { font-size: 19px; line-height: 1.1; }
+.ex-head .meta {
+  font-size: 11.5px; color: var(--ink-3); margin-top: 7px;
+  font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+}
+.ex-body { padding: 0 0 var(--sp-5); border-top: none; }
+
+/* Serie hecha: número retirado a gris, check amarillo. */
+.setrow {
+  display: grid; grid-template-columns: 30px 1fr 1fr 54px;
+  gap: var(--sp-2); align-items: center;
+  min-height: 54px; border-bottom: 1px solid var(--ring); margin-top: 0;
+}
+.setrow .idx {
+  font-size: 12px; font-weight: 700; color: var(--ink-3);
+  text-align: left; font-variant-numeric: tabular-nums;
+}
+.setrow input {
+  padding: 10px 6px; text-align: center; min-height: 46px;
+  font-size: 26px; font-weight: 800; letter-spacing: -0.03em;
+  border-width: 2px;
+}
 .setrow .check {
-  width: 46px; height: 42px; border-radius: 10px; display: grid; place-items: center;
-  border: 1px solid var(--ring); background: var(--surface-1); padding: 0;
+  width: 54px; height: 46px; min-height: 46px; border-radius: var(--r-0);
+  display: grid; place-items: center; padding: 0;
+  border: 2px solid var(--ring); background: none; color: var(--ink-3);
 }
-.setrow .check.on { background: var(--good); border-color: var(--good); color: #fff; }
-.setrow .check svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
-.setlabels { display: grid; grid-template-columns: 30px 1fr 1fr 46px; gap: 8px; margin-top: 10px; }
-.setlabels span { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-3); text-align: center; }
+.setrow .check.on {
+  background: var(--accent); border-color: var(--accent); color: var(--on-accent);
+  animation: pop var(--dur-2) ease-out;
+}
+.setrow .check svg {
+  width: 20px; height: 20px; fill: none; stroke: currentColor;
+  stroke-width: 3.2; stroke-linecap: round; stroke-linejoin: round;
+}
+.setlabels {
+  display: grid; grid-template-columns: 30px 1fr 1fr 54px;
+  gap: var(--sp-2); margin-top: var(--sp-4);
+}
+.setlabels span {
+  font-size: 9.5px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 0.14em; color: var(--ink-3); text-align: center;
+}
+.setlabels span:first-child { text-align: left; }
 
-/* timer */
+@keyframes pop { from { transform: scale(0.9); } to { transform: scale(1); } }
+
+/* ---------- 11. TEMPORIZADOR DE DESCANSO ----------
+   Banda amarilla a lo ancho con el número enorme. No es una tarjeta flotante. */
+
 .timer {
-  position: fixed; left: 12px; right: 12px; bottom: calc(70px + var(--safe-b)); z-index: 25;
-  background: var(--s1); color: #fff; border-radius: 13px; padding: 11px 14px;
-  display: flex; align-items: center; gap: 12px; box-shadow: 0 6px 22px rgba(0,0,0,.22);
-  max-width: 736px; margin: 0 auto;
+  position: fixed; left: 0; right: 0; bottom: calc(66px + var(--safe-b));
+  z-index: 25;
+  background: var(--accent); color: var(--on-accent);
+  border-radius: var(--r-0); padding: 12px 18px 14px;
+  display: flex; align-items: center; gap: var(--sp-3);
+  box-shadow: none;
 }
-.timer .t { font-size: 25px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
-.timer .lbl { font-size: 12.5px; opacity: .9; }
-.timer button { background: rgba(255,255,255,.18); border-color: transparent; color: #fff; padding: 7px 12px; font-size: 13px; }
+.timer .t {
+  font-size: var(--t-data-xl); font-weight: 800; font-variant-numeric: tabular-nums;
+  letter-spacing: -0.05em; line-height: 1; margin-top: 4px; font-stretch: 112%;
+}
+.timer .lbl {
+  font-size: 10px; font-weight: 800; letter-spacing: 0.16em;
+  text-transform: uppercase; opacity: 0.7;
+}
+.timer button {
+  background: none; border: 2px solid var(--on-accent); color: var(--on-accent);
+  padding: 0 14px; min-height: 44px; font-size: 11px;
+}
+.timer button:last-child { background: var(--on-accent); color: var(--accent); }
 
-/* charts */
-figure { margin: 0 0 12px; background: var(--surface-1); border: 1px solid var(--ring); border-radius: 13px; padding: 14px 14px 8px; }
-.chart-title { font-size: 14.5px; font-weight: 600; }
-.chart-sub { font-size: 12.5px; color: var(--ink-2); margin-bottom: 6px; }
+/* ---------- 12. GRÁFICAS ---------- */
+
+figure {
+  margin: 0 0 var(--sp-5); background: transparent; border: none;
+  border-radius: var(--r-0); padding: var(--sp-5) 0 0;
+}
+.chart-title {
+  font-size: var(--t-label); font-weight: 800; letter-spacing: 0.16em;
+  text-transform: uppercase; border-bottom: 2px solid var(--ink-1);
+  padding-bottom: 7px;
+}
+.chart-sub { font-size: 13px; color: var(--ink-3); margin: 11px 0 var(--sp-4); }
 svg.chart { display: block; width: 100%; height: auto; overflow: visible; }
-figcaption { font-size: 12px; color: var(--ink-3); margin-top: 6px; }
-
-.empty { text-align: center; padding: 30px 16px; color: var(--ink-3); }
-.empty h3 { font-size: 16px; color: var(--ink-2); margin-bottom: 6px; }
-.toast {
-  position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(78px + var(--safe-b));
-  background: var(--ink-1); color: var(--plane); padding: 10px 16px; border-radius: 99px;
-  font-size: 13.5px; font-weight: 600; z-index: 60; box-shadow: 0 4px 16px rgba(0,0,0,.25);
+figcaption {
+  font-size: 10.5px; color: var(--ink-3); margin-top: var(--sp-3);
+  font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
 }
-.row { display: flex; align-items: center; gap: 10px; }
-.grow { flex: 1; }
-.list-item { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--grid); }
+
+/* ---------- 13. VACÍOS, AVISOS, LISTAS ----------
+   Sin ilustración de librería: una frase que dice qué falta y qué hacer.     */
+
+.empty { text-align: left; padding: var(--sp-6) 0; color: var(--ink-3); }
+.empty h3 { font-size: 22px; color: var(--ink-1); margin-bottom: var(--sp-3); }
+
+.toast {
+  position: fixed; left: 18px; right: 18px; bottom: calc(78px + var(--safe-b));
+  background: var(--accent); color: var(--on-accent);
+  padding: 14px 18px; border-radius: var(--r-0);
+  font-size: 12px; font-weight: 800; letter-spacing: 0.12em;
+  text-transform: uppercase; z-index: 60; box-shadow: none;
+  animation: pop var(--dur-2) ease-out;
+}
+
+.row { display: flex; align-items: center; gap: var(--sp-3); }
+.grow { flex: 1; min-width: 0; }
+.list-item {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-4) 0; border-bottom: 1px solid var(--ring); min-height: 58px;
+}
 .list-item:last-child { border-bottom: none; }
-.list-item .t1 { font-weight: 600; font-size: 14.5px; }
-.list-item .t2 { font-size: 12.5px; color: var(--ink-3); }
+.list-item .t1 {
+  font-weight: 800; font-size: 15px; text-transform: uppercase;
+  letter-spacing: -0.015em;
+}
+.list-item .t2 { font-size: 12.5px; color: var(--ink-3); margin-top: 3px; }
+
+/* ---------- 14. MOVIMIENTO ----------
+   Solo confirma. Nada dura más de 200 ms.                                   */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* ---------- 15. V2 APP — clases que el prototipo resuelve con estilos en línea ---------- */
+
+/* Paso 1 — cabeceras de vista (A7): cada vista es dueña de su propio <h1>. */
+.eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-stretch: 100%;
+}
+.eyebrow.accent { color: var(--accent-ink); }
+
+.hero {
+  margin-top: 12px;
+  font-size: var(--t-hero);
+  line-height: 1.02;
+  letter-spacing: -0.045em;
+  font-stretch: 115%;
+}

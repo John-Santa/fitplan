@@ -45,6 +45,8 @@ export default function ExerciseProgress({ routineId, onBack }: { routineId: Rou
   return (
     <>
       <button className="ghost" onClick={onBack}>← Volver</button>
+      <div className="eyebrow">{routine.name}</div>
+      <h1>Progresión</h1>
       <div className="card" style={{ marginTop: 12 }}>
         <label htmlFor="ex">Ejercicio de {routine.name.toLowerCase()}</label>
         <select id="ex" value={exId} onChange={e => setExId(e.target.value)}>

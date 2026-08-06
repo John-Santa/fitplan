@@ -58,6 +58,9 @@ export default function Measure() {
 
   return (
     <>
+      <div className="eyebrow">{fmtDate(last.date)} · medición {rows.length}</div>
+      <h1>Cuerpo</h1>
+
       {base && last && (
         <div className="tiles">
           <Tile label="Peso" value={last.weight} unit="kg" delta={last.weight - base.weight} deltaGood="lower"
@@ -80,7 +83,8 @@ export default function Measure() {
             progress={last.waist != null && base.waist != null ? progressPct(last.waist, base.waist, config.goal.waist) : undefined}
             goalText={`meta ${fmt(config.goal.waist)} cm`} />
           <Tile label="FFMI" value={last.ffmi} dec={1}
-            delta={last.ffmi != null && base.ffmi != null ? last.ffmi - base.ffmi : null} deltaGood="higher" />
+            delta={last.ffmi != null && base.ffmi != null ? last.ffmi - base.ffmi : null} deltaGood="higher"
+            goalText="22–24 entrenado" />
         </div>
       )}
 

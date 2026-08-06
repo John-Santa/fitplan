@@ -28,6 +28,11 @@ export default function Home({ go }: { go: (tab: 'train' | 'measure') => void })
 
   return (
     <>
+      <div className="eyebrow">
+        {DIAS[dow]} {fmtDate(todayISO())} · Semana {phase.week} de 8
+      </div>
+      <h1 className="hero">Hoy</h1>
+
       <div className="card accent">
         <div className="muted" style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
           Hoy es {DIAS[dow]}

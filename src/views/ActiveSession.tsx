@@ -40,7 +40,7 @@ export default function ActiveSession({ session, setsDelta, onChange, onFinish, 
       <div className="card accent tight">
         <div className="row">
           <div className="grow">
-            <strong>{routine.name}</strong>
+            <h1 className="eyebrow accent">{routine.name}</h1>
             <div className="muted num">
               {totalDone} de {totalTarget} series · {routine.zone}
             </div>
@@ -98,7 +98,7 @@ export default function ActiveSession({ session, setsDelta, onChange, onFinish, 
                       {prev.sets.map(s => `${fmt(s.weight)} kg × ${s.reps}`).join('  ·  ')}
                     </div>
                     {progress && (
-                      <div className="num" style={{ fontSize: 13, color: 'var(--good-text)', fontWeight: 600, marginTop: 2 }}>
+                      <div className="num" style={{ fontSize: 13, fontWeight: 600, marginTop: 2 }}>
                         Completaste el rango: hoy sube a la siguiente placa.
                       </div>
                     )}
