@@ -20,6 +20,60 @@ export const KIND_LABELS: Record<DayKind, string> = {
  *  que no puede quedar desincronizada. */
 export const DAY_KINDS: DayKind[] = Object.keys(KIND_LABELS).filter(isDayKind)
 
+/** Etiqueta de cada campo de medida/objetivo (Config['goal'], que es
+ *  Required<Omit<Measurement,'date'>>). Mismo idioma que KIND_LABELS:
+ *  Record<keyof Config['goal'], string> vuelve esta tabla exhaustiva por
+ *  construccion, asi que agregar un campo a Measurement rompe esto en
+ *  TS2739 hasta que se le da nombre aca. La grilla de metas de Ajustes y los
+ *  CAMPOS de Medidas derivan sus claves de esta tabla (via MEASUREMENT_KEYS),
+ *  asi que ninguna de las dos puede omitir un campo nuevo en silencio como
+ *  pasaba antes de este cambio. */
+export const MEASUREMENT_LABELS: Record<keyof Config['goal'], string> = {
+  weight: 'Peso',
+  fatPct: 'Grasa',
+  fatMass: 'Masa grasa',
+  muscle: 'Músculo',
+  water: 'Agua',
+  waist: 'Cintura',
+  hip: 'Cadera',
+  chest: 'Pecho',
+  neck: 'Cuello',
+}
+
+/** Unidad de cada campo, misma compuerta de exhaustividad que
+ *  MEASUREMENT_LABELS. */
+export const MEASUREMENT_UNITS: Record<keyof Config['goal'], string> = {
+  weight: 'kg',
+  fatPct: '%',
+  fatMass: 'kg',
+  muscle: 'kg',
+  water: 'kg',
+  waist: 'cm',
+  hip: 'cm',
+  chest: 'cm',
+  neck: 'cm',
+}
+
+/** Paso del campo numerico en el formulario de Medidas (Ajustes usa 0.1 fijo
+ *  para los nueve, sin cambios). Misma compuerta de exhaustividad. */
+export const MEASUREMENT_STEPS: Record<keyof Config['goal'], string> = {
+  weight: '0.1',
+  fatPct: '0.1',
+  fatMass: '0.1',
+  muscle: '0.1',
+  water: '0.1',
+  waist: '0.5',
+  hip: '0.5',
+  chest: '0.5',
+  neck: '0.5',
+}
+
+/** Claves de MEASUREMENT_LABELS en su orden de declaracion. El cast es
+ *  seguro: MEASUREMENT_LABELS es un literal con exactamente esas claves, asi
+ *  que Object.keys() no puede devolver nada distinto. Mismo patron que
+ *  DAY_KINDS. */
+export const MEASUREMENT_KEYS = Object.keys(MEASUREMENT_LABELS) as (keyof Config['goal'])[]
+
 /** Nombre del dia en minuscula. Unica fuente: de aca salen el encabezado de
  *  Inicio, el titulo de cada fila de Ajustes y la abreviatura de la insignia. */
 export const WEEKDAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado']
@@ -288,16 +342,55 @@ function mergeWeeklyRoutine(stored: unknown): WeeklyRoutine {
   return [at(0), at(1), at(2), at(3), at(4), at(5), at(6)]
 }
 
-/** Config guardada sobre DEFAULT_CONFIG. Lo guardado gana campo por campo;
- *  goal se mezcla un nivel adentro y weeklyRoutine se valida dia por dia.
- *  Recibe unknown a proposito: es el unico punto por donde entra al programa
- *  una Config que no escribio esta version del codigo. */
+/** Usa el valor guardado si es un numero valido (finito); si no, el de por
+ *  defecto. Sin esto, cada campo escalar de mergeConfig repetiria el mismo
+ *  condicional a mano. */
+function num(v: unknown, fallback: number): number {
+  return typeof v === 'number' && Number.isFinite(v) ? v : fallback
+}
+
+/** Igual que num, para campos de texto. */
+function str(v: unknown, fallback: string): string {
+  return typeof v === 'string' ? v : fallback
+}
+
+/** Mezcla goal campo por campo. Al escribirlo asi en vez de con spread, un
+ *  campo nuevo en Measurement (y por lo tanto en Config['goal']) rompe esta
+ *  funcion en TS2739 hasta que se le da valor, en vez de heredarlo en
+ *  silencio de DEFAULT_CONFIG.goal. Ver mergeConfig para la razon completa. */
+function mergeGoal(stored: unknown): Config['goal'] {
+  const g = (stored ?? {}) as Partial<Config['goal']>
+  return {
+    weight: num(g.weight, DEFAULT_CONFIG.goal.weight),
+    fatPct: num(g.fatPct, DEFAULT_CONFIG.goal.fatPct),
+    fatMass: num(g.fatMass, DEFAULT_CONFIG.goal.fatMass),
+    muscle: num(g.muscle, DEFAULT_CONFIG.goal.muscle),
+    water: num(g.water, DEFAULT_CONFIG.goal.water),
+    waist: num(g.waist, DEFAULT_CONFIG.goal.waist),
+    hip: num(g.hip, DEFAULT_CONFIG.goal.hip),
+    chest: num(g.chest, DEFAULT_CONFIG.goal.chest),
+    neck: num(g.neck, DEFAULT_CONFIG.goal.neck),
+  }
+}
+
+/** Config guardada sobre DEFAULT_CONFIG, campo por campo. Sin spread: un
+ *  `...DEFAULT_CONFIG` (o un `...c`) deja el resultado estructuralmente
+ *  completo pase lo que pase, que es exactamente por que el compilador
+ *  guardo silencio durante todo el defecto de 53590ef. Escrita asi, agregar
+ *  un campo a Config produce TS2739 en este return hasta que se lo repara
+ *  aca, lo que rompe `pnpm typecheck`, `pnpm build` y el despliegue: la
+ *  clase de defecto pasa a ser no desplegable. Todo objeto anidado que se
+ *  agregue a Config debe llegar con su propia funcion de merge con nombre,
+ *  en el mismo commit (la forma que mergeGoal y mergeWeeklyRoutine ya
+ *  tienen). Recibe unknown a proposito: es el unico punto por donde entra al
+ *  programa una Config que no escribio esta version del codigo. */
 export function mergeConfig(stored: unknown): Config {
   const c = (stored ?? {}) as Partial<Config>
   return {
-    ...DEFAULT_CONFIG,
-    ...c,
-    goal: { ...DEFAULT_CONFIG.goal, ...(c.goal ?? {}) },
+    heightCm: num(c.heightCm, DEFAULT_CONFIG.heightCm),
+    blockStart: str(c.blockStart, DEFAULT_CONFIG.blockStart),
+    blockEnd: str(c.blockEnd, DEFAULT_CONFIG.blockEnd),
+    goal: mergeGoal(c.goal),
     weeklyRoutine: mergeWeeklyRoutine(c.weeklyRoutine),
   }
 }
