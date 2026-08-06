@@ -142,7 +142,7 @@ export default function Measure() {
       </figure>
 
       <div className="section-title">Historial</div>
-      <div className="tablewrap">
+      <div className="tablewrap wide">
         <table>
           <thead>
             <tr>

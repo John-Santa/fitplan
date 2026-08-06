@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Exercise, Session, SetLog } from '../types'
 import { MW, routineById } from '../lib/plan'
 import { bestSet, fmt, fmtDate, formatLastPerformance, lastPerformance, progressLine, shouldProgress } from '../lib/calc'
@@ -23,6 +23,17 @@ export default function ActiveSession({ session, setsDelta, onChange, onFinish, 
   const [currentIndex, setCurrentIndex] = useState(0)
   const [rest, setRest] = useState<{ sec: number; key: number } | null>(null)
   const [cueOpen, setCueOpen] = useState<Record<string, boolean>>({})
+  const railRef = useRef<HTMLDivElement>(null)
+
+  // The rail can scroll horizontally when 44px cells don't all fit (7
+  // exercises at 320px). On exercise change, bring the current cell into
+  // view with the minimum movement: 'nearest' on both axes is a no-op if
+  // it's already visible and never scrolls the page. Depends only on
+  // currentIndex, so it never fires while typing weight or reps.
+  useEffect(() => {
+    const cell = railRef.current?.children.item(currentIndex)
+    if (cell instanceof HTMLElement) cell.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [currentIndex])
 
   const targetSets = (e: Exercise) => Math.max(1, e.sets + setsDelta)
 
@@ -98,7 +109,7 @@ export default function ActiveSession({ session, setsDelta, onChange, onFinish, 
           <i style={{ flex: totalDone }} />
           <i style={{ flex: totalTarget - totalDone }} />
         </div>
-        <div className="rail" style={{ gridTemplateColumns: `repeat(${routine.exercises.length}, 1fr)` }}>
+        <div className="rail" ref={railRef}>
           {rail.map(r => (
             <button
               key={r.id}

@@ -80,7 +80,7 @@
   --sp-7: 46px;
 
   /* escala de tipo — contraste real entre dato y etiqueta */
-  --t-hero: 52px;
+  --t-hero: clamp(36px, 12.5vw, 52px);
   --t-display: 40px;
   --t-data-xl: 46px;
   --t-data-l: 36px;
@@ -101,6 +101,17 @@
 
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-t: env(safe-area-inset-top, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+
+  /* Total rendered height of the fixed/sticky chrome that can occlude
+     scrolled-into-view content — same figures already documented in §16
+     ("Sticky header: 143.7px → 112px", "Rest timer: 91px → 58px"). Overridden
+     inside the short-viewport query below. Feeds .setnow's scroll-margin
+     (§15) so scrollIntoView (programmatic or user-agent) never centers it
+     behind this chrome. */
+  --head-h: 143.7px;
+  --timer-h: 91px;
 }
 
 /* El claro no es la inversión del oscuro: es papel blanco, tinta negra y el
@@ -393,7 +404,9 @@ tr.base td { color: var(--ink-3); }
   position: fixed; left: 0; right: 0; bottom: calc(66px + var(--safe-b));
   z-index: 25;
   background: var(--accent); color: var(--on-accent);
-  border-radius: var(--r-0); padding: 12px 18px 14px;
+  border-radius: var(--r-0);
+  padding-block: 12px 14px;
+  padding-inline: max(18px, var(--safe-l)) max(18px, var(--safe-r));
   display: flex; align-items: center; gap: var(--sp-3);
   box-shadow: none;
 }
@@ -436,7 +449,7 @@ figcaption {
 .empty h3 { font-size: 22px; color: var(--ink-1); margin-bottom: var(--sp-3); }
 
 .toast {
-  position: fixed; left: 18px; right: 18px; bottom: calc(78px + var(--safe-b));
+  position: fixed; left: max(18px, var(--safe-l)); right: max(18px, var(--safe-r)); bottom: calc(78px + var(--safe-b));
   background: var(--accent); color: var(--on-accent);
   padding: 14px 18px; border-radius: var(--r-0);
   font-size: 12px; font-weight: 800; letter-spacing: 0.12em;
@@ -465,6 +478,7 @@ figcaption {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
@@ -630,16 +644,41 @@ figcaption {
 .session-bar i { display: block; font-style: normal; background: var(--grid); }
 .session-bar i:first-child { background: var(--accent); }
 
-/* Paso 4 — Sesión activa: riel de 6 o 7 ejercicios, siempre libre. */
-.rail { display: grid; gap: 3px; padding: 10px 0 12px; }
+/* Step 5 — the rail is the app's only self-scrolling surface.
+   minmax(44px, 1fr) = "at least 44px wide; share any extra space equally".
+   Count-agnostic: no `n` in the CSS. When cells don't fit, the rail scrolls
+   within itself instead of shrinking below the tap-target floor. */
+.rail {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(44px, 1fr);
+  gap: 2px;
+  padding: 10px 0 12px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+}
+.rail::-webkit-scrollbar { display: none; }
 .rail button {
   min-height: 44px; border: none; border-radius: var(--r-0); padding: 0;
   font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: 0.02em;
   background: var(--surface-1); color: var(--ink-3);
 }
+/* The rail clips at its own edge: draw the focus ring inward, not over it. */
+.rail button:focus-visible { outline-offset: -2px; }
 .rail button.current { background: var(--accent); color: var(--on-accent); }
 .rail button.done { background: var(--accent-dim); color: var(--accent-ink); }
 .rail button.partial { background: var(--surface-1); color: var(--ink-2); box-shadow: inset 0 -3px 0 var(--accent-dim); }
+
+/* Step 5 — the exercise name is the only long-form text on this screen.
+   Measured, not just hand-calculated: with a 22px floor, "Remo sentado en
+   máquina o polea baja" wraps to 3 lines at 320px, not 2 — the real word
+   break doesn't match the manual estimate. The measured-correct floor is
+   20px (at 320px, 6.4vw already resolves to 20.48px, below the old floor,
+   so the actually-painted value doesn't change — this only removes the
+   22px floor that was forcing the overflow). */
+.ex-panel h2 { font-size: clamp(20px, 6.4vw, 27px); }
 
 /* Paso 4 — Sesión activa: chips de prescripción del ejercicio actual. */
 .metabar { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 11px; }
@@ -693,6 +732,21 @@ figcaption {
 }
 
 /* Paso 4 — Sesión activa: bloque destacado de la serie en curso (62px). */
+/* scroll-margin, not container-level scroll-padding: .rail's own cells live
+   inside .session-head (--head-h tall) and are scrolled horizontally via
+   `scrollIntoView({block:'nearest'})` on every currentIndex change. A
+   document-level `scroll-padding-top: var(--head-h)` reserves that same band
+   for ALL scrollIntoView targets, including the rail's own sticky cells —
+   which sit inside it by construction — so the "already visible" check for
+   `block:'nearest'` no longer no-ops and the rail tap scrolls the page
+   (regression, caught by the harness's SCROLL check). Scoping the reserve to
+   scroll-margin on .setnow (and its two focusable controls) protects exactly
+   the element this fixes without touching the rail. Same tokens as §2/§16,
+   so the reserved band tracks the real chrome height in both orientations. */
+.setnow, .setnow input, .setnow .check {
+  scroll-margin-top: calc(var(--safe-t) + var(--head-h));
+  scroll-margin-bottom: calc(66px + var(--safe-b) + var(--timer-h));
+}
 .setnow { background: var(--surface-1); margin-top: 14px; padding: 14px 15px 15px; }
 .setnow-head { display: flex; justify-content: space-between; align-items: center; }
 .setnow-head .lbl-current {
@@ -736,3 +790,57 @@ figcaption {
   background: var(--inv-bg); color: var(--inv-ink);
 }
 .navrow .fwd.primary { background: var(--accent); color: var(--on-accent); }
+
+/* ---------- 16. SHORT VIEWPORT (landscape phones and short desktop windows) --
+   Height-only: a 470px-tall window has the same problem as a phone lying
+   flat. min-width is not an orientation check — it is the guard that stops
+   the block from firing in portrait when a soft keyboard shrinks the layout
+   viewport (360x800 − keyboard ≈ 470px tall, but still 360px wide).
+   Nothing here touches a tap-target height: .rail button (44), .timer
+   button (44), .setnow input and .setnow .check (62), and .tabbar are all
+   untouched.                                                               */
+
+@media (max-height: 480px) and (min-width: 480px) {
+  /* Same collapse, mirrored into the scroll-margin tokens (§2) so
+     scrollIntoView's reserved band shrinks along with the chrome itself. */
+  :root { --head-h: 112px; --timer-h: 58px; }
+
+  /* Sticky header: 143.7px → 112px */
+  .session-head { padding-top: 4px; }
+  .session-head .eyebrow {
+    position: absolute; width: 1px; height: 1px; margin: -1px;
+    padding: 0; border: 0; overflow: hidden;
+    clip-path: inset(50%); white-space: nowrap;
+  }
+  .session-head h1 { margin-top: 0; }
+  .session-bar { margin-top: 6px; height: 4px; }
+  .rail { padding: 3px 0 5px; }
+
+  /* Rest timer: 91px → 58px. The countdown stays the largest object on
+     screen. padding-block only (not the shorthand) so this does not clobber
+     the safe-area padding-inline the base .timer rule already sets. */
+  .timer { padding-block: 6px 8px; }
+  .timer .lbl { line-height: 1; }
+  .timer .t { font-size: 28px; margin-top: 2px; }
+
+  /* Current-set block: 140.5px → 112px. Only whitespace trimmed; all three
+     controls stay at 62px. All three labels are uppercase with no
+     descenders, so dropping the 1.5 line-height loses no glyph detail. */
+  .setnow { padding: 8px 15px 9px; }
+  .setnow-head { line-height: 1; }
+  .setnow-grid { margin-top: 8px; }
+  .setnow-grid .micro { line-height: 1; margin-bottom: 4px; }
+}
+
+/* ---------- 17. DESKTOP: the measurements table breaks out of the column --
+   The only exception to .main's 760px max-width, and only for the 15-column
+   table (947px measured). Centered in the viewport with the same 18px
+   gutter the page already uses. Width ≤ 100vw − 36px, so it never overflows
+   the document, classic scrollbar or not.                                  */
+@media (min-width: 1000px) {
+  .tablewrap.wide {
+    --wide: min(100vw - 36px, 1120px);
+    width: var(--wide);
+    margin-inline: calc((100% - var(--wide)) / 2);
+  }
+}
