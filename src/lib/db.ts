@@ -32,8 +32,38 @@ function openDb(): Promise<IDBDatabase> {
         db.createObjectStore(STORE_CONFIG)
       }
     }
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
+    req.onsuccess = () => {
+      const db = req.result
+      // Cede el paso ante una conexion mas nueva (otra pestana, o esta misma
+      // PWA actualizada en otra ventana) en vez de bloquearla para siempre:
+      // sin esto, un futuro cambio de DB_VERSION dejaria a esa otra conexion
+      // colgada en onblocked de por vida.
+      db.onversionchange = () => db.close()
+      resolve(db)
+    }
+    req.onerror = () => {
+      const err = req.error
+      if (err?.name === 'VersionError') {
+        // Un bundle viejo intento abrir una base que ya quedo en una version
+        // mas nueva (escrita por otra pestana con el codigo actualizado).
+        reject(new Error(
+          'Esta copia de FitPlan quedó desactualizada respecto a los datos guardados en este dispositivo. ' +
+          'Cierra todas las pestañas de FitPlan y vuelve a abrir la aplicación.',
+        ))
+        return
+      }
+      reject(err ?? new Error('No se pudo abrir la base de datos.'))
+    }
+    // Se dispara cuando otra conexion (otra pestana, o la PWA instalada
+    // corriendo en paralelo) sigue abierta y no cede el paso a un futuro
+    // cambio de version. Sin este manejador la promesa jamas se resuelve ni
+    // se rechaza, y la aplicacion queda en "Cargando..." para siempre.
+    req.onblocked = () => {
+      reject(new Error(
+        'FitPlan está abierto en otra pestaña o en otro dispositivo con la app instalada, y esta versión ' +
+        'necesita que se cierren antes de continuar. Cierra las demás pestañas de FitPlan y vuelve a intentarlo.',
+      ))
+    }
   })
   return dbPromise
 }
@@ -113,6 +143,21 @@ export async function importBackup(data: unknown, mode: 'replace' | 'merge' = 'r
     ...(b.exerciseMeta ?? []).map(m => saveExerciseMeta(m)),
   ])
   if (b.config) await saveConfig(mergeConfig(b.config))
+}
+
+/** Dispara la descarga de un respaldo ya generado: Blob + URL de objeto +
+ *  ancla sintetica con click(). Es la parte de doExport (Settings.tsx) sin
+ *  efectos de UI (toast, marca de "ultimo respaldo"), asi que tambien la usan
+ *  las pantallas de error que no dependen de la tienda ni de sus componentes:
+ *  ErrorScreen (P0-1: fallo al abrir la base) y ErrorBoundary (P0-2: fallo de
+ *  render). Una sola implementacion, en vez de duplicar el patron. */
+export function downloadBackupFile(data: Backup): void {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = `fitplan-${data.exportedAt.slice(0, 10)}.json`
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000)
 }
 
 export async function wipeAll() {

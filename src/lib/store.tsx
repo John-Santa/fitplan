@@ -6,6 +6,11 @@ import { derive } from './calc'
 
 interface Store {
   ready: boolean
+  /** Motivo por el que la base de datos no pudo abrirse (P0-1: bloqueo por
+   *  otra conexion, o VersionError). null mientras todo va bien. Si esta
+   *  poblado, ready se queda en false para siempre y App.tsx debe mostrar un
+   *  estado de error real en vez de "Cargando..." eterno. */
+  dbError: string | null
   sessions: Session[]
   measurements: Measurement[]
   meta: Record<string, ExerciseMeta>
@@ -23,6 +28,7 @@ const Ctx = createContext<Store | null>(null)
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false)
+  const [dbError, setDbError] = useState<string | null>(null)
   const [sessions, setSessions] = useState<Session[]>([])
   const [measurements, setMeasurements] = useState<Measurement[]>([])
   const [metaList, setMetaList] = useState<ExerciseMeta[]>([])
@@ -43,27 +49,35 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     ;(async () => {
-      const stored = await db.getConfig()
-      if (!stored) {
-        // Primera apertura: sembramos la configuracion y la linea base.
-        await db.saveConfig(DEFAULT_CONFIG)
-        await db.saveMeasurement(BASELINE)
-      } else {
-        // Config escrita por una version anterior: la completamos y la
-        // reescribimos una sola vez. La comparacion por JSON es un chequeo de
-        // idempotencia barato, no un contrato de igualdad profunda: si el orden
-        // de claves difiere se reescribe una vez y a partir de ahi coincide.
-        const merged = mergeConfig(stored)
-        if (JSON.stringify(stored) !== JSON.stringify(merged)) await db.saveConfig(merged)
+      try {
+        const stored = await db.getConfig()
+        if (!stored) {
+          // Primera apertura: sembramos la configuracion y la linea base.
+          await db.saveConfig(DEFAULT_CONFIG)
+          await db.saveMeasurement(BASELINE)
+        } else {
+          // Config escrita por una version anterior: la completamos y la
+          // reescribimos una sola vez. La comparacion por JSON es un chequeo de
+          // idempotencia barato, no un contrato de igualdad profunda: si el orden
+          // de claves difiere se reescribe una vez y a partir de ahi coincide.
+          const merged = mergeConfig(stored)
+          if (JSON.stringify(stored) !== JSON.stringify(merged)) await db.saveConfig(merged)
+        }
+        await reload()
+        setReady(true)
+      } catch (e) {
+        // P0-1: sin este catch, un rechazo de openDb (base bloqueada por otra
+        // conexion, o VersionError) dejaba esta promesa colgada sin manejar y
+        // "ready" en false para siempre: "Cargando..." eterno y sin mensaje.
+        setDbError(e instanceof Error ? e.message : 'No se pudo abrir la base de datos.')
       }
-      await reload()
-      setReady(true)
     })()
   }, [reload])
 
   const value = useMemo<Store>(
     () => ({
       ready,
+      dbError,
       sessions,
       measurements,
       meta: Object.fromEntries(metaList.map(m => [m.exerciseId, m])),
@@ -76,7 +90,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       saveMeta: async m => { await db.saveExerciseMeta(m); await reload() },
       saveConfig: async c => { await db.saveConfig(c); await reload() },
     }),
-    [ready, sessions, measurements, metaList, config, reload],
+    [ready, dbError, sessions, measurements, metaList, config, reload],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
