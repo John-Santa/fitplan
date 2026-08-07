@@ -25,12 +25,12 @@ anywhere but a session scratchpad:
 - `ui-harness.mjs` — the main harness. 8 viewports (6 mobile/tablet + 2
   desktop, 1200x800 and 1920x1080) × navigation tabs × all three routines
   (with an `ORD-01` guard that the start-button count still matches the
-  routine count — 3 routines + the swim card, since F1-5), worst-case hero
-  strings, light-theme color check, a `seedConfig()` regression check, a
-  `seedMeasurements()`-backed desktop table-breakout check,
-  `seedSessions()`-backed legacy/mixed-discipline checks (`LEGACY-01`,
-  `LEGACY-02`, `MIX-01`), and the swim-logger checks (`SWIM-01`, `SWIM-02`)
-  added in F1-5.
+  routine count — 3 routines + the swim card, since F1-5), the swim
+  progression view (`SWIM-04`, F1-6), worst-case hero strings, light-theme
+  color check, a `seedConfig()` regression check, a `seedMeasurements()`-backed
+  desktop table-breakout check, `seedSessions()`-backed legacy/mixed-discipline
+  checks (`LEGACY-01`, `LEGACY-02`, `MIX-01`), and the swim-logger checks
+  (`SWIM-01`, `SWIM-02`) added in F1-5.
 - `occlusion.mjs` — a focused probe for one failure mode: does a fixed
   overlay (rest timer, tab bar) cover the current-set/current-block and its
   first input, in portrait and landscape. Runs the probe twice: once against
@@ -180,6 +180,30 @@ to `ROUT_IDS.length + 1` in that same change — the check did its job (would
 have failed loudly instead of silently exercising the wrong routine) and
 was updated deliberately, not silenced. The tap-target check still selects
 by tag and role, so none of this perturbs it.
+
+## SWIM-04 — the swim progression view (F1-6)
+
+Every viewport context in `ui-harness.mjs`'s main loop now seeds
+`SWIM_PROGRESS_SEED` (two finished swim sessions, one with an untimed block)
+before its first navigation, instead of a bare `page.goto()` — each viewport
+is its own isolated browser context, so this does not leak into any other
+check. After the HARNESS-01 routine loop, the check discards whatever routine
+session that loop left active (same `button.danger` pattern the routine loop
+itself uses — skipping this makes the swim-card locator below hang on a 30s
+timeout instead of failing cleanly, because `ActiveSession` would still be
+mounted in place of the card list), opens the swim card's "Ver progresión",
+and reuses `geometry()`'s `overflowX===0` and `tapsChicos.length===0`
+assertions — the same ones already run per navigation tab — against this new
+view, across all 8 `VIEWPORTS`.
+
+This exists because `SwimProgress.tsx`'s two `Chart` components have a fixed
+SVG `viewBox="0 0 700 H"` (`src/components/Chart.tsx`): CSS scales that box
+down to whatever the container measures, and the risk this check is built to
+catch is a version of that scaling that stops fitting between 700px and
+320px, which would show up as `overflowX !== 0` — exactly what a run against
+the empty state could never exercise, since an empty chart is just centered
+text. Reusing `seedSessions()` for real chart data, rather than adding a
+purpose-built empty-state check, is what makes the assertion meaningful.
 
 ## SWIM-01 / SWIM-02 / SWIM-03 — the swim logger (F1-5)
 

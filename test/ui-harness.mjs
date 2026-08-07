@@ -24,6 +24,40 @@ const todayISO = (d = new Date()) => {
 const ROUTS = ['Pierna', 'Empuje', 'Tracción']
 const ROUT_IDS = ['dia1', 'dia2', 'dia3']
 
+// Seeded into every viewport context below (F1-6) so SwimProgress's charts
+// have real multi-point data instead of the "Sin datos todavia" empty
+// state — an empty-state pass would prove nothing about the SVG's actual
+// geometry. Two sessions (one with an untimed block, to exercise the same
+// "distance counts, pace doesn't" split disciplines.test.ts covers) so the
+// Chart <path> actually draws a line, not just a single point.
+const SWIM_PROGRESS_SEED = [
+  {
+    kind: 'swim',
+    id: 'swim-progress-1',
+    date: '2026-07-20',
+    startedAt: Date.parse('2026-07-20T20:00:00'),
+    finishedAt: Date.parse('2026-07-20T20:45:00'),
+    poolLengthM: 25,
+    blocks: [
+      { index: 0, distanceM: 400, timeSec: 480, stroke: 'freestyle', done: true },
+      { index: 1, distanceM: 200, timeSec: null, stroke: 'mixed', done: true },
+    ],
+    rpe: 6,
+    notes: '',
+  },
+  {
+    kind: 'swim',
+    id: 'swim-progress-2',
+    date: todayISO(),
+    startedAt: Date.now() - 2700000,
+    finishedAt: Date.now(),
+    poolLengthM: 25,
+    blocks: [{ index: 0, distanceM: 600, timeSec: 660, stroke: 'freestyle', done: true }],
+    rpe: 7,
+    notes: '',
+  },
+]
+
 const VIEWPORTS = [
   { n: '320x568 iPhone SE', w: 320, h: 568, mob: true },
   { n: '360x800 Android', w: 360, h: 800, mob: true },
@@ -139,7 +173,11 @@ for (const v of VIEWPORTS) {
   const p = await ctx.newPage()
   const errs = []
   p.on('pageerror', e => errs.push(e.message))
-  await p.goto(BASE, { waitUntil: 'networkidle' })
+  // Seeds SWIM_PROGRESS_SEED then navigates with waitUntil:'networkidle',
+  // same as the plain p.goto() this replaces (F1-6) — every check below in
+  // this viewport's context now has real swim history to exercise, notably
+  // SWIM-04 further down.
+  await seedSessions(p, SWIM_PROGRESS_SEED, BASE)
   await p.waitForTimeout(1200)
 
   // Headless Chromium has no notch, so env(safe-area-inset-*) is 0 and the
@@ -280,6 +318,38 @@ for (const v of VIEWPORTS) {
       }
     }
   }
+
+  // ---- SWIM-04: swim progression view (F1-6), reusing the existing
+  // per-viewport geometry() assertions across all 8 VIEWPORTS. The real
+  // risk here is Chart.tsx's fixed viewBox="0 0 700 H" surviving the scale
+  // down from 700 to 320px without producing horizontal overflow — the same
+  // overflowX===0 check already run per-tab above, just aimed at a view no
+  // check has ever opened before. Needs SWIM_PROGRESS_SEED (seeded above,
+  // before this context's first navigation) so the charts hold real
+  // multi-point data instead of the trivially-safe "Sin datos todavia"
+  // empty state. ----
+  await p.locator('.tabbar button', { hasText: 'Entrenar' }).click()
+  await p.waitForTimeout(400)
+  // The HARNESS-01 loop above leaves the last routine's session active
+  // (it only discards at the START of its next iteration, and there is no
+  // next one) — same discard-first pattern that loop uses, or the card
+  // list below is not in the DOM and the locator hangs on a 30s timeout
+  // instead of a clean check() failure (see "Adding a check" in
+  // test/README.md).
+  const swimProgDanger = p.locator('button.danger')
+  if (await swimProgDanger.count()) {
+    p.once('dialog', d => d.accept())
+    await swimProgDanger.click()
+    await p.waitForTimeout(500)
+    await p.locator('.tabbar button', { hasText: 'Entrenar' }).click()
+    await p.waitForTimeout(400)
+  }
+  await p.locator('.card', { hasText: 'Natación' }).locator('button', { hasText: 'Ver progresión' }).click()
+  await p.waitForTimeout(500)
+  const gp = await p.evaluate(geometry)
+  const sp1 = check(gp.overflowX === 0, `${v.n}/SwimProgress/SWIM-04`, `overflowX=${gp.overflowX}px`)
+  const sp2 = check(gp.tapsChicos.length === 0, `${v.n}/SwimProgress/SWIM-04`, `taps<44: ${JSON.stringify(gp.tapsChicos.slice(0, 3))}`)
+  console.log(`  [SwimProgress] overflowX ${String(gp.overflowX).padStart(3)}px ${sp1} | taps<44: ${String(gp.tapsChicos.length).padStart(2)} ${sp2}`)
 
   // ---- worst-case hero string ----
   await p.locator('.tabbar button', { hasText: 'Inicio' }).click()

@@ -20,6 +20,8 @@ import {
   swimDistance,
   swimHasEnteredData,
   swimPaceSecPer100m,
+  swimSessionPaceSecPer100m,
+  swimSessionSpeedMPerMin,
   weeklyCount,
   weeklySetCount,
   weeklySummary,
@@ -287,5 +289,42 @@ describe('finishSwimSession — ronda completa de R7', () => {
       rpe: null, notes: '',
     }
     expect(swimDistance(s)).toBe(400)
+  })
+})
+
+describe('swimSessionPaceSecPer100m / swimSessionSpeedMPerMin — derivacion de sesion completa (F1-6)', () => {
+  it('agrega distancia y tiempo solo de los bloques con AMBOS campos cargados; uno sin cronometrar no participa', () => {
+    const s = swimSession({
+      blocks: [
+        { index: 0, distanceM: 400, timeSec: 480, stroke: 'freestyle', done: true },
+        // Bloque sin cronometrar: swimDistance lo cuenta, el ritmo de sesion no.
+        { index: 1, distanceM: 200, timeSec: null, stroke: 'freestyle', done: true },
+      ],
+    })
+    // 480 s / 400 m * 100 = 120 s/100m; velocidad = 6000/120 = 50 m/min.
+    expect(swimSessionPaceSecPer100m(s)).toBe(120)
+    expect(swimSessionSpeedMPerMin(s)).toBeCloseTo(50, 6)
+  })
+
+  it('devuelve null, nunca NaN/Infinity, cuando ningun bloque quedo cronometrado', () => {
+    const s = swimSession({
+      blocks: [
+        { index: 0, distanceM: 400, timeSec: null, stroke: 'freestyle', done: true },
+        { index: 1, distanceM: null, timeSec: null, stroke: 'freestyle', done: false },
+      ],
+    })
+    expect(swimSessionPaceSecPer100m(s)).toBeNull()
+    expect(swimSessionSpeedMPerMin(s)).toBeNull()
+  })
+
+  it('nunca devuelve Infinity si el tiempo total termina en cero con distancia cargada', () => {
+    const s = swimSession({ blocks: [{ index: 0, distanceM: 400, timeSec: 0, stroke: 'freestyle', done: true }] })
+    expect(swimSessionSpeedMPerMin(s)).toBeNull()
+  })
+
+  it('es independiente del largo de la piscina: opera sobre distanceM (metros), nunca sobre largos', () => {
+    // Piscina de 33.3 m, un largo: el resultado no debe depender de asumir 25 en ningun lado.
+    const s = swimSession({ poolLengthM: 33.3, blocks: [{ index: 0, distanceM: 33.3, timeSec: 30, stroke: 'freestyle', done: true }] })
+    expect(swimSessionPaceSecPer100m(s)).toBeCloseTo(90.09009009, 5)
   })
 })

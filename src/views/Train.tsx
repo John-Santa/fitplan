@@ -6,13 +6,20 @@ import { DISCIPLINES, SWIM_STROKE_LABELS, finishSwimSession, metresToLaps, sessi
 import { useStore } from '../lib/store'
 import ActiveSession from './ActiveSession'
 import ExerciseProgress from './ExerciseProgress'
+import SwimProgress from './SwimProgress'
 import { Empty } from '../components/ui'
+
+/** Que progresion mostrar: por rutina (fuerza) o la unica de natacion — a
+ *  diferencia de fuerza, natacion no tiene "por ejercicio", asi que su rama
+ *  no lleva id. Union en vez de un RoutineId | null ampliado a mano: agregar
+ *  una disciplina nueva con progresion propia exige agregarle su rama aca. */
+type ProgressTarget = { kind: 'strength'; routineId: RoutineId } | { kind: 'swim' }
 
 export default function Train() {
   const { sessions, config, saveSession, deleteSession } = useStore()
   const [active, setActive] = useState<Session | null>(null)
   const [detail, setDetail] = useState<string | null>(null)
-  const [progressFor, setProgressFor] = useState<RoutineId | null>(null)
+  const [progressFor, setProgressFor] = useState<ProgressTarget | null>(null)
 
   const phase = blockPhase(new Date(), config.blockStart)
   const suggested = routineForWeekday(config.weeklyRoutine, new Date().getDay())
@@ -43,7 +50,9 @@ export default function Train() {
   }
 
   if (progressFor) {
-    return <ExerciseProgress routineId={progressFor} onBack={() => setProgressFor(null)} />
+    return progressFor.kind === 'strength'
+      ? <ExerciseProgress routineId={progressFor.routineId} onBack={() => setProgressFor(null)} />
+      : <SwimProgress onBack={() => setProgressFor(null)} />
   }
 
   if (detail) {
@@ -175,7 +184,7 @@ export default function Train() {
                 {DISCIPLINES.strength.startLabel}
               </button>
             </div>
-            <button className="ghost" style={{ marginTop: 10, padding: '7px 12px', fontSize: 13 }} onClick={() => setProgressFor(r.id)}>
+            <button className="ghost" style={{ marginTop: 10, padding: '7px 12px', fontSize: 13 }} onClick={() => setProgressFor({ kind: 'strength', routineId: r.id })}>
               Ver progresión
             </button>
           </div>
@@ -196,6 +205,9 @@ export default function Train() {
               {DISCIPLINES.swim.startLabel}
             </button>
           </div>
+          <button className="ghost" style={{ marginTop: 10, padding: '7px 12px', fontSize: 13 }} onClick={() => setProgressFor({ kind: 'swim' })}>
+            Ver progresión
+          </button>
         </div>
       </div>
 

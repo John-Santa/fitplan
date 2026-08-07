@@ -142,6 +142,29 @@ export function swimHasEnteredData(s: SwimSession): boolean {
   return s.blocks.some(b => b.distanceM != null || b.timeSec != null)
 }
 
+/** Ritmo medio de una sesion completa, en segundos cada 100 m (F1-6).
+ *  Agrega distancia y tiempo solo de los bloques marcados que tienen AMBOS
+ *  campos cargados — un bloque con distancia pero sin cronometrar aporta a
+ *  swimDistance pero no aca, porque no hay tiempo con el que dividirlo.
+ *  Reutiliza swimPaceSecPer100m sobre el agregado en vez de reimplementar la
+ *  division: null si ningun bloque quedo cronometrado (nunca NaN/Infinity). */
+export function swimSessionPaceSecPer100m(s: SwimSession): number | null {
+  const timed = s.blocks.filter(b => b.done && b.distanceM != null && b.timeSec != null)
+  const distanceM = timed.reduce((a, b) => a + (b.distanceM ?? 0), 0)
+  const timeSec = timed.reduce((a, b) => a + (b.timeSec ?? 0), 0)
+  return swimPaceSecPer100m({ distanceM, timeSec })
+}
+
+/** Velocidad media en m/min (F1-6): la misma informacion que el ritmo, pero
+ *  con el eje ya apuntando "mas alto es mejor", que es la direccion que
+ *  Chart.tsx ya dibuja sin invertir (ver "Graficas" en el plan). 100 m /
+ *  (paceSec/60) = 6000/paceSec. Guarda contra pace === 0 (tiempo total 0 con
+ *  distancia cargada) para nunca devolver Infinity. */
+export function swimSessionSpeedMPerMin(s: SwimSession): number | null {
+  const pace = swimSessionPaceSecPer100m(s)
+  return pace != null && pace > 0 ? 6000 / pace : null
+}
+
 /** Camino de fin de natacion (R7). A diferencia del fin de fuerza en
  *  Train.tsx (`sets: active.sets.filter(s => s.done)`), esto NUNCA
  *  descarta un bloque por su marca de `done`: persiste todo lo cargado tal

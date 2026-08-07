@@ -15,13 +15,19 @@ interface Props {
   height?: number
   /** Formatea la etiqueta del eje x. */
   xLabel?: (x: string) => string
+  /** Decimales para los valores del eje y, la meta, el tooltip y la marca
+   *  final (F1-6): sin esto fmt(1200) para una distancia en metros muestra
+   *  "1200,0". Mismo concepto que el dec de Tile (ui.tsx), misma API.
+   *  Sin valor, fmt() usa su propio default (1), asi que las cuatro
+   *  llamadas existentes a Chart quedan bit a bit iguales. */
+  dec?: number
 }
 
 /**
  * Grafica de lineas en SVG. Un solo eje siempre; si hay dos o mas series
  * se dibuja leyenda, y la ultima marca de cada serie lleva etiqueta directa.
  */
-export default function Chart({ series, unit, height = 240, xLabel = x => x }: Props) {
+export default function Chart({ series, unit, height = 240, xLabel = x => x, dec }: Props) {
   const [tip, setTip] = useState<{ x: number; y: number; html: string } | null>(null)
   const W = 700
   const H = height
@@ -76,7 +82,7 @@ export default function Chart({ series, unit, height = 240, xLabel = x => x }: P
           <g key={i}>
             <line x1={M.l} x2={M.l + iw} y1={Y(v)} y2={Y(v)} stroke="var(--grid)" strokeWidth={1} />
             <text x={M.l - 7} y={Y(v) + 4} textAnchor="end" fontSize={11} fill="var(--ink-3)" fontFamily="system-ui">
-              {fmt(v)}
+              {fmt(v, dec)}
             </text>
           </g>
         ))}
@@ -111,7 +117,7 @@ export default function Chart({ series, unit, height = 240, xLabel = x => x }: P
                 stroke={s.color} strokeWidth={1.5} strokeDasharray="4 4" opacity={0.6}
               />
               <text x={M.l + 6} y={Y(s.goal) - 5} fontSize={11} fontWeight={600} fill={s.color} fontFamily="system-ui">
-                meta {fmt(s.goal)}
+                meta {fmt(s.goal, dec)}
               </text>
             </g>
           ) : null,
@@ -136,7 +142,7 @@ export default function Chart({ series, unit, height = 240, xLabel = x => x }: P
                     setTip({
                       x: e.clientX,
                       y: e.clientY,
-                      html: `${xLabel(p.x)} · ${s.label}: ${fmt(p.y)} ${unit}`,
+                      html: `${xLabel(p.x)} · ${s.label}: ${fmt(p.y, dec)} ${unit}`,
                     })
                   }
                   onMouseLeave={() => setTip(null)}
@@ -146,7 +152,7 @@ export default function Chart({ series, unit, height = 240, xLabel = x => x }: P
                 x={X(xi(last.x)) + 9} y={Y(last.y) + 4}
                 fontSize={12.5} fontWeight={700} fill="var(--ink-1)" fontFamily="system-ui"
               >
-                {fmt(last.y)}
+                {fmt(last.y, dec)}
               </text>
             </g>
           )
