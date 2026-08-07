@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Exercise, Session, SetLog } from '../types'
+import type { Exercise, SetLog, StrengthSession } from '../types'
 import { MW, routineById } from '../lib/plan'
-import { bestSet, fmt, fmtDate, formatLastPerformance, lastPerformance, progressLine, shouldProgress } from '../lib/calc'
+import { fmtDate, formatLastPerformance, lastPerformance, progressLine, shouldProgress } from '../lib/calc'
 import { useStore } from '../lib/store'
 import { Check, RestTimer, useToast } from '../components/ui'
 
 interface Props {
-  session: Session
+  session: StrengthSession
   setsDelta: number
-  onChange: (s: Session) => void
+  onChange: (s: StrengthSession) => void
   onFinish: () => void
   onDiscard: () => void
 }
@@ -18,6 +18,10 @@ type SetRowState = 'done' | 'current' | 'pending'
 
 export default function ActiveSession({ session, setsDelta, onChange, onFinish, onDiscard }: Props) {
   const { sessions, meta, saveMeta } = useStore()
+  // lastPerformance solo mira fuerza (calc.ts la tipa a StrengthSession[]):
+  // una sesion de natacion no tiene .sets, y esta pantalla es
+  // exclusivamente de fuerza hasta que F1-5 la divida.
+  const strengthSessions = sessions.filter((s): s is StrengthSession => s.kind === 'strength')
   const routine = routineById(session.routineId)!
   const toast = useToast()
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -53,7 +57,7 @@ export default function ActiveSession({ session, setsDelta, onChange, onFinish, 
   const ex = routine.exercises[currentIndex]
   const n = targetSets(ex)
   const mine = setsFor(ex.id)
-  const prev = lastPerformance(sessions, ex.id, session.id)
+  const prev = lastPerformance(strengthSessions, ex.id, session.id)
   const progress = prev != null && shouldProgress(prev.sets, n, ex.repsHigh)
   const seat = meta[ex.id]?.seat ?? ''
   const isCueOpen = cueOpen[ex.id] ?? prev === null
@@ -300,20 +304,6 @@ export default function ActiveSession({ session, setsDelta, onChange, onFinish, 
   )
 }
 
-export function newSession(routineId: Session['routineId'], date: string): Session {
-  return {
-    id: `${routineId}-${Date.now()}`,
-    routineId,
-    date,
-    startedAt: Date.now(),
-    finishedAt: null,
-    sets: [],
-    notes: '',
-  }
-}
-
-export function sessionSummary(s: Session) {
-  const r = routineById(s.routineId)
-  const best = r?.exercises.map(e => ({ e, b: bestSet(s.sets, e.id) })).filter(x => x.b) ?? []
-  return best.map(x => `${x.e.name}: ${fmt(x.b!.weight)} kg × ${x.b!.reps}`)
-}
+// newSession y sessionSummary se movieron a lib/disciplines.ts como
+// DISCIPLINES.strength.create/digest: Train.tsx no debe importar logica de
+// dominio desde una vista.

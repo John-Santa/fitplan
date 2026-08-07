@@ -1,4 +1,4 @@
-import type { Measurement, DerivedMeasurement, Session, SetLog } from '../types'
+import type { Measurement, DerivedMeasurement, SetLog, StrengthSession } from '../types'
 
 export function derive(m: Measurement, heightCm: number): DerivedMeasurement {
   const h2 = (heightCm / 100) ** 2
@@ -60,9 +60,12 @@ export const mmss = (sec: number) =>
 
 export const setVolume = (s: SetLog) => (s.done && s.weight != null && s.reps != null ? s.weight * s.reps : 0)
 
-export const sessionVolume = (s: Session) => s.sets.reduce((a, x) => a + setVolume(x), 0)
+/** Tipadas a StrengthSession a proposito: solo la fuerza tiene .sets, y una
+ *  SwimSession que llegara sin estrechar aca es exactamente el defecto que
+ *  motivo este cambio (ver R1 en el plan). */
+export const sessionVolume = (s: StrengthSession) => s.sets.reduce((a, x) => a + setVolume(x), 0)
 
-export const doneSets = (s: Session) => s.sets.filter(x => x.done).length
+export const doneSets = (s: StrengthSession) => s.sets.filter(x => x.done).length
 
 /** Mejor serie de un ejercicio en una sesion, por peso y luego por reps. */
 export function bestSet(sets: SetLog[], exerciseId: string): SetLog | null {
@@ -74,7 +77,7 @@ export function bestSet(sets: SetLog[], exerciseId: string): SetLog | null {
 }
 
 /** Series de la sesion completada mas reciente para ese ejercicio. */
-export function lastPerformance(sessions: Session[], exerciseId: string, excludeId?: string) {
+export function lastPerformance(sessions: StrengthSession[], exerciseId: string, excludeId?: string) {
   const ordered = sessions
     .filter(s => s.finishedAt && s.id !== excludeId)
     .sort((a, b) => b.startedAt - a.startedAt)
@@ -112,43 +115,7 @@ export function progressLine(setCount: number, reps: number): string {
   return `Cerraste ${series} en ${reps}. Hoy va la siguiente placa.`
 }
 
-/** Racha de semanas con al menos 3 sesiones de fuerza terminadas. */
-export function weeklyCount(sessions: Session[], weeksBack = 8) {
-  const out: { week: string; count: number }[] = []
-  const now = new Date()
-  for (let i = weeksBack - 1; i >= 0; i--) {
-    const end = new Date(now.getTime() - i * 7 * 86400000)
-    const start = new Date(end.getTime() - 6 * 86400000)
-    const a = todayISO(start), b = todayISO(end)
-    out.push({ week: b, count: sessions.filter(s => s.finishedAt && s.date >= a && s.date <= b).length })
-  }
-  return out
-}
-
-/** Rango ISO [inicio, fin] de la semana actual, mismo criterio de limites que usa weeklyCount(). */
-function currentWeekRange(): { start: string; end: string } {
-  const now = new Date()
-  const start = new Date(now.getTime() - 6 * 86400000)
-  return { start: todayISO(start), end: todayISO(now) }
-}
-
-/** Volumen total (kg) de las sesiones de fuerza terminadas en la semana actual. */
-export function weeklyVolume(sessions: Session[]): number {
-  const { start, end } = currentWeekRange()
-  return sessions
-    .filter(s => s.finishedAt && s.date >= start && s.date <= end)
-    .reduce((a, s) => a + sessionVolume(s), 0)
-}
-
-/** Series completadas en las sesiones de fuerza terminadas en la semana actual. */
-export function weeklySetCount(sessions: Session[]): number {
-  const { start, end } = currentWeekRange()
-  return sessions
-    .filter(s => s.finishedAt && s.date >= start && s.date <= end)
-    .reduce((a, s) => a + doneSets(s), 0)
-}
-
-/** Sesiones terminadas dentro del bloque vigente. */
-export function blockSessionCount(sessions: Session[], blockStart: string, blockEnd: string): number {
-  return sessions.filter(s => s.finishedAt != null && s.date >= blockStart && s.date <= blockEnd).length
-}
+// weeklyCount, weeklyVolume, weeklySetCount y blockSessionCount se movieron a
+// lib/disciplines.ts: se documentaban como "sesiones de fuerza" pero
+// filtraban solo por fecha y finishedAt, sin mirar la disciplina (R1). El
+// traslado obliga a cada consumidor a cambiar tambien su linea de import.

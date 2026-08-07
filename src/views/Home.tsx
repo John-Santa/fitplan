@@ -1,5 +1,6 @@
-import { blockPhase, blockWeeks, dayTitle, DONE_TODAY, nextWeekdayFor, routineForWeekday, routineSetCount, routineShortName, ROUTINES, trainingDayCount, weekdayAbbr, WEEKDAYS } from '../lib/plan'
-import { blockSessionCount, fmt, fmtDate, fmtSigned, todayISO, weeklyCount, weeklySetCount, weeklyVolume } from '../lib/calc'
+import { blockPhase, blockWeeks, dayTitle, DONE_TODAY, nextWeekdayFor, routineForWeekday, routineSetCount, routineShortName, ROUTINES, SESSION_KIND_FOR_DAY, weekdayAbbr, WEEKDAYS } from '../lib/plan'
+import { fmt, fmtDate, fmtSigned, todayISO } from '../lib/calc'
+import { blockSessionCount, weeklySummary } from '../lib/disciplines'
 import { useDerivedMeasurements, useStore } from '../lib/store'
 import { Tile } from '../components/ui'
 
@@ -18,15 +19,25 @@ export default function Home({ go }: { go: (tab: 'train' | 'measure') => void })
   const dow = now.getDay()
   const today = config.weeklyRoutine[dow]
   const suggested = routineForWeekday(config.weeklyRoutine, dow)
-  const doneToday = sessions.some(s => s.date === todayISO() && s.finishedAt)
-  const weeklyTarget = trainingDayCount(config.weeklyRoutine)
+  // "Ya entrenaste hoy" debe significar "ya hice la disciplina de HOY", no
+  // "termine cualquier sesion hoy": sin esto, una natacion de mañana
+  // reemplazaba el llamado a accion del gimnasio (R1). Un dia sin
+  // disciplina asignada (descanso, caminata, personalizado) nunca cuenta
+  // como "hecho".
+  const todayKind = SESSION_KIND_FOR_DAY[today.kind]
+  const doneKind =
+    todayKind != null && sessions.some(s => s.kind === todayKind && s.date === todayISO() && s.finishedAt)
+      ? todayKind
+      : null
 
   const base = rows[0]
   const last = rows[rows.length - 1]
   const finished = sessions.filter(s => s.finishedAt)
   const blockFinished = blockSessionCount(finished, config.blockStart, config.blockEnd)
-  const weeks = weeklyCount(finished, 4)
-  const thisWeek = weeks[weeks.length - 1]?.count ?? 0
+  // Una linea por disciplina (conteo semanal, meta y valor de trabajo con su
+  // unidad): recorre DISCIPLINES, asi que una disciplina nueva aparece sola
+  // en los tiles de mas abajo sin tocar este componente.
+  const weekLines = weeklySummary(sessions, config.weeklyRoutine)
 
   const daysLeft = Math.max(
     0,
@@ -53,10 +64,10 @@ export default function Home({ go }: { go: (tab: 'train' | 'measure') => void })
           <div className="muted" style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
             Hoy es {WEEKDAYS[dow]}
           </div>
-          {doneToday ? (
+          {doneKind ? (
             <>
-              <h2 style={{ fontSize: 19, marginTop: 2 }}>{DONE_TODAY.title}</h2>
-              <p style={{ marginBottom: 0 }}>{DONE_TODAY.note}</p>
+              <h2 style={{ fontSize: 19, marginTop: 2 }}>{DONE_TODAY[doneKind].title}</h2>
+              <p style={{ marginBottom: 0 }}>{DONE_TODAY[doneKind].note}</p>
             </>
           ) : suggested ? (
             <>
@@ -96,16 +107,29 @@ export default function Home({ go }: { go: (tab: 'train' | 'measure') => void })
       <div className="col-b">
         <div className="section-title">Esta semana</div>
         <div className="tiles">
-          <Tile
-            label="Sesiones de fuerza"
-            value={thisWeek}
-            dec={0}
-            progress={weeklyTarget > 0 ? (thisWeek / weeklyTarget) * 100 : undefined}
-            goalText={weeklyTarget > 0 ? `meta ${weeklyTarget} por semana` : 'sin entrenos programados'}
-          />
-          <Tile label="Del bloque" value={blockFinished} dec={0} />
-          <Tile label="Volumen" value={weeklyVolume(finished)} unit="kg" dec={0} />
-          <Tile label="Series" value={weeklySetCount(finished)} dec={0} />
+          {/* Un tile nunca mezcla unidades: conteo de sesiones (sin unidad,
+             contra la meta de dias programados) y valor de trabajo (kg o m)
+             van separados, uno por disciplina. Solo se muestra una
+             disciplina si tiene dias programados o ya tiene sesiones esta
+             semana — evita un "Natación 0" permanente para quien solo hace
+             fuerza. */}
+          {weekLines
+            .filter(l => l.target > 0 || l.count > 0)
+            .flatMap(l => [
+              <Tile
+                key={`${l.kind}-count`}
+                label={l.label}
+                value={l.count}
+                dec={0}
+                progress={l.target > 0 ? (l.count / l.target) * 100 : undefined}
+                goalText={l.target > 0 ? `meta ${l.target} por semana` : 'sin días programados'}
+              />,
+              <Tile key={`${l.kind}-work`} label={l.workLabel} value={l.workValue} unit={l.workUnit} dec={0} />,
+            ])}
+          {/* Cuenta sesiones de cualquier disciplina: es un conteo, no una
+             suma de unidades incompatibles, asi que mezclarlas no lo vuelve
+             incorrecto (ver R1). */}
+          <Tile label="Sesiones del bloque" value={blockFinished} dec={0} />
         </div>
       </div>
 

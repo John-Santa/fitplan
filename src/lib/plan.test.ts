@@ -6,7 +6,7 @@
 // verifica tsc -b.
 import { describe, expect, it } from 'vitest'
 import type { Config } from '../types'
-import { DEFAULT_CONFIG, mergeConfig } from './plan'
+import { DEFAULT_CONFIG, mergeConfig, normalizeSession } from './plan'
 
 describe('mergeConfig', () => {
   it('rellena un campo de primer nivel faltante (regresion 53590ef)', () => {
@@ -105,5 +105,84 @@ describe('mergeConfig', () => {
     const merged = mergeConfig(DEFAULT_CONFIG)
     expect(merged).toEqual(DEFAULT_CONFIG)
     expect(JSON.stringify(merged)).toBe(JSON.stringify(DEFAULT_CONFIG))
+  })
+
+  it('rellena poolLengthM faltante (A1: Config gana un escalar plano nuevo)', () => {
+    const merged = mergeConfig({ heightCm: 180 })
+    expect(merged.poolLengthM).toBe(DEFAULT_CONFIG.poolLengthM)
+  })
+})
+
+// Pruebas de normalizeSession (A1/A10). Cubren la migracion de la unica
+// disciplina anterior al motor (fuerza, sin `kind`) y la representabilidad
+// de la nueva (natacion). Es la funcion mas importante de todo el cambio:
+// segun A10 es la unica que ni tsc ni el arnes de navegador pueden alcanzar
+// por si solos.
+describe('normalizeSession', () => {
+  const legacyStrengthRow = {
+    id: 'dia1-1',
+    routineId: 'dia1',
+    date: '2026-08-04',
+    startedAt: 1000,
+    finishedAt: 2000,
+    sets: [{ exerciseId: 'leg-press', setIndex: 0, weight: 80, reps: 12, done: true }],
+    notes: '',
+  }
+
+  it('una fila sin kind (el byte exacto anterior al motor) se normaliza como sesion de fuerza', () => {
+    const s = normalizeSession(legacyStrengthRow)
+    expect(s).not.toBeNull()
+    expect(s?.kind).toBe('strength')
+    expect(s).toMatchObject({ kind: 'strength', id: 'dia1-1', routineId: 'dia1', date: '2026-08-04' })
+  })
+
+  it('un kind desconocido descarta la fila (se cuenta y se descarta de memoria, nunca del disco)', () => {
+    expect(normalizeSession({ ...legacyStrengthRow, kind: 'running' })).toBeNull()
+  })
+
+  it('un routineId invalido en una fila de fuerza descarta la sesion entera', () => {
+    expect(normalizeSession({ ...legacyStrengthRow, routineId: 'diaX' })).toBeNull()
+  })
+
+  it('valores que no son objeto, o son null, devuelven null sin reventar', () => {
+    expect(normalizeSession(null)).toBeNull()
+    expect(normalizeSession(undefined)).toBeNull()
+    expect(normalizeSession('no-es-una-sesion')).toBeNull()
+    expect(normalizeSession(42)).toBeNull()
+    expect(normalizeSession([])).toBeNull()
+  })
+
+  it('una fila con forma corrupta (falta id) devuelve null', () => {
+    const { id: _id, ...withoutId } = legacyStrengthRow
+    expect(normalizeSession(withoutId)).toBeNull()
+  })
+
+  it('es idempotente: normalizar una sesion ya normalizada devuelve el mismo resultado', () => {
+    const once = normalizeSession(legacyStrengthRow)
+    const twice = normalizeSession(once)
+    expect(twice).toEqual(once)
+  })
+
+  it('una fila de natacion valida hace round-trip sin cambios', () => {
+    const swimRow = {
+      kind: 'swim',
+      id: 'swim-1',
+      date: '2026-08-05',
+      startedAt: 1000,
+      finishedAt: 2000,
+      poolLengthM: 25,
+      blocks: [{ index: 0, distanceM: 400, timeSec: 480, stroke: 'freestyle', done: true }],
+      rpe: 6,
+      notes: 'buena sesion',
+    }
+    expect(normalizeSession(swimRow)).toEqual(swimRow)
+  })
+
+  it('una fila de natacion sin poolLengthM (forma corrupta) devuelve null', () => {
+    expect(
+      normalizeSession({
+        kind: 'swim', id: 'swim-1', date: '2026-08-05', startedAt: 1000, finishedAt: null, blocks: [], rpe: null, notes: '',
+      }),
+    ).toBeNull()
   })
 })

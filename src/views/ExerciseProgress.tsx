@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { RoutineId } from '../types'
+import type { RoutineId, StrengthSession } from '../types'
 import { routineById } from '../lib/plan'
 import { bestSet, fmt, fmtDate, fmtSigned, shouldProgress } from '../lib/calc'
 import { useStore } from '../lib/store'
@@ -12,8 +12,10 @@ export default function ExerciseProgress({ routineId, onBack }: { routineId: Rou
   const [exId, setExId] = useState(routine.exercises[0].id)
   const ex = routine.exercises.find(e => e.id === exId)!
 
+  // La progresion por ejercicio solo existe para fuerza: una SwimSession no
+  // tiene routineId ni .sets, asi que se descarta aca, no mas abajo.
   const done = sessions
-    .filter(s => s.finishedAt && s.routineId === routineId)
+    .filter((s): s is StrengthSession => s.kind === 'strength' && !!s.finishedAt && s.routineId === routineId)
     .sort((a, b) => a.startedAt - b.startedAt)
 
   const rows = done.flatMap(s => {

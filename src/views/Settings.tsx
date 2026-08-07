@@ -7,7 +7,7 @@ import { daysSince, fmt, fmtDate } from '../lib/calc'
 import { DAY_KINDS, dayTitle, isDayKind, isRoutineId, KIND_LABELS, MEASUREMENT_KEYS, MEASUREMENT_LABELS, MEASUREMENT_UNITS, ROUTINES, suggestRoutineId, weekdayLabel, withDay, withText } from '../lib/plan'
 
 export default function Settings() {
-  const { config, saveConfig, reload, sessions, measurements } = useStore()
+  const { config, saveConfig, reload, sessions, droppedSessionCount, measurements } = useStore()
   const toast = useToast()
   const fileRef = useRef<HTMLInputElement>(null)
   const [height, setHeight] = useState(String(config.heightCm))
@@ -59,6 +59,17 @@ export default function Settings() {
             <Tile label="Sesiones" value={sessions.length} dec={0} />
             <Tile label="Mediciones" value={measurements.length} dec={0} />
           </div>
+          {/* Nunca se borra nada del disco: normalizeSession solo descarta
+             de memoria lo que no puede leer, y esto avisa en vez de hacer
+             desaparecer historial en silencio. Oculto cuando no hay nada
+             que reportar. */}
+          {droppedSessionCount > 0 && (
+            <p className="hint" style={{ color: 'var(--alert)' }}>
+              {droppedSessionCount === 1
+                ? '1 sesión no se pudo leer.'
+                : `${droppedSessionCount} sesiones no se pudieron leer.`}
+            </p>
+          )}
           <div className="btnrow">
             <button className="primary" onClick={doExport}>Exportar respaldo</button>
             <button onClick={() => fileRef.current?.click()}>Restaurar</button>

@@ -1,8 +1,12 @@
 import type { Session, Measurement, ExerciseMeta, Config, Backup } from '../types'
-import { mergeConfig } from './plan'
+import { mergeConfig, normalizeSession } from './plan'
 
 const DB_NAME = 'fitplan'
 const DB_VERSION = 1
+/** Version de respaldo mas alta que este build sabe leer. Ver
+ *  checkBackupVersion: 1 y 2 se aceptan, cualquier version mayor se rechaza
+ *  con un mensaje real en vez de intentar leerla a ciegas. */
+const CURRENT_BACKUP_VERSION = 2
 
 const STORE_SESSIONS = 'sessions'
 const STORE_MEASUREMENTS = 'measurements'
@@ -19,6 +23,14 @@ function openDb(): Promise<IDBDatabase> {
       const db = req.result
       if (!db.objectStoreNames.contains(STORE_SESSIONS)) {
         const s = db.createObjectStore(STORE_SESSIONS, { keyPath: 'id' })
+        // Ninguno de los dos indices se consulta en ningun lado (getSessions
+        // usa getAll() y ordena en memoria). by-routine ademas es inseguro
+        // para un almacen discriminado desde A1: IndexedDB omite en
+        // silencio los registros cuyo keyPath no resuelve, asi que una
+        // SwimSession (sin routineId) simplemente no aparece en ese indice
+        // (R8). Correcto por accidente hoy porque nada lo consulta; se
+        // documenta en vez de borrarlo porque quitarlo exigiria una
+        // transaccion de actualizacion de version, y no lo vale.
         s.createIndex('by-date', 'date')
         s.createIndex('by-routine', 'routineId')
       }
@@ -87,8 +99,34 @@ const del = (store: string, key: IDBValidKey) => tx(store, 'readwrite', s => s.d
 const clear = (store: string) => tx(store, 'readwrite', s => s.clear())
 
 /* ---------- sesiones ---------- */
-export const getSessions = () =>
-  getAll<Session>(STORE_SESSIONS).then(list => list.sort((a, b) => b.startedAt - a.startedAt))
+
+/** sessions ya normalizadas y ordenadas; droppedCount cuenta las filas que
+ *  normalizeSession no pudo leer (kind desconocido, forma corrupta). Nunca
+ *  se borran del disco, solo se excluyen de memoria — Ajustes usa
+ *  droppedCount para avisar en vez de hacer desaparecer historial en
+ *  silencio. */
+export interface SessionsResult {
+  sessions: Session[]
+  droppedCount: number
+}
+
+/** Unico camino de lectura de sesiones (tambien lo usa exportBackup, mas
+ *  abajo): getAll<unknown> porque una fila en disco puede venir de una
+ *  version anterior del codigo, .map(normalizeSession) para decidir que
+ *  forma tiene, filtro para descartar lo irrecuperable (y contarlo), y
+ *  orden por mas reciente. */
+export const getSessions = async (): Promise<SessionsResult> => {
+  const raw = await getAll<unknown>(STORE_SESSIONS)
+  const sessions: Session[] = []
+  let droppedCount = 0
+  for (const row of raw) {
+    const s = normalizeSession(row)
+    if (s) sessions.push(s)
+    else droppedCount++
+  }
+  sessions.sort((a, b) => b.startedAt - a.startedAt)
+  return { sessions, droppedCount }
+}
 export const saveSession = (s: Session) => put(STORE_SESSIONS, s)
 export const deleteSession = (id: string) => del(STORE_SESSIONS, id)
 
@@ -113,8 +151,27 @@ export const getLastBackupAt = () =>
 export const saveLastBackupAt = (ts: number) => put(STORE_CONFIG, ts, 'lastBackupAt')
 
 /* ---------- respaldo ---------- */
+
+/** Compuerta de version, extraida como funcion pura (sin IndexedDB) para que
+ *  sea testeable directamente. Acepta 1 y 2; cualquier version mayor se
+ *  rechaza con un mensaje real en espanol en vez de intentar leerla — surge
+ *  a traves de Settings.tsx, que ya renderiza e.message. Cualquier otra
+ *  cosa (version ausente, no numerica, fraccionaria o menor a 1) se trata
+ *  como "no es un respaldo de FitPlan": un respaldo real siempre trae
+ *  `version` desde que existe este archivo. */
+export function checkBackupVersion(version: unknown): void {
+  if (typeof version !== 'number' || !Number.isInteger(version) || version < 1) {
+    throw new Error('Ese archivo no es un respaldo de FitPlan.')
+  }
+  if (version > CURRENT_BACKUP_VERSION) {
+    throw new Error(
+      'Ese respaldo lo hizo una versión más nueva de FitPlan. Actualiza la app antes de restaurarlo.',
+    )
+  }
+}
+
 export async function exportBackup(): Promise<Backup> {
-  const [sessions, measurements, exerciseMeta, config] = await Promise.all([
+  const [{ sessions }, measurements, exerciseMeta, config] = await Promise.all([
     getSessions(),
     getMeasurements(),
     getExerciseMeta(),
@@ -122,23 +179,33 @@ export async function exportBackup(): Promise<Backup> {
   ])
   return {
     app: 'fitplan',
-    version: 1,
+    version: CURRENT_BACKUP_VERSION,
     exportedAt: new Date().toISOString(),
     sessions,
     measurements,
     exerciseMeta,
-    config: config ?? null,
+    // mergeConfig(config), no el valor guardado tal cual: sin esto, un
+    // respaldo podia contener sesiones ya normalizadas (forma v2) junto a
+    // una config sin reparar, internamente inconsistente. Con esto,
+    // exportar -> importar es idempotente.
+    config: config ? mergeConfig(config) : null,
   }
 }
 
 export async function importBackup(data: unknown, mode: 'replace' | 'merge' = 'replace') {
   const b = data as Backup
   if (!b || b.app !== 'fitplan') throw new Error('Ese archivo no es un respaldo de FitPlan.')
+  checkBackupVersion(b.version)
+  // Normaliza antes de escribir: un respaldo v1 (o mas viejo) queda guardado
+  // en la forma v2, asi que exportar -> importar -> exportar es idempotente.
+  const sessions = (b.sessions ?? [])
+    .map(normalizeSession)
+    .filter((s): s is Session => s !== null)
   if (mode === 'replace') {
     await Promise.all([clear(STORE_SESSIONS), clear(STORE_MEASUREMENTS), clear(STORE_EXERCISE_META)])
   }
   await Promise.all([
-    ...(b.sessions ?? []).map(s => saveSession(s)),
+    ...sessions.map(s => saveSession(s)),
     ...(b.measurements ?? []).map(m => saveMeasurement(m)),
     ...(b.exerciseMeta ?? []).map(m => saveExerciseMeta(m)),
   ])

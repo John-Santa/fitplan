@@ -1,15 +1,21 @@
 import { useState } from 'react'
-import type { RoutineId, Session } from '../types'
+import type { RoutineId, StrengthSession } from '../types'
 import { ROUTINES, blockPhase, routineById, routineDaysLabel, routineForWeekday, routineSetCount } from '../lib/plan'
 import { doneSets, fmtDate, fmtDuration, sessionVolume, todayISO } from '../lib/calc'
+import { DISCIPLINES, sessionDigest } from '../lib/disciplines'
 import { useStore } from '../lib/store'
-import ActiveSession, { newSession, sessionSummary } from './ActiveSession'
+import ActiveSession from './ActiveSession'
 import ExerciseProgress from './ExerciseProgress'
 import { Empty } from '../components/ui'
 
 export default function Train() {
   const { sessions, config, saveSession, deleteSession } = useStore()
-  const [active, setActive] = useState<Session | null>(null)
+  // Entrenar es, por ahora, exclusivamente de fuerza (la natacion llega en
+  // F1-5 con su propia pantalla): filtrar aca es lo que le permite a
+  // ActiveSession, sessionVolume y doneSets seguir tipados a StrengthSession
+  // sin narrowing repetido en cada uso mas abajo.
+  const strengthSessions = sessions.filter((s): s is StrengthSession => s.kind === 'strength')
+  const [active, setActive] = useState<StrengthSession | null>(null)
   const [detail, setDetail] = useState<string | null>(null)
   const [progressFor, setProgressFor] = useState<RoutineId | null>(null)
 
@@ -23,7 +29,7 @@ export default function Train() {
         setsDelta={phase.setsDelta}
         onChange={setActive}
         onFinish={async () => {
-          const finished: Session = {
+          const finished: StrengthSession = {
             ...active,
             finishedAt: Date.now(),
             sets: active.sets.filter(s => s.done),
@@ -41,7 +47,7 @@ export default function Train() {
   }
 
   if (detail) {
-    const s = sessions.find(x => x.id === detail)
+    const s = strengthSessions.find(x => x.id === detail)
     if (!s) return null
     const r = routineById(s.routineId)
     return (
@@ -125,8 +131,8 @@ export default function Train() {
                   {r.exercises.length} ejercicios · {routineSetCount(r, phase.setsDelta)} series
                 </div>
               </div>
-              <button className="primary" onClick={() => setActive(newSession(r.id, todayISO()))}>
-                Entrenar
+              <button className="primary" onClick={() => setActive(DISCIPLINES.strength.create(todayISO(), r.id))}>
+                {DISCIPLINES.strength.startLabel}
               </button>
             </div>
             <button className="ghost" style={{ marginTop: 10, padding: '7px 12px', fontSize: 13 }} onClick={() => setProgressFor(r.id)}>
@@ -138,27 +144,26 @@ export default function Train() {
 
       <div className="col-b">
         <div className="section-title">Historial</div>
-        {sessions.length === 0 ? (
+        {strengthSessions.length === 0 ? (
           <Empty title="Todavía no hay sesiones">
             Cuando termines la primera, aquí vas a ver el peso de cada ejercicio — que es lo que necesitas para saber cuándo subir de placa.
           </Empty>
         ) : (
           <div className="tablewrap">
-            {sessions.map(s => {
-              const r = routineById(s.routineId)
-              const sum = sessionSummary(s)
+            {strengthSessions.map(s => {
+              const digest = sessionDigest(s)
               return (
                 <div className="list-item" key={s.id} onClick={() => setDetail(s.id)} style={{ cursor: 'pointer' }}>
                   <div className="grow">
                     <div className="t1">
-                      {r?.name ?? s.routineId}{' '}
+                      {digest.title}{' '}
                       {!s.finishedAt && <span className="pill warn">sin terminar</span>}
                     </div>
                     <div className="t2 num">
                       {fmtDate(s.date, true)} · {doneSets(s)} series ·{' '}
                       {Math.round(sessionVolume(s)).toLocaleString('es-CO')} kg
                     </div>
-                    {sum.length > 0 && <div className="t2" style={{ marginTop: 2 }}>{sum.slice(0, 2).join(' · ')}</div>}
+                    {digest.lines.length > 0 && <div className="t2" style={{ marginTop: 2 }}>{digest.lines.slice(0, 2).join(' · ')}</div>}
                   </div>
                   <div className="muted">›</div>
                 </div>

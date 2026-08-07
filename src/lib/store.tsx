@@ -12,6 +12,12 @@ interface Store {
    *  estado de error real en vez de "Cargando..." eterno. */
   dbError: string | null
   sessions: Session[]
+  /** Cuantas filas de `sessions` no se pudieron leer en la ultima carga
+   *  (normalizeSession las descarto: kind desconocido o forma corrupta).
+   *  Nunca se borran del disco, solo se excluyen de memoria. Ajustes lo usa
+   *  para avisar "N sesiones no se pudieron leer" en vez de hacer
+   *  desaparecer historial en silencio. */
+  droppedSessionCount: number
   measurements: Measurement[]
   meta: Record<string, ExerciseMeta>
   config: Config
@@ -30,18 +36,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false)
   const [dbError, setDbError] = useState<string | null>(null)
   const [sessions, setSessions] = useState<Session[]>([])
+  const [droppedSessionCount, setDroppedSessionCount] = useState(0)
   const [measurements, setMeasurements] = useState<Measurement[]>([])
   const [metaList, setMetaList] = useState<ExerciseMeta[]>([])
   const [config, setConfig] = useState<Config>(DEFAULT_CONFIG)
 
   const reload = useCallback(async () => {
-    const [s, m, em, c] = await Promise.all([
+    const [sessionsResult, m, em, c] = await Promise.all([
       db.getSessions(),
       db.getMeasurements(),
       db.getExerciseMeta(),
       db.getConfig(),
     ])
-    setSessions(s)
+    setSessions(sessionsResult.sessions)
+    setDroppedSessionCount(sessionsResult.droppedCount)
     setMeasurements(m)
     setMetaList(em)
     setConfig(mergeConfig(c))
@@ -79,6 +87,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ready,
       dbError,
       sessions,
+      droppedSessionCount,
       measurements,
       meta: Object.fromEntries(metaList.map(m => [m.exerciseId, m])),
       config,
@@ -90,7 +99,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       saveMeta: async m => { await db.saveExerciseMeta(m); await reload() },
       saveConfig: async c => { await db.saveConfig(c); await reload() },
     }),
-    [ready, dbError, sessions, measurements, metaList, config, reload],
+    [ready, dbError, sessions, droppedSessionCount, measurements, metaList, config, reload],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

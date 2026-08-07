@@ -1,4 +1,18 @@
-import type { Config, DayKind, DayPlan, Routine, RoutineId, WeeklyRoutine } from '../types'
+import type {
+  Config,
+  DayKind,
+  DayPlan,
+  Routine,
+  RoutineId,
+  Session,
+  SessionKind,
+  SetLog,
+  StrengthSession,
+  SwimBlock,
+  SwimSession,
+  SwimStroke,
+  WeeklyRoutine,
+} from '../types'
 
 export const MW = 'https://musclewiki.com/es-es/exercise/'
 
@@ -19,6 +33,18 @@ export const KIND_LABELS: Record<DayKind, string> = {
 /** Opciones del selector, en el orden de KIND_LABELS. Deriva de la tabla, asi
  *  que no puede quedar desincronizada. */
 export const DAY_KINDS: DayKind[] = Object.keys(KIND_LABELS).filter(isDayKind)
+
+/** Que disciplina se registra en un dia de este tipo, si alguna.
+ *  Record<DayKind, ...> es la misma compuerta de exhaustividad que
+ *  KIND_LABELS: agregar un DayKind rompe la compilacion aca hasta decidir si
+ *  es registrable y con que disciplina. */
+export const SESSION_KIND_FOR_DAY: Record<DayKind, SessionKind | null> = {
+  training: 'strength',
+  swim: 'swim',
+  walk: null,
+  rest: null,
+  custom: null,
+}
 
 /** Etiqueta de cada campo de medida/objetivo (Config['goal'], que es
  *  Required<Omit<Measurement,'date'>>). Mismo idioma que KIND_LABELS:
@@ -85,11 +111,21 @@ export const weekdayLabel = (dow: number): string =>
 /** "Lun": abreviatura para la insignia de Inicio. */
 export const weekdayAbbr = (dow: number): string => weekdayLabel(dow).slice(0, 3)
 
-/** El bloque "ya entrenaste" de Inicio. No es un dia de la semana: es un estado
- *  que gana sobre cualquier kind. */
-export const DONE_TODAY = {
-  title: 'Sesión hecha',
-  note: 'Ya entrenaste hoy. Lo que queda es dormir 7 horas y media.',
+/** El bloque "ya entrenaste" de Inicio, uno por disciplina: una natacion de
+ *  mañana no debe reemplazar el llamado a acción del gimnasio con un mensaje
+ *  que diga "ya entrenaste hoy" (ver doneToday en Home.tsx). No es un dia de
+ *  la semana: es un estado que gana sobre cualquier kind de dia.
+ *  Record<SessionKind, ...> es la misma compuerta de exhaustividad que
+ *  KIND_LABELS. */
+export const DONE_TODAY: Record<SessionKind, { title: string; note: string }> = {
+  strength: {
+    title: 'Sesión hecha',
+    note: 'Ya entrenaste hoy. Lo que queda es dormir 7 horas y media.',
+  },
+  swim: {
+    title: 'Natación hecha',
+    note: 'Ya nadaste hoy. Lo que queda es dormir 7 horas y media.',
+  },
 }
 
 const GYM_NOTE = '20:30 en el gimnasio'
@@ -123,6 +159,7 @@ export const DEFAULT_CONFIG: Config = {
     neck: 40.5,
   },
   weeklyRoutine: DEFAULT_WEEKLY_ROUTINE,
+  poolLengthM: 25,
 }
 
 export const BASELINE = {
@@ -392,6 +429,111 @@ export function mergeConfig(stored: unknown): Config {
     blockEnd: str(c.blockEnd, DEFAULT_CONFIG.blockEnd),
     goal: mergeGoal(c.goal),
     weeklyRoutine: mergeWeeklyRoutine(c.weeklyRoutine),
+    poolLengthM: num(c.poolLengthM, DEFAULT_CONFIG.poolLengthM),
+  }
+}
+
+/* ---------- normalizacion de sesiones guardadas ---------- */
+
+function isSessionKind(v: unknown): v is SessionKind {
+  return v === 'strength' || v === 'swim'
+}
+
+function isSetLog(v: unknown): v is SetLog {
+  if (typeof v !== 'object' || v === null) return false
+  const s = v as Record<string, unknown>
+  return (
+    typeof s.exerciseId === 'string' &&
+    typeof s.setIndex === 'number' &&
+    (s.weight === null || typeof s.weight === 'number') &&
+    (s.reps === null || typeof s.reps === 'number') &&
+    typeof s.done === 'boolean'
+  )
+}
+
+function isSwimStroke(v: unknown): v is SwimStroke {
+  return v === 'freestyle' || v === 'backstroke' || v === 'breaststroke' || v === 'butterfly' || v === 'mixed'
+}
+
+function isSwimBlock(v: unknown): v is SwimBlock {
+  if (typeof v !== 'object' || v === null) return false
+  const b = v as Record<string, unknown>
+  return (
+    typeof b.index === 'number' &&
+    (b.distanceM === null || typeof b.distanceM === 'number') &&
+    (b.timeSec === null || typeof b.timeSec === 'number') &&
+    isSwimStroke(b.stroke) &&
+    typeof b.done === 'boolean'
+  )
+}
+
+/** routineId invalido descarta la sesion entera: es la llave de toda la
+ *  vista de progresion (ver lastPerformance en calc.ts), asi que una sesion
+ *  de fuerza sin una rutina resoluble no sirve de nada. id/date/startedAt
+ *  faltantes tambien descartan: son la identidad minima de una sesion. sets
+ *  invalidos dentro del arreglo se filtran uno por uno en vez de descartar
+ *  toda la sesion — perder una serie corrupta es mejor que perder el
+ *  entrenamiento completo. */
+function normalizeStrengthSession(r: Record<string, unknown>): StrengthSession | null {
+  if (typeof r.id !== 'string') return null
+  if (!isRoutineId(r.routineId)) return null
+  if (typeof r.date !== 'string') return null
+  if (typeof r.startedAt !== 'number') return null
+  if (!Array.isArray(r.sets)) return null
+  return {
+    kind: 'strength',
+    id: r.id,
+    routineId: r.routineId,
+    date: r.date,
+    startedAt: r.startedAt,
+    finishedAt: typeof r.finishedAt === 'number' ? r.finishedAt : null,
+    sets: r.sets.filter(isSetLog),
+    notes: typeof r.notes === 'string' ? r.notes : '',
+  }
+}
+
+function normalizeSwimSession(r: Record<string, unknown>): SwimSession | null {
+  if (typeof r.id !== 'string') return null
+  if (typeof r.date !== 'string') return null
+  if (typeof r.startedAt !== 'number') return null
+  if (typeof r.poolLengthM !== 'number') return null
+  if (!Array.isArray(r.blocks)) return null
+  return {
+    kind: 'swim',
+    id: r.id,
+    date: r.date,
+    startedAt: r.startedAt,
+    finishedAt: typeof r.finishedAt === 'number' ? r.finishedAt : null,
+    poolLengthM: r.poolLengthM,
+    blocks: r.blocks.filter(isSwimBlock),
+    rpe: typeof r.rpe === 'number' ? r.rpe : null,
+    notes: typeof r.notes === 'string' ? r.notes : '',
+  }
+}
+
+/** La unica puerta por la que entra al programa una fila de `sessions` que
+ *  no escribio esta version del codigo: nunca escribe (la fila sigue en
+ *  disco tal cual), solo decide si esa forma se puede leer. Sin `kind` es
+ *  una sesion de fuerza anterior al motor de disciplinas — el byte exacto
+ *  que hoy tiene el usuario real en el dispositivo. Un `kind` desconocido o
+ *  una fila irrecuperable devuelven null: el llamador (getSessions en
+ *  db.ts) las cuenta y las descarta de memoria en vez de hacer desaparecer
+ *  historial en silencio. isSessionKind se evalua ANTES del switch para que
+ *  r.kind (tipado unknown) realmente se estreche: sin esa guardia el switch
+ *  no seria exhaustivo sobre SessionKind. El tipo de retorno explicito sin
+ *  `default` es a proposito: agregar una tercera disciplina rompe esta
+ *  funcion en "Function lacks ending return statement" hasta que se le
+ *  agrega su rama aca. */
+export function normalizeSession(raw: unknown): Session | null {
+  if (typeof raw !== 'object' || raw === null) return null
+  const r = raw as Record<string, unknown>
+  if (r.kind === undefined) return normalizeStrengthSession(r)
+  if (!isSessionKind(r.kind)) return null
+  switch (r.kind) {
+    case 'strength':
+      return normalizeStrengthSession(r)
+    case 'swim':
+      return normalizeSwimSession(r)
   }
 }
 
@@ -435,11 +577,6 @@ export function routineDaysLabel(week: WeeklyRoutine, routineId: RoutineId): str
   const days = weekdaysForRoutine(week, routineId)
   if (days.length === 0) return 'Sin día asignado'
   return days.map(weekdayLabel).join(' · ')
-}
-
-/** Meta semanal de sesiones de fuerza: sale de contar los dias de entreno. */
-export function trainingDayCount(week: WeeklyRoutine): number {
-  return week.reduce((n, d) => (d.kind === 'training' ? n + 1 : n), 0)
 }
 
 /** Semana nueva con un dia cambiado. Escribe la tupla entera a mano porque

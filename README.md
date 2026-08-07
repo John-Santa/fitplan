@@ -43,6 +43,8 @@ Todo está en IndexedDB de **ese** navegador. Si borras los datos del sitio, cam
 
 Si más adelante quieres sincronizar entre dispositivos, el punto de entrada es `src/lib/db.ts`: toda la persistencia pasa por ahí y por `exportBackup()` / `importBackup()`. Reemplazar esa capa por una API remota no toca ninguna vista.
 
+**Compatibilidad de respaldos hacia atrás, no hacia adelante.** Desde que existe el motor de disciplinas (`Session` como unión de fuerza y natación), los respaldos llevan `version: 2`. Restaurar un respaldo v2 en una versión de FitPlan **anterior** a este cambio falla: esa build no sabe leer el campo `kind` y revienta al calcular el volumen de una sesión. Restaura siempre con la versión de la app que generó el respaldo, o una más nueva — nunca una más vieja.
+
 ## Estructura
 
 ```
@@ -50,8 +52,9 @@ src/
   types.ts              Modelo de datos
   lib/db.ts             IndexedDB: sesiones, medidas, notas, configuración, respaldo
   lib/store.tsx         Contexto de React sobre la base de datos
-  lib/plan.ts           Las 3 rutinas, la línea base, las metas y las fases del bloque
-  lib/calc.ts           Derivadas de composición, métricas de entrenamiento, doble progresión
+  lib/plan.ts           Las 3 rutinas, la línea base, las metas, las fases del bloque y normalizeSession
+  lib/calc.ts           Derivadas de composición, primitivas de fuerza, doble progresión
+  lib/disciplines.ts    Tabla de disciplinas (DISCIPLINES), digest de sesión, agregados semanales por disciplina
   components/Chart.tsx  Gráfica de líneas en SVG con leyenda, metas y tooltip
   components/ui.tsx     Tiles, temporizador de descanso, toast
   views/                Inicio, Entrenar, Sesión activa, Progresión, Medidas, Ajustes
