@@ -203,14 +203,20 @@ for (const v of VIEWPORTS) {
       await p.waitForTimeout(400)
     }
     if (i === 0) {
-      // ORD-01: the number of start buttons must equal the routine count, so
-      // a future reshuffle (e.g. F1-5 adding a "Nadar" card among
-      // button.primary) fails loudly here instead of leaving the
-      // testid-bound click below silently pointed at a routine that's still
-      // present but no longer where a positional test expected it.
+      // ORD-01: the number of start buttons must equal the routine count
+      // PLUS the swim card (F1-5's "Nadar" card, `[data-testid="start-swim"]`,
+      // is deliberately `button.primary` too, for visual consistency with
+      // the three routine cards). This literal (ROUT_IDS.length + 1) is the
+      // ONE pre-existing assertion this unit updates on purpose — it is the
+      // exact reshuffle test/README.md documented ORD-01 as built to catch
+      // ("a future reshuffle... fails loudly here instead of silently
+      // exercising the wrong routine"), not a silent behavior change: the
+      // testid-bound clicks below are unaffected by the swim card's
+      // position, so ORD-01 going from 3->4 here is the intended outcome of
+      // adding a fourth start button, not a regression.
       const primCount = await p.locator('button.primary').count()
-      check(primCount === ROUT_IDS.length, `${v.n}/ORD-01`,
-        `hay ${primCount} botones button.primary en Entrenar, se esperaban ${ROUT_IDS.length} (uno por rutina)`)
+      check(primCount === ROUT_IDS.length + 1, `${v.n}/ORD-01`,
+        `hay ${primCount} botones button.primary en Entrenar, se esperaban ${ROUT_IDS.length + 1} (uno por rutina + Nadar)`)
     }
     const startBtn = p.locator(`[data-testid="start-${ROUT_IDS[i]}"]`)
     if ((await startBtn.count()) === 0) {
@@ -486,6 +492,90 @@ for (const v of VIEWPORTS) {
   const s1 = check(tiles.strengthWork === '1000kg', 'MIX-01/Volumen', `tile-strength-work = "${tiles.strengthWork}", esperado "1000kg" (solo la sesion de fuerza, sin sumar natacion, sin NaN)`)
   const s2 = check(tiles.strengthCount === '1', 'MIX-01/Fuerza', `tile-strength-count = "${tiles.strengthCount}", esperado "1" (no debe contar la sesion de natacion)`)
   console.log(`\n===== MIX-01 (1 fuerza + 1 natacion, mismo dia) =====\n  Volumen ${tiles.strengthWork} ${s1} | conteo fuerza ${tiles.strengthCount} ${s2}`)
+  await ctx.close()
+}
+
+// ---- SWIM-01: a swim day must render a working CTA on Inicio. Before F1-5,
+// Home gated the button on `suggested !== null`, and routineForWeekday()
+// returns null for a swim day (it only resolves 'training' days) — so a
+// swim day rendered a title and note with NO button at all. This seeds a
+// weeklyRoutine whose *today* slot is swim (computed in Node, so the check
+// is date-independent) and asserts the fix: .card.accent's h2 says
+// "Natación" AND a start button exists inside that same card. ----
+{
+  const ctx = await br.newContext({ viewport: { width: 390, height: 844 } })
+  const p = await ctx.newPage()
+  const dow = new Date().getDay()
+  const restDay = { kind: 'rest', title: '', note: '' }
+  const weeklyRoutine = Array.from({ length: 7 }, (_, i) => (i === dow ? { kind: 'swim', title: '', note: 'Piscina municipal' } : restDay))
+  await seedConfig(p, { weeklyRoutine }, BASE)
+  await p.locator('.tabbar button', { hasText: 'Inicio' }).click()
+  await p.waitForTimeout(500)
+  const r = await p.evaluate(() => {
+    const card = document.querySelector('.card.accent')
+    const h2 = card?.querySelector('h2')
+    const hasButton = card
+      ? Array.from(card.querySelectorAll('button')).some(b => (b.textContent ?? '').includes('Empezar la sesión'))
+      : false
+    return { found: !!card, h2: h2?.textContent ?? null, hasButton }
+  })
+  const s1 = check(r.h2 === 'Natación', 'SWIM-01/Inicio', `el h2 de .card.accent dice "${r.h2}", esperado "Natación"`)
+  const s2 = check(r.hasButton, 'SWIM-01/Inicio', 'no hay boton de inicio dentro de .card.accent en un dia de natacion (la regresion que se corrige)')
+  console.log(`\n===== SWIM-01 (dia de natacion en Inicio) =====\n  h2 "${r.h2}" ${s1} | boton de inicio presente ${r.hasButton} ${s2}`)
+  await ctx.close()
+}
+
+// ---- SWIM-02: open the swim logger from Entrenar and drive it end to end.
+// Two things this proves that nothing else covers:
+//   1. SessionShell owns `.session-head`, so ADR-06's
+//      `.main:has(.session-head) { display: block }` (styles.css) applies
+//      automatically on the swim screen too — asserted here at 1440px,
+//      which had ZERO coverage for ANY screen before this check existed.
+//   2. R7's fix end to end: filling + marking a block enables "Terminar",
+//      and finishing lands a swim row in the history. ----
+{
+  const ctx = await br.newContext({ viewport: { width: 1440, height: 900 } })
+  const p = await ctx.newPage()
+  await p.goto(BASE, { waitUntil: 'networkidle' })
+  await p.waitForTimeout(900)
+  await p.locator('.tabbar button', { hasText: 'Entrenar' }).click()
+  await p.waitForTimeout(400)
+  await p.locator('[data-testid="start-swim"]').click()
+  await p.waitForTimeout(600)
+
+  const shell = await p.evaluate(() => {
+    const main = document.querySelector('.main')
+    return {
+      hasHead: !!document.querySelector('.session-head'),
+      mainDisplay: main ? getComputedStyle(main).display : null,
+    }
+  })
+  const s1 = check(shell.hasHead, 'SWIM-02/session-head', '.session-head no existe en la pantalla de natacion')
+  const s2 = check(shell.mainDisplay === 'block', 'SWIM-02/ADR-06',
+    `.main tiene display "${shell.mainDisplay}" a 1440px, se esperaba "block" (.main:has(.session-head), styles.css)`)
+
+  await p.locator('button', { hasText: '+ Agregar bloque' }).click()
+  await p.waitForTimeout(300)
+  const finishBtn = p.locator('.session-head button.primary', { hasText: 'Terminar' })
+  const disabledBefore = await finishBtn.isDisabled()
+  const s3 = check(disabledBefore, 'SWIM-02/Terminar', 'Terminar deberia arrancar deshabilitado con un bloque vacio, sin datos cargados')
+
+  await p.locator('.setnow input').nth(0).fill('16')
+  await p.locator('.setnow input').nth(1).fill('8:00')
+  await p.locator('.setnow .check').click()
+  await p.waitForTimeout(300)
+  const disabledAfter = await finishBtn.isDisabled()
+  const s4 = check(!disabledAfter, 'SWIM-02/Terminar', 'Terminar sigue deshabilitado tras cargar largos+tiempo y marcar el bloque')
+
+  await finishBtn.click()
+  await p.waitForTimeout(700)
+  const historyText = await p.evaluate(() => document.querySelector('.tablewrap')?.textContent ?? '')
+  const s5 = check(historyText.includes('Natación'), 'SWIM-02/Historial', `el historial no muestra una fila de natacion: "${historyText.slice(0, 200)}"`)
+
+  console.log(
+    `\n===== SWIM-02 (registrador de natacion, 1440px) =====\n` +
+      `  .session-head ${s1} | ADR-06 .main display=block ${s2} | Terminar arranca deshabilitado ${s3} | se habilita al cargar+marcar ${s4} | historial muestra la fila ${s5}`,
+  )
   await ctx.close()
 }
 

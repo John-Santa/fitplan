@@ -106,6 +106,18 @@ export default function Settings() {
               <input type="date" value={config.blockEnd} onChange={e => saveConfig({ ...config, blockEnd: e.target.value })} />
             </div>
           </div>
+          <label htmlFor="pool" style={{ marginTop: 12 }}>Largo de la piscina (m)</label>
+          <input
+            id="pool" type="number" inputMode="decimal" step="0.5" defaultValue={config.poolLengthM}
+            onBlur={e => {
+              const v = Number(e.target.value)
+              if (!Number.isNaN(v) && v > 0) saveConfig({ ...config, poolLengthM: v })
+            }}
+          />
+          <p className="hint">
+            Convierte los largos que cargas en la pantalla de natación a metros. Cambiarlo no reescribe el
+            historial ya guardado.
+          </p>
         </div>
       </div>
 

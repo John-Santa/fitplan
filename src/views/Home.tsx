@@ -69,10 +69,21 @@ export default function Home({ go }: { go: (tab: 'train' | 'measure') => void })
               <h2 style={{ fontSize: 19, marginTop: 2 }}>{DONE_TODAY[doneKind].title}</h2>
               <p style={{ marginBottom: 0 }}>{DONE_TODAY[doneKind].note}</p>
             </>
-          ) : suggested ? (
+          ) : todayKind ? (
             <>
               <h2 style={{ fontSize: 19, marginTop: 2 }}>{dayTitle(today)}</h2>
-              <p style={{ marginBottom: 10 }}>{suggested.zone}{today.note !== '' && ` · ${today.note}`}</p>
+              {/* suggested es null en un dia de natacion (routineForWeekday
+                 solo resuelve dias de entreno): sin zona de rutina que
+                 mostrar, solo la nota del dia si existe. El boton, en
+                 cambio, se habilita por disciplina planificada (todayKind),
+                 no por si hay una rutina de fuerza — antes routineForWeekday
+                 devolvia null para natacion y el CTA desaparecia entero. */}
+              {(suggested ? suggested.zone : today.note) !== '' && (
+                <p style={{ marginBottom: 10 }}>
+                  {suggested ? suggested.zone : today.note}
+                  {suggested && today.note !== '' && ` · ${today.note}`}
+                </p>
+              )}
               <button className="primary big block" onClick={() => go('train')}>Empezar la sesión</button>
             </>
           ) : (

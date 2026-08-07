@@ -1,4 +1,4 @@
-import type { RoutineId, Session, SessionByKind, SessionKind, StrengthSession, SwimSession, WeeklyRoutine } from '../types'
+import type { RoutineId, Session, SessionByKind, SessionKind, StrengthSession, SwimBlock, SwimSession, SwimStroke, WeeklyRoutine } from '../types'
 import { SESSION_KIND_FOR_DAY, routineById } from './plan'
 import { bestSet, doneSets, fmt, mmss, sessionVolume, todayISO } from './calc'
 
@@ -86,9 +86,69 @@ function swimHasLoggedEntries(s: SwimSession): boolean {
   return s.blocks.some(b => b.done)
 }
 
-/** Metros nadados: solo bloques marcados, igual criterio que doneSets. */
-function swimDistance(s: SwimSession): number {
+/** Metros nadados: solo bloques marcados, igual criterio que doneSets.
+ *  Exportada (F1-5): Train.tsx la usa para la linea de historial y el
+ *  detalle de una SwimSession, el mismo rol que sessionVolume cumple para
+ *  fuerza. */
+export function swimDistance(s: SwimSession): number {
   return s.blocks.reduce((a, b) => a + (b.done ? (b.distanceM ?? 0) : 0), 0)
+}
+
+/** Etiqueta en espanol de cada estilo, y el orden en que se ofrecen en el
+ *  selector de SwimBody. Record<SwimStroke, string> es la misma compuerta de
+ *  exhaustividad que KIND_LABELS en plan.ts: agregar un SwimStroke rompe la
+ *  compilacion aca hasta que se le da nombre. */
+export const SWIM_STROKE_LABELS: Record<SwimStroke, string> = {
+  freestyle: 'Crol',
+  backstroke: 'Espalda',
+  breaststroke: 'Pecho',
+  butterfly: 'Mariposa',
+  mixed: 'Mixto',
+}
+
+export const SWIM_STROKES = Object.keys(SWIM_STROKE_LABELS) as SwimStroke[]
+
+/** Metros a partir de largos tipeados por el usuario: distanceM = laps *
+ *  poolLengthM. Nunca se guarda el numero de largos en si — cambiar el
+ *  largo de la piscina no debe reescribir el historial, la misma regla que
+ *  guardar el peso en vez del numero de placa (ver A5 en el plan). */
+export function lapsToMetres(laps: number, poolLengthM: number): number {
+  return laps * poolLengthM
+}
+
+/** Inversa de lapsToMetres, para mostrar de vuelta en el input el numero de
+ *  largos que corresponde a los metros guardados (con el mismo poolLengthM
+ *  con el que se multiplico). null si no hay distancia cargada. */
+export function metresToLaps(distanceM: number | null, poolLengthM: number): number | null {
+  return distanceM == null ? null : distanceM / poolLengthM
+}
+
+/** Ritmo de un bloque en segundos cada 100 m, o null si falta tiempo o
+ *  distancia (bloque sin cronometrar) o la distancia es 0 — nunca se
+ *  guarda, siempre se deriva (ver mmss en calc.ts para el formato mm:ss al
+ *  mostrarlo). */
+export function swimPaceSecPer100m(b: Pick<SwimBlock, 'distanceM' | 'timeSec'>): number | null {
+  if (b.distanceM == null || b.timeSec == null || b.distanceM <= 0) return null
+  return (b.timeSec / b.distanceM) * 100
+}
+
+/** Condicion para habilitar "Terminar" en la pantalla de natacion: alguna
+ *  distancia o tiempo cargado, SIN mirar la marca de "hecho" (a diferencia
+ *  de hasLoggedEntries, que si la mira, para el digest de "cuanto se
+ *  hizo"). Exigir la marca aca reproduciria R7: quien tipea distancia y
+ *  tiempo pero no toca la casilla no podria ni siquiera intentar guardar la
+ *  sesion. */
+export function swimHasEnteredData(s: SwimSession): boolean {
+  return s.blocks.some(b => b.distanceM != null || b.timeSec != null)
+}
+
+/** Camino de fin de natacion (R7). A diferencia del fin de fuerza en
+ *  Train.tsx (`sets: active.sets.filter(s => s.done)`), esto NUNCA
+ *  descarta un bloque por su marca de `done`: persiste todo lo cargado tal
+ *  cual. `now` se recibe en vez de llamar a Date.now() aca adentro para que
+ *  la funcion sea pura y comprobable por su valor de retorno. */
+export function finishSwimSession(s: SwimSession, now: number): SwimSession {
+  return { ...s, finishedAt: now }
 }
 
 function swimDigest(s: SwimSession): SessionDigest {

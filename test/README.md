@@ -25,13 +25,16 @@ anywhere but a session scratchpad:
 - `ui-harness.mjs` — the main harness. 8 viewports (6 mobile/tablet + 2
   desktop, 1200x800 and 1920x1080) × navigation tabs × all three routines
   (with an `ORD-01` guard that the start-button count still matches the
-  routine count), worst-case hero strings, light-theme color check, a
-  `seedConfig()` regression check, a `seedMeasurements()`-backed desktop
-  table-breakout check, and `seedSessions()`-backed legacy/mixed-discipline
-  checks (`LEGACY-01`, `LEGACY-02`, `MIX-01`).
+  routine count — 3 routines + the swim card, since F1-5), worst-case hero
+  strings, light-theme color check, a `seedConfig()` regression check, a
+  `seedMeasurements()`-backed desktop table-breakout check,
+  `seedSessions()`-backed legacy/mixed-discipline checks (`LEGACY-01`,
+  `LEGACY-02`, `MIX-01`), and the swim-logger checks (`SWIM-01`, `SWIM-02`)
+  added in F1-5.
 - `occlusion.mjs` — a focused probe for one failure mode: does a fixed
-  overlay (rest timer, tab bar) cover the current-set block or its kg input,
-  in portrait and landscape.
+  overlay (rest timer, tab bar) cover the current-set/current-block and its
+  first input, in portrait and landscape. Runs the probe twice: once against
+  a strength routine, once against the swim logger (`SWIM-03`, F1-5).
 
 ## Running
 
@@ -157,22 +160,50 @@ await seedSessions(page, [
 
 ## data-testid — introduced narrowly, only where a check binds to a value
 
-There is no `data-testid` anywhere else in `src/`. It exists in exactly two
-places: the four `<Tile>`s on Inicio (`Tile` in `src/components/ui.tsx`
-takes an optional `testId` prop) and the per-routine start button on
-Entrenar (`data-testid={\`start-${r.id}\`}` in `Train.tsx`).
+There is no `data-testid` anywhere else in `src/`. It exists in exactly
+three places: the four `<Tile>`s on Inicio (`Tile` in `src/components/ui.tsx`
+takes an optional `testId` prop), the per-routine start button on Entrenar
+(`data-testid={\`start-${r.id}\`}` in `Train.tsx`), and the swim start button
+(`data-testid="start-swim"`, same file, F1-5).
 
 The rule for adding another one: a check needs it when it must bind to a
 **value** rather than a **position**. `MIX-01` needs the exact "Volumen"
 tile regardless of how many tiles render before it — a testid, not an
 ordinal `.nth()`. `ORD-01` (below) exists precisely because the *positional*
 selector it replaced (`button.primary.nth(i)`) would silently repoint to the
-wrong routine the moment a fourth `button.primary` (a future "Nadar" card)
-appears — `ui-harness.mjs` and `occlusion.mjs` bind to `[data-testid="start-dia1"]`
-etc. instead, and `ORD-01` separately asserts the start-button *count*
-still equals the routine count, so a reshuffle fails loudly instead of
-silently exercising the wrong routine. The tap-target check still selects by
-tag and role, so none of this perturbs it.
+wrong routine the moment a fourth `button.primary` appears — `ui-harness.mjs`
+and `occlusion.mjs` bind to `[data-testid="start-dia1"]`/`[data-testid="start-swim"]`
+etc. instead, and `ORD-01` separately asserts the start-button *count*. F1-5
+is exactly the predicted reshuffle: the swim card is a fourth
+`button.primary`, so `ORD-01`'s expected count moved from `ROUT_IDS.length`
+to `ROUT_IDS.length + 1` in that same change — the check did its job (would
+have failed loudly instead of silently exercising the wrong routine) and
+was updated deliberately, not silenced. The tap-target check still selects
+by tag and role, so none of this perturbs it.
+
+## SWIM-01 / SWIM-02 / SWIM-03 — the swim logger (F1-5)
+
+- **`SWIM-01`** (in `ui-harness.mjs`) seeds a `weeklyRoutine` whose *today*
+  slot (`new Date().getDay()`, computed in Node so the check is
+  date-independent) is `{kind:'swim'}`, then asserts Inicio's `.card.accent`
+  renders an `h2` reading "Natación" **and** contains a start button. This
+  is the regression `SESSION_KIND_FOR_DAY` fixes in `Home.tsx`: before F1-5,
+  the card gated its button on `routineForWeekday(...) !== null`, which is
+  always `null` for a swim day (it only resolves `'training'` days) — a
+  swim day rendered a title and note with no way to start anything.
+- **`SWIM-02`** (in `ui-harness.mjs`, at 1440px) opens the swim logger from
+  Entrenar and asserts `.session-head` exists **and**
+  `getComputedStyle(document.querySelector('.main')).display === 'block'` —
+  the ADR-06 assertion (`.main:has(.session-head)` in `styles.css`), which
+  had no coverage for *any* screen before this check. It then fills a
+  block's largos and tiempo, marks it, asserts "Terminar" goes from
+  disabled to enabled, finishes the session, and asserts the history shows
+  a "Natación" row.
+- **`SWIM-03`** (a second, standalone loop in `occlusion.mjs`) reuses the
+  exact same `.setnow` occlusion probe as the strength scenario, in
+  landscape and portrait, against the swim logger instead. This was nearly
+  free because `SwimBody` reuses `.setnow`/`.setrow` verbatim (see A4 in the
+  plan) instead of introducing new markup the probe would need to learn.
 
 ## Adding a check
 

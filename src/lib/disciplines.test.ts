@@ -13,7 +13,13 @@ import {
   dayCountFor,
   DISCIPLINES,
   finishedIn,
+  finishSwimSession,
+  lapsToMetres,
+  metresToLaps,
   sessionDigest,
+  swimDistance,
+  swimHasEnteredData,
+  swimPaceSecPer100m,
   weeklyCount,
   weeklySetCount,
   weeklySummary,
@@ -186,5 +192,100 @@ describe('DISCIPLINES', () => {
     expect(s.poolLengthM).toBe(25)
     expect(s.blocks).toEqual([])
     expect(s.finishedAt).toBeNull()
+  })
+})
+
+describe('lapsToMetres / metresToLaps (F1-5)', () => {
+  it('convierte largos a metros con una piscina de 25 m', () => {
+    expect(lapsToMetres(16, 25)).toBe(400)
+  })
+
+  it('convierte largos a metros con una piscina que NO es de 25 m', () => {
+    // Piscina de 33.3 m (una comun en piletas semiolimpicas): el punto de
+    // guardar metros y no largos es exactamente que esta cuenta no dependa
+    // de asumir 25 en ningun lado.
+    expect(lapsToMetres(12, 33.3)).toBeCloseTo(399.6, 6)
+  })
+
+  it('metresToLaps es la inversa de lapsToMetres para la MISMA piscina', () => {
+    const poolLengthM = 33.3
+    const laps = 12
+    expect(metresToLaps(lapsToMetres(laps, poolLengthM), poolLengthM)).toBeCloseTo(laps, 6)
+  })
+
+  it('metresToLaps devuelve null si no hay distancia cargada', () => {
+    expect(metresToLaps(null, 25)).toBeNull()
+  })
+})
+
+describe('swimPaceSecPer100m — ritmo derivado (F1-5)', () => {
+  it('calcula segundos cada 100 m para un bloque cronometrado', () => {
+    // 400 m en 480 s = 120 s cada 100 m.
+    expect(swimPaceSecPer100m({ distanceM: 400, timeSec: 480 })).toBe(120)
+  })
+
+  it('devuelve null para un bloque sin cronometrar (timeSec null)', () => {
+    expect(swimPaceSecPer100m({ distanceM: 400, timeSec: null })).toBeNull()
+  })
+
+  it('devuelve null para un bloque sin distancia cargada (distanceM null)', () => {
+    expect(swimPaceSecPer100m({ distanceM: null, timeSec: 480 })).toBeNull()
+  })
+
+  it('devuelve null en vez de Infinity/NaN si la distancia es 0', () => {
+    expect(swimPaceSecPer100m({ distanceM: 0, timeSec: 30 })).toBeNull()
+  })
+})
+
+describe('finishSwimSession — ronda completa de R7', () => {
+  it('persiste un bloque con distancia y tiempo cargados aunque no este marcado como hecho', () => {
+    // Reproduce R7 al reves: alguien tipea largos y tiempo pero nunca toca
+    // la casilla. El fin de fuerza (Train.tsx) descartaria este bloque con
+    // `.filter(s => s.done)`; el de natacion no debe hacerlo.
+    const session: SwimSession = {
+      kind: 'swim',
+      id: 'swim-r7',
+      date: todayISO(),
+      startedAt: Date.now() - 600000,
+      finishedAt: null,
+      poolLengthM: 25,
+      blocks: [
+        { index: 0, distanceM: 400, timeSec: 480, stroke: 'freestyle', done: false },
+        { index: 1, distanceM: null, timeSec: null, stroke: 'mixed', done: false },
+      ],
+      rpe: null,
+      notes: '',
+    }
+    const now = Date.now()
+    const finished = finishSwimSession(session, now)
+    expect(finished.finishedAt).toBe(now)
+    // El bloque cargado sin marcar sigue teniendo sus valores intactos.
+    expect(finished.blocks[0]).toEqual({ index: 0, distanceM: 400, timeSec: 480, stroke: 'freestyle', done: false })
+    // El bloque vacio tambien sobrevive tal cual (ni se agrega ni se quita nada).
+    expect(finished.blocks).toHaveLength(2)
+  })
+
+  it('swimHasEnteredData se habilita con datos cargados, sin mirar la marca de hecho', () => {
+    const withData: SwimSession = {
+      kind: 'swim', id: 's1', date: todayISO(), startedAt: Date.now(), finishedAt: null,
+      poolLengthM: 25, blocks: [{ index: 0, distanceM: 400, timeSec: null, stroke: 'freestyle', done: false }],
+      rpe: null, notes: '',
+    }
+    const empty: SwimSession = { ...withData, blocks: [{ index: 0, distanceM: null, timeSec: null, stroke: 'freestyle', done: false }] }
+    expect(swimHasEnteredData(withData)).toBe(true)
+    expect(swimHasEnteredData(empty)).toBe(false)
+  })
+
+  it('swimDistance solo suma bloques marcados (mismo criterio que doneSets)', () => {
+    const s: SwimSession = {
+      kind: 'swim', id: 's2', date: todayISO(), startedAt: Date.now(), finishedAt: Date.now(),
+      poolLengthM: 25,
+      blocks: [
+        { index: 0, distanceM: 400, timeSec: 480, stroke: 'freestyle', done: true },
+        { index: 1, distanceM: 200, timeSec: null, stroke: 'mixed', done: false },
+      ],
+      rpe: null, notes: '',
+    }
+    expect(swimDistance(s)).toBe(400)
   })
 })

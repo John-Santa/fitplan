@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import type { RoutineId, StrengthSession } from '../types'
-import { ROUTINES, blockPhase, routineById, routineDaysLabel, routineForWeekday, routineSetCount } from '../lib/plan'
-import { doneSets, fmtDate, fmtDuration, sessionVolume, todayISO } from '../lib/calc'
-import { DISCIPLINES, sessionDigest } from '../lib/disciplines'
+import type { RoutineId, Session } from '../types'
+import { ROUTINES, SESSION_KIND_FOR_DAY, blockPhase, routineById, routineDaysLabel, routineForWeekday, routineSetCount } from '../lib/plan'
+import { doneSets, fmtDate, fmtDuration, mmss, sessionVolume, todayISO } from '../lib/calc'
+import { DISCIPLINES, SWIM_STROKE_LABELS, finishSwimSession, metresToLaps, sessionDigest, swimDistance, swimPaceSecPer100m } from '../lib/disciplines'
 import { useStore } from '../lib/store'
 import ActiveSession from './ActiveSession'
 import ExerciseProgress from './ExerciseProgress'
@@ -10,17 +10,15 @@ import { Empty } from '../components/ui'
 
 export default function Train() {
   const { sessions, config, saveSession, deleteSession } = useStore()
-  // Entrenar es, por ahora, exclusivamente de fuerza (la natacion llega en
-  // F1-5 con su propia pantalla): filtrar aca es lo que le permite a
-  // ActiveSession, sessionVolume y doneSets seguir tipados a StrengthSession
-  // sin narrowing repetido en cada uso mas abajo.
-  const strengthSessions = sessions.filter((s): s is StrengthSession => s.kind === 'strength')
-  const [active, setActive] = useState<StrengthSession | null>(null)
+  const [active, setActive] = useState<Session | null>(null)
   const [detail, setDetail] = useState<string | null>(null)
   const [progressFor, setProgressFor] = useState<RoutineId | null>(null)
 
   const phase = blockPhase(new Date(), config.blockStart)
   const suggested = routineForWeekday(config.weeklyRoutine, new Date().getDay())
+  // Que disciplina, si alguna, planifica hoy — gobierna la pildora "hoy" de
+  // la tarjeta de natacion, igual criterio que Home.tsx usa para su CTA.
+  const todayKind = SESSION_KIND_FOR_DAY[config.weeklyRoutine[new Date().getDay()].kind]
 
   if (active) {
     return (
@@ -29,11 +27,13 @@ export default function Train() {
         setsDelta={phase.setsDelta}
         onChange={setActive}
         onFinish={async () => {
-          const finished: StrengthSession = {
-            ...active,
-            finishedAt: Date.now(),
-            sets: active.sets.filter(s => s.done),
-          }
+          const finished: Session =
+            active.kind === 'strength'
+              ? { ...active, finishedAt: Date.now(), sets: active.sets.filter(s => s.done) }
+              // R7: el fin de natacion nunca descarta un bloque por su marca
+              // de "hecho" (ver finishSwimSession en disciplines.ts) — a
+              // diferencia de la linea de arriba, que si filtra para fuerza.
+              : finishSwimSession(active, Date.now())
           await saveSession(finished)
           setActive(null)
         }}
@@ -47,41 +47,77 @@ export default function Train() {
   }
 
   if (detail) {
-    const s = strengthSessions.find(x => x.id === detail)
+    const s = sessions.find(x => x.id === detail)
     if (!s) return null
-    const r = routineById(s.routineId)
+    const digest = sessionDigest(s)
     return (
       <>
         <button className="ghost" onClick={() => setDetail(null)}>← Volver</button>
-        <div className="eyebrow">{fmtDate(s.date, true)} · {doneSets(s)} series</div>
-        <h1>{r?.name}</h1>
-        <p className="muted num">
-          {Math.round(sessionVolume(s)).toLocaleString('es-CO')} kg de volumen
-          {s.finishedAt && ` · ${fmtDuration(s.finishedAt - s.startedAt)}`}
-        </p>
-        <div className="tablewrap">
-          <table>
-            <thead>
-              <tr><th>Ejercicio</th><th>Serie</th><th>kg</th><th>Reps</th></tr>
-            </thead>
-            <tbody>
-              {s.sets
-                .slice()
-                .sort((a, b) => a.exerciseId.localeCompare(b.exerciseId) || a.setIndex - b.setIndex)
-                .map((x, i) => {
-                  const ex = r?.exercises.find(e => e.id === x.exerciseId)
-                  return (
-                    <tr key={i}>
-                      <td>{ex?.name ?? x.exerciseId}</td>
-                      <td className="num">{x.setIndex + 1}</td>
-                      <td className="num">{x.weight ?? '—'}</td>
-                      <td className="num">{x.reps ?? '—'}</td>
-                    </tr>
-                  )
-                })}
-            </tbody>
-          </table>
-        </div>
+        {s.kind === 'strength' ? (
+          <>
+            <div className="eyebrow">{fmtDate(s.date, true)} · {doneSets(s)} series</div>
+            <h1>{digest.title}</h1>
+            <p className="muted num">
+              {Math.round(sessionVolume(s)).toLocaleString('es-CO')} kg de volumen
+              {s.finishedAt && ` · ${fmtDuration(s.finishedAt - s.startedAt)}`}
+            </p>
+            <div className="tablewrap">
+              <table>
+                <thead>
+                  <tr><th>Ejercicio</th><th>Serie</th><th>kg</th><th>Reps</th></tr>
+                </thead>
+                <tbody>
+                  {s.sets
+                    .slice()
+                    .sort((a, b) => a.exerciseId.localeCompare(b.exerciseId) || a.setIndex - b.setIndex)
+                    .map((x, i) => {
+                      const r = routineById(s.routineId)
+                      const ex = r?.exercises.find(e => e.id === x.exerciseId)
+                      return (
+                        <tr key={i}>
+                          <td>{ex?.name ?? x.exerciseId}</td>
+                          <td className="num">{x.setIndex + 1}</td>
+                          <td className="num">{x.weight ?? '—'}</td>
+                          <td className="num">{x.reps ?? '—'}</td>
+                        </tr>
+                      )
+                    })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="eyebrow">{fmtDate(s.date, true)} · {s.blocks.length} bloques</div>
+            <h1>{digest.title}</h1>
+            <p className="muted num">
+              {Math.round(swimDistance(s)).toLocaleString('es-CO')} m
+              {s.finishedAt && ` · ${fmtDuration(s.finishedAt - s.startedAt)}`}
+              {s.rpe != null && ` · RPE ${s.rpe}`}
+            </p>
+            <div className="tablewrap">
+              <table>
+                <thead>
+                  <tr><th>Bloque</th><th>Largos</th><th>Tiempo</th><th>Ritmo (/100m)</th></tr>
+                </thead>
+                <tbody>
+                  {s.blocks.map((b, i) => {
+                    const laps = metresToLaps(b.distanceM, s.poolLengthM)
+                    const pace = swimPaceSecPer100m(b)
+                    return (
+                      <tr key={i} className={b.done ? undefined : 'muted'}>
+                        <td>{b.index + 1} · {SWIM_STROKE_LABELS[b.stroke]}</td>
+                        <td className="num">{laps ?? '—'}</td>
+                        <td className="num">{b.timeSec != null ? mmss(b.timeSec) : '—'}</td>
+                        <td className="num">{pace != null ? mmss(Math.round(pace)) : '—'}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
         {s.notes && (
           <div className="card" style={{ marginTop: 12 }}>
             <div className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em' }}>Notas</div>
@@ -144,18 +180,39 @@ export default function Train() {
             </button>
           </div>
         ))}
+
+        <div className="card" style={{ marginBottom: 10 }}>
+          <div className="row">
+            <div className="grow">
+              <strong>{DISCIPLINES.swim.label}</strong>
+              {todayKind === 'swim' && <span className="pill" style={{ marginLeft: 8 }}>hoy</span>}
+              <div className="muted">Piscina de {config.poolLengthM} m</div>
+            </div>
+            <button
+              className="primary"
+              data-testid="start-swim"
+              onClick={() => setActive(DISCIPLINES.swim.create(todayISO(), config.poolLengthM))}
+            >
+              {DISCIPLINES.swim.startLabel}
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="col-b">
         <div className="section-title">Historial</div>
-        {strengthSessions.length === 0 ? (
+        {sessions.length === 0 ? (
           <Empty title="Todavía no hay sesiones">
-            Cuando termines la primera, aquí vas a ver el peso de cada ejercicio — que es lo que necesitas para saber cuándo subir de placa.
+            Cuando termines la primera, aquí vas a ver el detalle de cada sesión — series y peso en fuerza, largos y tiempo en natación.
           </Empty>
         ) : (
           <div className="tablewrap">
-            {strengthSessions.map(s => {
+            {sessions.map(s => {
               const digest = sessionDigest(s)
+              const metaLine =
+                s.kind === 'strength'
+                  ? `${doneSets(s)} series · ${Math.round(sessionVolume(s)).toLocaleString('es-CO')} kg`
+                  : `${Math.round(swimDistance(s)).toLocaleString('es-CO')} m`
               return (
                 <div className="list-item" key={s.id} onClick={() => setDetail(s.id)} style={{ cursor: 'pointer' }}>
                   <div className="grow">
@@ -164,8 +221,7 @@ export default function Train() {
                       {!s.finishedAt && <span className="pill warn">sin terminar</span>}
                     </div>
                     <div className="t2 num">
-                      {fmtDate(s.date, true)} · {doneSets(s)} series ·{' '}
-                      {Math.round(sessionVolume(s)).toLocaleString('es-CO')} kg
+                      {fmtDate(s.date, true)} · {metaLine}
                     </div>
                     {digest.lines.length > 0 && <div className="t2" style={{ marginTop: 2 }}>{digest.lines.slice(0, 2).join(' · ')}</div>}
                   </div>
