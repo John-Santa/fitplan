@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { fmt, fmtSigned, mmss } from '../lib/calc'
 
 export function Tile({
-  label, value, unit, delta, deltaGood, progress, goalText, dec = 1, accent = false,
+  label, value, unit, delta, deltaGood, progress, goalText, dec = 1, accent = false, testId,
 }: {
   label: string
   value: number | null
@@ -13,6 +13,11 @@ export function Tile({
   goalText?: string
   dec?: number
   accent?: boolean
+  /** Solo para el arnes de UI: un tile se identifica por posicion salvo que
+   *  una verificacion necesite atarse a un VALOR (p. ej. MIX-01, que debe
+   *  leer el volumen de fuerza sin depender de cuantos tiles se rendericen
+   *  antes). Opcional, no afecta el render ni el estilo. */
+  testId?: string
 }) {
   let cls = 'flat'
   if (delta != null && Math.abs(delta) >= 0.05 && deltaGood) {
@@ -20,7 +25,7 @@ export function Tile({
     cls = good ? 'up' : 'down'
   }
   return (
-    <div className={accent ? 'tile accent' : 'tile'}>
+    <div className={accent ? 'tile accent' : 'tile'} data-testid={testId}>
       <div className="label">{label}</div>
       <div className="value num">
         {fmt(value, dec)} {unit && <span>{unit}</span>}

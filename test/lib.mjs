@@ -99,7 +99,8 @@ export function resolveChromiumPath() {
 }
 
 /* ---------------------------------------------------------------------- *
- * seedConfig — write a Config directly into IndexedDB before the app boots
+ * seedConfig / seedMeasurements / seedSessions — write directly into
+ * IndexedDB before the app boots
  *
  * Mirrors src/lib/db.ts exactly (database name, version, store names, and
  * the literal 'config' key). Do not change these constants without also
@@ -114,11 +115,18 @@ export const STORE_EXERCISE_META = 'exerciseMeta'
 export const STORE_CONFIG = 'config'
 export const CONFIG_KEY = 'config'
 
+const DEFAULT_BASE = 'https://john-santa.github.io/fitplan/'
+
 // Mirrors the *shape* of src/lib/plan.ts's DEFAULT_CONFIG (not necessarily
 // its values) so seedConfig() can always write a structurally complete
 // Config even when the caller only overrides one or two fields. If Config
-// grows new required fields (e.g. the upcoming configurable weekly
-// schedule), add matching baseline fields here.
+// grows new required fields, add matching baseline fields here — this one
+// (`weeklyRoutine`) was itself missing for a while and nothing caught it,
+// because mergeConfig() silently repairs an absent field with the app's own
+// default. That repair is exactly why: without a `weeklyRoutine` here, no
+// check could ever seed a non-default weekly schedule (e.g. "today is a
+// swim day"), since seedConfig() would always hand the app back its own
+// default regardless of what the test asked for.
 const BASELINE_CONFIG = {
   heightCm: 173,
   blockStart: '2026-08-04',
@@ -134,6 +142,120 @@ const BASELINE_CONFIG = {
     chest: 102.5,
     neck: 40.5,
   },
+  // Mirrors src/lib/plan.ts's DEFAULT_WEEKLY_ROUTINE values exactly (not
+  // just its shape) — this is what a check gets unless it overrides
+  // `weeklyRoutine` wholesale in partialConfig.
+  weeklyRoutine: [
+    { kind: 'rest', title: '', note: 'Estiramiento y caminata liviana. Dedica dos horas a cocinar las cinco cenas de la semana: con cena a las 22:15, esta es la tarea más importante del domingo.' },
+    { kind: 'training', routineId: 'dia1', title: '', note: '20:30 en el gimnasio' },
+    { kind: 'swim', title: '', note: '20:00 a 21:00. Cierra el segundo trabajo a las 19:30 y come la fruta o el batido antes de salir. En casa a las 22:30, cena lista para calentar y a dormir a las 23:30.' },
+    { kind: 'training', routineId: 'dia2', title: '', note: '20:30 en el gimnasio' },
+    { kind: 'swim', title: '', note: '20:00 a 21:00. Cierra el segundo trabajo a las 19:30 y come la fruta o el batido antes de salir. En casa a las 22:30, cena lista para calentar y a dormir a las 23:30.' },
+    { kind: 'training', routineId: 'dia3', title: '', note: '20:30 en el gimnasio' },
+    { kind: 'walk', title: '', note: '60 a 75 minutos a la hora que quieras. Dormir 8 h 45.' },
+  ],
+  poolLengthM: 25,
+}
+
+/* ---------------------------------------------------------------------- *
+ * Shared IndexedDB seeding plumbing
+ *
+ * openSeedDb()/seedStore() exist so a third seeder (seedSessions, below)
+ * doesn't have to paste the onupgradeneeded block a third time — it was
+ * already duplicated once between writeConfigInPage and
+ * writeMeasurementsInPage, and that drift is exactly what this extraction
+ * closes off. Both *InPage functions run inside the page via
+ * page.evaluate(), which only ships a function's own source across (see the
+ * geometry() comment in ui-harness.mjs for the same constraint) — that's
+ * why they're plain standalone functions rather than methods that close
+ * over each other.
+ * ---------------------------------------------------------------------- */
+
+// Ensures every object store the app expects exists, mirroring
+// src/lib/db.ts's openDb() onupgradeneeded exactly. On a fresh context the
+// database does not exist yet, so *we* are the ones triggering its
+// creation — every store the app expects must be created here, or the
+// app's later reads/writes to sessions, measurements or exerciseMeta will
+// throw "object store not found".
+function openSeedDbInPage({ dbName, dbVersion, storeSessions, storeMeasurements, storeExerciseMeta, storeConfig }) {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(dbName, dbVersion)
+    req.onupgradeneeded = () => {
+      const db = req.result
+      if (!db.objectStoreNames.contains(storeSessions)) {
+        const s = db.createObjectStore(storeSessions, { keyPath: 'id' })
+        s.createIndex('by-date', 'date')
+        s.createIndex('by-routine', 'routineId')
+      }
+      if (!db.objectStoreNames.contains(storeMeasurements)) {
+        db.createObjectStore(storeMeasurements, { keyPath: 'date' })
+      }
+      if (!db.objectStoreNames.contains(storeExerciseMeta)) {
+        db.createObjectStore(storeExerciseMeta, { keyPath: 'exerciseId' })
+      }
+      if (!db.objectStoreNames.contains(storeConfig)) {
+        db.createObjectStore(storeConfig)
+      }
+    }
+    req.onsuccess = () => {
+      req.result.close()
+      resolve()
+    }
+    req.onerror = () => reject(req.error)
+    req.onblocked = () => reject(new Error('indexedDB open blocked by another connection to the same database'))
+  })
+}
+
+// Writes into a single store. `key !== undefined` puts one `value` under
+// that literal key (the config store's usage: it has no keyPath). Otherwise
+// `value` is treated as an array of records and each is put individually
+// (sessions/measurements, both keyPath stores, so `store.put(row)` alone
+// resolves the key).
+function seedStoreInPage({ dbName, dbVersion, storeName, value, key }) {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(dbName, dbVersion)
+    req.onsuccess = () => {
+      const db = req.result
+      const tx = db.transaction(storeName, 'readwrite')
+      const store = tx.objectStore(storeName)
+      if (key !== undefined) {
+        store.put(value, key)
+      } else {
+        for (const row of value) store.put(row)
+      }
+      tx.oncomplete = () => {
+        db.close()
+        resolve()
+      }
+      tx.onerror = () => reject(tx.error)
+      tx.onabort = () => reject(tx.error)
+    }
+    req.onerror = () => reject(req.error)
+    req.onblocked = () => reject(new Error('indexedDB open blocked by another connection to the same database'))
+  })
+}
+
+// Node-side half of the race-free pattern shared by every seed*() export
+// below: navigate with `waitUntil: 'commit'` (the origin exists, but the
+// document's own scripts have not run yet), then open the database from
+// Node so every store exists before any write. The caller does its own
+// write(s) with seedStore() and the *real* navigation afterwards — by the
+// time the app's bundle starts executing, everything it will read has
+// already been sitting in IndexedDB.
+async function openSeedDb(page, target) {
+  await page.goto(target, { waitUntil: 'commit' })
+  await page.evaluate(openSeedDbInPage, {
+    dbName: DB_NAME,
+    dbVersion: DB_VERSION,
+    storeSessions: STORE_SESSIONS,
+    storeMeasurements: STORE_MEASUREMENTS,
+    storeExerciseMeta: STORE_EXERCISE_META,
+    storeConfig: STORE_CONFIG,
+  })
+}
+
+async function seedStore(page, storeName, value, key) {
+  await page.evaluate(seedStoreInPage, { dbName: DB_NAME, dbVersion: DB_VERSION, storeName, value, key })
 }
 
 /**
@@ -142,92 +264,24 @@ const BASELINE_CONFIG = {
  * it — so a test can exercise a non-default configuration instead of
  * whatever a fresh context auto-seeds on first load.
  *
- * Race-free by construction: we navigate with `waitUntil: 'commit'` (the
- * origin exists, but the document's own scripts have not run yet), write
- * and fully await the IndexedDB transaction from Node, and only then do the
- * *real* navigation. By the time the app's bundle starts executing, the
- * config it will read has already been sitting in IndexedDB.
+ * Race-free by construction: see openSeedDb() above.
  *
  * Returns the full Config object that was written.
  */
 export async function seedConfig(page, partialConfig = {}, base) {
-  const target = base || process.env.BASE || 'https://john-santa.github.io/fitplan/'
+  const target = base || process.env.BASE || DEFAULT_BASE
   const config = {
     ...BASELINE_CONFIG,
     ...partialConfig,
     goal: { ...BASELINE_CONFIG.goal, ...(partialConfig.goal ?? {}) },
   }
 
-  await page.goto(target, { waitUntil: 'commit' })
-  await page.evaluate(writeConfigInPage, {
-    dbName: DB_NAME,
-    dbVersion: DB_VERSION,
-    storeSessions: STORE_SESSIONS,
-    storeMeasurements: STORE_MEASUREMENTS,
-    storeExerciseMeta: STORE_EXERCISE_META,
-    storeConfig: STORE_CONFIG,
-    configKey: CONFIG_KEY,
-    value: config,
-  })
+  await openSeedDb(page, target)
+  await seedStore(page, STORE_CONFIG, config, CONFIG_KEY)
   await page.goto(target, { waitUntil: 'networkidle' })
 
   return config
 }
-
-// Runs inside the page. Kept as a standalone named function (rather than
-// inline) purely so its body reads like normal code instead of a giant
-// string passed to page.evaluate.
-function writeConfigInPage({ dbName, dbVersion, storeSessions, storeMeasurements, storeExerciseMeta, storeConfig, configKey, value }) {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(dbName, dbVersion)
-    req.onupgradeneeded = () => {
-      // Mirrors src/lib/db.ts openDb()'s onupgradeneeded exactly. On a
-      // fresh context the database does not exist yet, so *we* are the
-      // ones triggering its creation — every store the app expects must
-      // be created here, or the app's later reads/writes to sessions,
-      // measurements or exerciseMeta will throw "object store not found".
-      const db = req.result
-      if (!db.objectStoreNames.contains(storeSessions)) {
-        const s = db.createObjectStore(storeSessions, { keyPath: 'id' })
-        s.createIndex('by-date', 'date')
-        s.createIndex('by-routine', 'routineId')
-      }
-      if (!db.objectStoreNames.contains(storeMeasurements)) {
-        db.createObjectStore(storeMeasurements, { keyPath: 'date' })
-      }
-      if (!db.objectStoreNames.contains(storeExerciseMeta)) {
-        db.createObjectStore(storeExerciseMeta, { keyPath: 'exerciseId' })
-      }
-      if (!db.objectStoreNames.contains(storeConfig)) {
-        db.createObjectStore(storeConfig)
-      }
-    }
-    req.onsuccess = () => {
-      const db = req.result
-      const tx = db.transaction(storeConfig, 'readwrite')
-      tx.objectStore(storeConfig).put(value, configKey)
-      tx.oncomplete = () => {
-        db.close()
-        resolve()
-      }
-      tx.onerror = () => reject(tx.error)
-      tx.onabort = () => reject(tx.error)
-    }
-    req.onerror = () => reject(req.error)
-    req.onblocked = () => reject(new Error('indexedDB open blocked by another connection to the same database'))
-  })
-}
-
-/* ---------------------------------------------------------------------- *
- * seedMeasurements — write measurement rows directly into IndexedDB
- *
- * Same race-free pattern as seedConfig(): navigate with `waitUntil: 'commit'`,
- * write and fully await the IndexedDB transaction from Node, then do the
- * real navigation. Needed because on a fresh profile the app only ever
- * seeds one BASELINE measurement, so the measurements table's intrinsic
- * width is well under 947px and any breakout/scroll assertion against it
- * would pass vacuously.
- * ---------------------------------------------------------------------- */
 
 /**
  * Write `rows` (an array of partial Measurement objects, each shallow-merged
@@ -236,58 +290,32 @@ function writeConfigInPage({ dbName, dbVersion, storeSessions, storeMeasurements
  * transaction shape exactly.
  */
 export async function seedMeasurements(page, rows, base) {
-  const target = base || process.env.BASE || 'https://john-santa.github.io/fitplan/'
+  const target = base || process.env.BASE || DEFAULT_BASE
 
-  await page.goto(target, { waitUntil: 'commit' })
-  await page.evaluate(writeMeasurementsInPage, {
-    dbName: DB_NAME,
-    dbVersion: DB_VERSION,
-    storeSessions: STORE_SESSIONS,
-    storeMeasurements: STORE_MEASUREMENTS,
-    storeExerciseMeta: STORE_EXERCISE_META,
-    storeConfig: STORE_CONFIG,
-    rows,
-  })
+  await openSeedDb(page, target)
+  await seedStore(page, STORE_MEASUREMENTS, rows)
   await page.goto(target, { waitUntil: 'networkidle' })
 
   return rows
 }
 
-function writeMeasurementsInPage({ dbName, dbVersion, storeSessions, storeMeasurements, storeExerciseMeta, storeConfig, rows }) {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(dbName, dbVersion)
-    req.onupgradeneeded = () => {
-      const db = req.result
-      if (!db.objectStoreNames.contains(storeSessions)) {
-        const s = db.createObjectStore(storeSessions, { keyPath: 'id' })
-        s.createIndex('by-date', 'date')
-        s.createIndex('by-routine', 'routineId')
-      }
-      if (!db.objectStoreNames.contains(storeMeasurements)) {
-        db.createObjectStore(storeMeasurements, { keyPath: 'date' })
-      }
-      if (!db.objectStoreNames.contains(storeExerciseMeta)) {
-        db.createObjectStore(storeExerciseMeta, { keyPath: 'exerciseId' })
-      }
-      if (!db.objectStoreNames.contains(storeConfig)) {
-        db.createObjectStore(storeConfig)
-      }
-    }
-    req.onsuccess = () => {
-      const db = req.result
-      const tx = db.transaction(storeMeasurements, 'readwrite')
-      const store = tx.objectStore(storeMeasurements)
-      for (const row of rows) store.put(row)
-      tx.oncomplete = () => {
-        db.close()
-        resolve()
-      }
-      tx.onerror = () => reject(tx.error)
-      tx.onabort = () => reject(tx.error)
-    }
-    req.onerror = () => reject(req.error)
-    req.onblocked = () => reject(new Error('indexedDB open blocked by another connection to the same database'))
-  })
+/**
+ * Write `rows` (an array of *raw* objects — not typed Sessions) directly
+ * into the `sessions` store before the app has a chance to read them.
+ * Deliberately untyped: the point is seeding byte shapes the app itself
+ * never writes, including a legacy row with no `kind` property at all, or a
+ * garbage row that normalizeSession() must drop. `sessions` has keyPath
+ * `id`, so no explicit key is passed to seedStore() — each row supplies its
+ * own. Mirrors seedConfig()'s navigation and transaction shape exactly.
+ */
+export async function seedSessions(page, rows, base) {
+  const target = base || process.env.BASE || DEFAULT_BASE
+
+  await openSeedDb(page, target)
+  await seedStore(page, STORE_SESSIONS, rows)
+  await page.goto(target, { waitUntil: 'networkidle' })
+
+  return rows
 }
 
 /* ---------------------------------------------------------------------- *

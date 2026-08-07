@@ -3,11 +3,26 @@
 // Usage:  BASE=http://localhost:5173/ pnpm check:ui
 // See test/README.md for what this checks and how to add a check.
 import { chromium } from 'playwright-core'
-import { createChecklist, resolveChromiumPath, seedConfig, seedMeasurements } from './lib.mjs'
+import { createChecklist, resolveChromiumPath, seedConfig, seedMeasurements, seedSessions } from './lib.mjs'
 
 const BASE = process.env.BASE || 'https://john-santa.github.io/fitplan/'
 const OUT = process.env.OUT
 const TAP_MIN = 44
+
+// Mirrors src/lib/calc.ts's todayISO() exactly (local date, not UTC) — this
+// file stays dependency-light and does not import from src/.
+const todayISO = (d = new Date()) => {
+  const p = n => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
+// Same order as ROUTINES in src/lib/plan.ts (dia1 Pierna, dia2 Empuje, dia3
+// Tracción) — mirrored, not imported, same reasoning as todayISO() above.
+// ROUT_IDS drives the testid-bound clicks below (start-${id}) instead of
+// ordinal button.primary.nth(i), which would silently repoint the moment a
+// fourth start button (e.g. "Nadar") appears on the page.
+const ROUTS = ['Pierna', 'Empuje', 'Tracción']
+const ROUT_IDS = ['dia1', 'dia2', 'dia3']
 
 const VIEWPORTS = [
   { n: '320x568 iPhone SE', w: 320, h: 568, mob: true },
@@ -176,7 +191,6 @@ for (const v of VIEWPORTS) {
   }
 
   // ---- HARNESS-01: force all three routines ----
-  const ROUTS = ['Pierna', 'Empuje', 'Tracción']
   for (let i = 0; i < ROUTS.length; i++) {
     await p.locator('.tabbar button', { hasText: 'Entrenar' }).click()
     await p.waitForTimeout(400)
@@ -188,12 +202,22 @@ for (const v of VIEWPORTS) {
       await p.locator('.tabbar button', { hasText: 'Entrenar' }).click()
       await p.waitForTimeout(400)
     }
-    const prim = p.locator('button.primary')
-    if ((await prim.count()) <= i) {
+    if (i === 0) {
+      // ORD-01: the number of start buttons must equal the routine count, so
+      // a future reshuffle (e.g. F1-5 adding a "Nadar" card among
+      // button.primary) fails loudly here instead of leaving the
+      // testid-bound click below silently pointed at a routine that's still
+      // present but no longer where a positional test expected it.
+      const primCount = await p.locator('button.primary').count()
+      check(primCount === ROUT_IDS.length, `${v.n}/ORD-01`,
+        `hay ${primCount} botones button.primary en Entrenar, se esperaban ${ROUT_IDS.length} (uno por rutina)`)
+    }
+    const startBtn = p.locator(`[data-testid="start-${ROUT_IDS[i]}"]`)
+    if ((await startBtn.count()) === 0) {
       console.log(`  [${ROUTS[i]}] no disponible`)
       continue
     }
-    await prim.nth(i).click()
+    await startBtn.click()
     await p.waitForTimeout(800)
     const g = await p.evaluate(geometry)
     if (!g.rail) {
@@ -360,6 +384,109 @@ for (const v of VIEWPORTS) {
     }
     await ctx.close()
   }
+}
+
+// ---- LEGACY-01: the exact pre-change byte shape (no `kind`) must still
+// normalize and render — this is the migration proof. Covers
+// db.ts:getSessions -> store.tsx:reload -> Train.tsx history end to end. ----
+{
+  const ctx = await br.newContext({ viewport: { width: 390, height: 844 } })
+  const p = await ctx.newPage()
+  const errs = []
+  p.on('pageerror', e => errs.push(e.message))
+  const legacyRow = {
+    id: 'dia1-1',
+    routineId: 'dia1',
+    date: todayISO(),
+    startedAt: Date.now() - 600000,
+    finishedAt: Date.now(),
+    sets: [{ exerciseId: 'leg-press', setIndex: 0, weight: 80, reps: 12, done: true }],
+    notes: '',
+  }
+  await seedSessions(p, [legacyRow], BASE)
+  await p.locator('.tabbar button', { hasText: 'Entrenar' }).click()
+  await p.waitForTimeout(500)
+  const text = await p.evaluate(() => document.querySelector('.tablewrap')?.textContent ?? '')
+  const s1 = check(text.includes('Día 1 — Pierna'), 'LEGACY-01/Entrenar', `el historial no muestra "Día 1 — Pierna": "${text.slice(0, 200)}"`)
+  const s2 = check(text.includes('960'), 'LEGACY-01/Entrenar', `el historial no muestra el volumen 960 kg: "${text.slice(0, 200)}"`)
+  const s3 = check(errs.length === 0, 'LEGACY-01/pageerror', `errores de pagina: ${errs.join('; ')}`)
+  console.log(`\n===== LEGACY-01 (sesion heredada sin \`kind\`) =====\n  titulo "Día 1 — Pierna" ${s1} | volumen 960 kg ${s2} | sin pageerror ${s3}`)
+  await ctx.close()
+}
+
+// ---- LEGACY-02: a corrupt row alongside a valid one must not throw, and
+// must drop only the corrupt row — proves the drop rule in normalizeSession. ----
+{
+  const ctx = await br.newContext({ viewport: { width: 390, height: 844 } })
+  const p = await ctx.newPage()
+  const errs = []
+  p.on('pageerror', e => errs.push(e.message))
+  const validRow = {
+    kind: 'strength',
+    id: 'dia2-legacy02',
+    routineId: 'dia2',
+    date: todayISO(),
+    startedAt: Date.now() - 600000,
+    finishedAt: Date.now(),
+    sets: [{ exerciseId: 'chest-press', setIndex: 0, weight: 60, reps: 10, done: true }],
+    notes: '',
+  }
+  const garbageRow = { id: 'roto', nope: true }
+  await seedSessions(p, [validRow, garbageRow], BASE)
+  await p.locator('.tabbar button', { hasText: 'Entrenar' }).click()
+  await p.waitForTimeout(500)
+  const rowCount = await p.locator('.tablewrap .list-item').count()
+  const s1 = check(rowCount === 1, 'LEGACY-02/Entrenar', `hay ${rowCount} filas de historial, se esperaba 1 (la fila corrupta debe descartarse)`)
+  const s2 = check(errs.length === 0, 'LEGACY-02/pageerror', `errores de pagina: ${errs.join('; ')}`)
+  console.log(`\n===== LEGACY-02 (fila corrupta + fila valida) =====\n  1 fila de historial ${s1} | sin pageerror ${s2}`)
+  await ctx.close()
+}
+
+// ---- MIX-01: one finished strength session + one finished swim session,
+// same day. The "Volumen" tile must equal the strength volume exactly — not
+// a sum with swim, not NaN — and the strength count must stay 1, not 2. This
+// is R1, the defect live in production today (weeklyVolume/weeklyCount used
+// to filter only by date and finishedAt, never by discipline). ----
+{
+  const ctx = await br.newContext({ viewport: { width: 390, height: 844 } })
+  const p = await ctx.newPage()
+  const strengthRow = {
+    kind: 'strength',
+    id: 'dia1-mix01',
+    routineId: 'dia1',
+    date: todayISO(),
+    startedAt: Date.now() - 1800000,
+    finishedAt: Date.now(),
+    sets: [{ exerciseId: 'leg-press', setIndex: 0, weight: 100, reps: 10, done: true }],
+    notes: '',
+  }
+  // Matches SwimSession from src/types.ts exactly: kind, poolLengthM,
+  // blocks: SwimBlock[] ({index, distanceM, timeSec, stroke, done}), rpe.
+  const swimRow = {
+    kind: 'swim',
+    id: 'swim-mix01',
+    date: todayISO(),
+    startedAt: Date.now() - 1800000,
+    finishedAt: Date.now(),
+    poolLengthM: 25,
+    blocks: [{ index: 0, distanceM: 400, timeSec: 480, stroke: 'freestyle', done: true }],
+    rpe: 6,
+    notes: '',
+  }
+  await seedSessions(p, [strengthRow, swimRow], BASE)
+  await p.locator('.tabbar button', { hasText: 'Inicio' }).click()
+  await p.waitForTimeout(500)
+  const tiles = await p.evaluate(() => {
+    const read = testId => {
+      const el = document.querySelector(`[data-testid="${testId}"] .value`)
+      return el ? el.textContent.replace(/\s+/g, '') : null
+    }
+    return { strengthWork: read('tile-strength-work'), strengthCount: read('tile-strength-count') }
+  })
+  const s1 = check(tiles.strengthWork === '1000kg', 'MIX-01/Volumen', `tile-strength-work = "${tiles.strengthWork}", esperado "1000kg" (solo la sesion de fuerza, sin sumar natacion, sin NaN)`)
+  const s2 = check(tiles.strengthCount === '1', 'MIX-01/Fuerza', `tile-strength-count = "${tiles.strengthCount}", esperado "1" (no debe contar la sesion de natacion)`)
+  console.log(`\n===== MIX-01 (1 fuerza + 1 natacion, mismo dia) =====\n  Volumen ${tiles.strengthWork} ${s1} | conteo fuerza ${tiles.strengthCount} ${s2}`)
+  await ctx.close()
 }
 
 await br.close()

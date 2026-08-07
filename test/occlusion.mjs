@@ -30,7 +30,10 @@ for (const v of [
   await p.addStyleTag({ content: `:root{--safe-b:${v.sb}}` })
   await p.locator('.tabbar button', { hasText: 'Entrenar' }).click()
   await p.waitForTimeout(450)
-  await p.locator('button.primary').nth(1).click()
+  // Bound by testid (start-dia2 = "Día 2 — Empuje"), not by ordinal position:
+  // an ordinal .nth(1) on button.primary would silently repoint to whatever
+  // is the second primary button once F1-5 adds a "Nadar" card.
+  await p.locator('[data-testid="start-dia2"]').click()
   await p.waitForTimeout(800)
   const chk = p.getByRole('button', { name: /Marcar serie/ })
   if (await chk.count()) {

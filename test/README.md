@@ -20,13 +20,15 @@ anywhere but a session scratchpad:
 ## Files
 
 - `lib.mjs` — shared helpers: Chromium executable discovery, the
-  `seedConfig()`/`seedMeasurements()` IndexedDB helpers, and a small
-  pass/fail checklist used by both scripts.
+  `seedConfig()`/`seedMeasurements()`/`seedSessions()` IndexedDB helpers, and
+  a small pass/fail checklist used by both scripts.
 - `ui-harness.mjs` — the main harness. 8 viewports (6 mobile/tablet + 2
-  desktop, 1200x800 and 1920x1080) × navigation tabs × all three routines,
-  worst-case hero strings, light-theme color check, a `seedConfig()`
-  regression check, and a `seedMeasurements()`-backed desktop table-breakout
-  check. ~478 checks.
+  desktop, 1200x800 and 1920x1080) × navigation tabs × all three routines
+  (with an `ORD-01` guard that the start-button count still matches the
+  routine count), worst-case hero strings, light-theme color check, a
+  `seedConfig()` regression check, a `seedMeasurements()`-backed desktop
+  table-breakout check, and `seedSessions()`-backed legacy/mixed-discipline
+  checks (`LEGACY-01`, `LEGACY-02`, `MIX-01`).
 - `occlusion.mjs` — a focused probe for one failure mode: does a fixed
   overlay (rest timer, tab bar) cover the current-set block or its kg input,
   in portrait and landscape.
@@ -101,25 +103,76 @@ const config = await seedConfig(page, { blockStart: '2020-01-15', blockEnd: '202
 
 Implementation notes (see `lib.mjs` for the full comments):
 
-- The database name (`fitplan`), version (`1`), store name (`config`), and
-  key (the literal string `'config'`) are copied from `src/lib/db.ts`, not
-  guessed. If that file's schema changes, update the constants at the top of
-  `lib.mjs` to match.
+- The database name (`fitplan`), version (`1`), store names, and the
+  `config` store's literal key (`'config'`) are copied from `src/lib/db.ts`,
+  not guessed. If that file's schema changes, update the constants at the
+  top of `lib.mjs` to match.
 - It is race-free by construction: it navigates with `waitUntil: 'commit'`
   (the origin exists, but no page script has run yet), writes and fully
   awaits the IndexedDB transaction from Node, then does the *real*
   navigation. There is no window where the app could read a stale/default
   config.
-- On a fresh context the IndexedDB database does not exist yet, so the
-  helper's `onupgradeneeded` handler has to create every object store the
-  app expects (`sessions`, `measurements`, `exerciseMeta`, `config`) — not
-  just `config` — mirroring `db.ts`'s schema exactly. Skipping this would
-  leave the app unable to read/write sessions or measurements at all.
+- On a fresh context the IndexedDB database does not exist yet, so a shared
+  `openSeedDb()`/`seedStore()` pair (in `lib.mjs`) opens the database and
+  creates every object store the app expects (`sessions`, `measurements`,
+  `exerciseMeta`, `config`) — not just the one being written — mirroring
+  `db.ts`'s schema exactly. `seedConfig()`, `seedMeasurements()` and
+  `seedSessions()` all route through it instead of each repeating the
+  `onupgradeneeded` block; that block was pasted twice before this was
+  extracted, and a third copy for `seedSessions()` would have made it worse.
+  Skipping it entirely would leave the app unable to read/write sessions or
+  measurements at all.
 
 `ui-harness.mjs` has a small `SEEDCONFIG` section near the end that seeds a
 `blockStart`/`blockEnd` far from the default and asserts the Ajustes view's
 date inputs reflect the seeded value — that's both the regression check and
 the reference usage example.
+
+## seedSessions — testing session shapes the app itself never writes
+
+`seedSessions(page, rows, base?)` (in `lib.mjs`) writes raw objects — not
+typed `Session`s — directly into the `sessions` store, before the app boots.
+Same race-free navigation as `seedConfig()`/`seedMeasurements()`. It exists
+to test shapes that no code path in this app produces, but that a real
+device's IndexedDB can still contain:
+
+- A **legacy row with no `kind` property at all** — the exact byte shape
+  every session had before the multi-discipline engine. `normalizeSession()`
+  must still read it as a strength session (`LEGACY-01`).
+- A **corrupt row** (e.g. missing `routineId`) that `normalizeSession()`
+  must drop without throwing, leaving every other row intact (`LEGACY-02`).
+- A **mix of disciplines on the same day**, to prove per-discipline metrics
+  don't sum incompatible units or double-count sessions (`MIX-01`, guarding
+  R1 from the design doc).
+
+```js
+import { seedSessions } from './lib.mjs'
+
+await seedSessions(page, [
+  { id: 'dia1-1', routineId: 'dia1', date: '2026-08-06', startedAt: 1, finishedAt: 2,
+    sets: [{ exerciseId: 'leg-press', setIndex: 0, weight: 80, reps: 12, done: true }], notes: '' },
+  // no `kind` — normalizeSession() treats this as a pre-engine strength session
+])
+```
+
+## data-testid — introduced narrowly, only where a check binds to a value
+
+There is no `data-testid` anywhere else in `src/`. It exists in exactly two
+places: the four `<Tile>`s on Inicio (`Tile` in `src/components/ui.tsx`
+takes an optional `testId` prop) and the per-routine start button on
+Entrenar (`data-testid={\`start-${r.id}\`}` in `Train.tsx`).
+
+The rule for adding another one: a check needs it when it must bind to a
+**value** rather than a **position**. `MIX-01` needs the exact "Volumen"
+tile regardless of how many tiles render before it — a testid, not an
+ordinal `.nth()`. `ORD-01` (below) exists precisely because the *positional*
+selector it replaced (`button.primary.nth(i)`) would silently repoint to the
+wrong routine the moment a fourth `button.primary` (a future "Nadar" card)
+appears — `ui-harness.mjs` and `occlusion.mjs` bind to `[data-testid="start-dia1"]`
+etc. instead, and `ORD-01` separately asserts the start-button *count*
+still equals the routine count, so a reshuffle fails loudly instead of
+silently exercising the wrong routine. The tap-target check still selects by
+tag and role, so none of this perturbs it.
 
 ## Adding a check
 

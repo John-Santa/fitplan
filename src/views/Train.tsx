@@ -131,7 +131,11 @@ export default function Train() {
                   {r.exercises.length} ejercicios · {routineSetCount(r, phase.setsDelta)} series
                 </div>
               </div>
-              <button className="primary" onClick={() => setActive(DISCIPLINES.strength.create(todayISO(), r.id))}>
+              <button
+                className="primary"
+                data-testid={`start-${r.id}`}
+                onClick={() => setActive(DISCIPLINES.strength.create(todayISO(), r.id))}
+              >
                 {DISCIPLINES.strength.startLabel}
               </button>
             </div>

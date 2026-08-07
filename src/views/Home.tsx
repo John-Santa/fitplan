@@ -118,18 +118,26 @@ export default function Home({ go }: { go: (tab: 'train' | 'measure') => void })
             .flatMap(l => [
               <Tile
                 key={`${l.kind}-count`}
+                testId={`tile-${l.kind}-count`}
                 label={l.label}
                 value={l.count}
                 dec={0}
                 progress={l.target > 0 ? (l.count / l.target) * 100 : undefined}
                 goalText={l.target > 0 ? `meta ${l.target} por semana` : 'sin días programados'}
               />,
-              <Tile key={`${l.kind}-work`} label={l.workLabel} value={l.workValue} unit={l.workUnit} dec={0} />,
+              <Tile
+                key={`${l.kind}-work`}
+                testId={`tile-${l.kind}-work`}
+                label={l.workLabel}
+                value={l.workValue}
+                unit={l.workUnit}
+                dec={0}
+              />,
             ])}
           {/* Cuenta sesiones de cualquier disciplina: es un conteo, no una
              suma de unidades incompatibles, asi que mezclarlas no lo vuelve
              incorrecto (ver R1). */}
-          <Tile label="Sesiones del bloque" value={blockFinished} dec={0} />
+          <Tile testId="tile-block" label="Sesiones del bloque" value={blockFinished} dec={0} />
         </div>
       </div>
 
