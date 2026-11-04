@@ -6,7 +6,7 @@
 // verifica tsc -b.
 import { describe, expect, it } from 'vitest'
 import type { Config } from '../types'
-import { DEFAULT_CONFIG, mergeConfig, normalizeSession } from './plan'
+import { DEFAULT_CONFIG, ROUTINES, exerciseGuideUrl, exerciseNameFor, mergeConfig, moveItem, newExercise, normalizeSession, resolveRoutines } from './plan'
 
 describe('mergeConfig', () => {
   it('rellena un campo de primer nivel faltante (regresion 53590ef)', () => {
@@ -184,5 +184,61 @@ describe('normalizeSession', () => {
         kind: 'swim', id: 'swim-1', date: '2026-08-05', startedAt: 1000, finishedAt: null, blocks: [], rpe: null, notes: '',
       }),
     ).toBeNull()
+  })
+})
+
+describe('rutinas personalizadas', () => {
+  const custom = { ...newExercise('Sentadilla búlgara'), sets: 4 }
+
+  it('mergeConfig conserva ejercicios personalizados validos', () => {
+    const merged = mergeConfig({ routineExercises: { dia1: [custom] } })
+    expect(merged.routineExercises.dia1).toEqual([custom])
+    expect(merged.routineExercises.dia2).toBeUndefined()
+  })
+
+  it('mergeConfig descarta listas invalidas, vacias o con ids repetidos', () => {
+    const merged = mergeConfig({
+      routineExercises: {
+        dia1: [],
+        dia2: [{ ...custom, sets: 0 }],
+        dia3: [custom, custom],
+      },
+    })
+    expect(merged.routineExercises).toEqual({})
+  })
+
+  it('una config vieja sin routineExercises usa las rutinas por defecto', () => {
+    const merged = mergeConfig({ heightCm: 170 })
+    expect(merged.routineExercises).toEqual({})
+    expect(resolveRoutines(merged.routineExercises)).toEqual(ROUTINES)
+  })
+
+  it('resolveRoutines reemplaza solo la rutina editada', () => {
+    const r = resolveRoutines({ dia2: [custom] })
+    expect(r[0]).toBe(ROUTINES[0])
+    expect(r[1].exercises).toEqual([custom])
+    expect(r[1].name).toBe(ROUTINES[1].name)
+  })
+
+  it('exerciseNameFor cae al catalogo para ejercicios quitados', () => {
+    const r = resolveRoutines({ dia1: [custom] })
+    expect(exerciseNameFor(r, custom.id)).toBe('Sentadilla búlgara')
+    expect(exerciseNameFor(r, 'leg-press')).toBe('Prensa de piernas 45°')
+    expect(exerciseNameFor(r, 'desconocido')).toBe('desconocido')
+  })
+
+  it('la guia del catalogo enlaza directo y la personalizada busca en MuscleWiki', () => {
+    expect(exerciseGuideUrl({ name: 'x', mwSlug: 'machine-leg-press' })).toBe(
+      'https://musclewiki.com/es-es/exercise/machine-leg-press',
+    )
+    const url = exerciseGuideUrl(custom)
+    expect(url).toContain('site%3Amusclewiki.com')
+    expect(url).toContain(encodeURIComponent('Sentadilla búlgara'))
+  })
+
+  it('moveItem intercambia y respeta los bordes', () => {
+    expect(moveItem([1, 2, 3], 0, 1)).toEqual([2, 1, 3])
+    expect(moveItem([1, 2, 3], 0, -1)).toEqual([1, 2, 3])
+    expect(moveItem([1, 2, 3], 2, 1)).toEqual([1, 2, 3])
   })
 })

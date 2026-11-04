@@ -1,14 +1,13 @@
 import { useState } from 'react'
 import type { RoutineId, StrengthSession } from '../types'
-import { routineById } from '../lib/plan'
 import { bestSet, fmt, fmtDate, fmtSigned, shouldProgress } from '../lib/calc'
 import { useStore } from '../lib/store'
 import Chart, { type Series } from '../components/Chart'
 import { Empty, Tile } from '../components/ui'
 
 export default function ExerciseProgress({ routineId, onBack }: { routineId: RoutineId; onBack: () => void }) {
-  const { sessions } = useStore()
-  const routine = routineById(routineId)!
+  const { sessions, routines } = useStore()
+  const routine = routines.find(r => r.id === routineId)!
   const [exId, setExId] = useState(routine.exercises[0].id)
   const ex = routine.exercises.find(e => e.id === exId)!
 

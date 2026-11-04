@@ -1,5 +1,5 @@
-import type { RoutineId, Session, SessionByKind, SessionKind, StrengthSession, SwimBlock, SwimSession, SwimStroke, WeeklyRoutine } from '../types'
-import { SESSION_KIND_FOR_DAY, routineById } from './plan'
+import type { Routine, RoutineId, Session, SessionByKind, SessionKind, StrengthSession, SwimBlock, SwimSession, SwimStroke, WeeklyRoutine } from '../types'
+import { ROUTINES, SESSION_KIND_FOR_DAY, exerciseNameFor } from './plan'
 import { bestSet, doneSets, fmt, mmss, sessionVolume, todayISO } from './calc'
 
 /* ---------- tabla de descriptores de disciplina ---------- */
@@ -37,7 +37,7 @@ export interface Discipline<S extends Session> {
   betterIsLower: boolean
   defaultRestSec: number
   create: (date: string, seed: CreateSeed<S>) => S
-  digest: (s: S) => SessionDigest
+  digest: (s: S, routines?: Routine[]) => SessionDigest
   hasLoggedEntries: (s: S) => boolean
 }
 
@@ -58,12 +58,16 @@ function strengthHasLoggedEntries(s: StrengthSession): boolean {
   return doneSets(s) > 0
 }
 
-function strengthDigest(s: StrengthSession): SessionDigest {
-  const r = routineById(s.routineId)
-  const best = r?.exercises.map(e => ({ e, b: bestSet(s.sets, e.id) })).filter(x => x.b) ?? []
+function strengthDigest(s: StrengthSession, routines: Routine[] = ROUTINES): SessionDigest {
+  const r = routines.find(x => x.id === s.routineId)
+  // Primero los ejercicios vigentes de la rutina, despues los que ya no estan
+  // en ella pero tienen series guardadas: el historial no se pierde al editar.
+  const ids = [...(r?.exercises.map(e => e.id) ?? [])]
+  for (const x of s.sets) if (!ids.includes(x.exerciseId)) ids.push(x.exerciseId)
+  const best = ids.map(id => ({ id, b: bestSet(s.sets, id) })).filter(x => x.b)
   return {
     title: r?.name ?? s.routineId,
-    lines: best.map(x => `${x.e.name}: ${fmt(x.b!.weight)} kg × ${x.b!.reps}`),
+    lines: best.map(x => `${exerciseNameFor(routines, x.id)}: ${fmt(x.b!.weight)} kg × ${x.b!.reps}`),
     hasEntries: strengthHasLoggedEntries(s),
   }
 }
@@ -216,10 +220,10 @@ export const DISCIPLINES: { [K in SessionKind]: Discipline<SessionByKind[K]> } =
  *  de retorno explicito y sin `default`: agregar una disciplina rompe esto
  *  en "Function lacks ending return statement" hasta que se le agrega su
  *  rama aca. */
-export function sessionDigest(s: Session): SessionDigest {
+export function sessionDigest(s: Session, routines?: Routine[]): SessionDigest {
   switch (s.kind) {
     case 'strength':
-      return DISCIPLINES.strength.digest(s)
+      return DISCIPLINES.strength.digest(s, routines)
     case 'swim':
       return DISCIPLINES.swim.digest(s)
   }
