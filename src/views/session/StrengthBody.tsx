@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Exercise, SetLog, StrengthSession } from '../../types'
-import { MW, routineById } from '../../lib/plan'
+import { exerciseGuideUrl } from '../../lib/plan'
 import { fmtDate, formatLastPerformance, lastPerformance, progressLine, shouldProgress } from '../../lib/calc'
 import { useStore } from '../../lib/store'
 import { Check } from '../../components/ui'
@@ -18,11 +18,11 @@ type RailState = 'current' | 'done' | 'partial' | 'pending'
 type SetRowState = 'done' | 'current' | 'pending'
 
 export default function StrengthBody({ session, setsDelta, onChange, onFinish, onDiscard }: Props) {
-  const { sessions, meta, saveMeta } = useStore()
+  const { sessions, meta, saveMeta, routines } = useStore()
   // lastPerformance solo mira fuerza (calc.ts la tipa a StrengthSession[]):
   // una sesion de natacion no tiene .sets.
   const strengthSessions = sessions.filter((s): s is StrengthSession => s.kind === 'strength')
-  const routine = routineById(session.routineId)!
+  const routine = routines.find(r => r.id === session.routineId)!
   const [currentIndex, setCurrentIndex] = useState(0)
   const [cueOpen, setCueOpen] = useState<Record<string, boolean>>({})
   const railRef = useRef<HTMLDivElement>(null)
@@ -223,9 +223,9 @@ export default function StrengthBody({ session, setsDelta, onChange, onFinish, o
             </button>
             {isCueOpen && (
               <div className="disclosure-body">
-                <p className="hint" style={{ marginBottom: 12 }}>{ex.cue}</p>
+                {ex.cue && <p className="hint" style={{ marginBottom: 12 }}>{ex.cue}</p>}
                 <div className="btnrow" style={{ marginBottom: 16 }}>
-                  <a href={MW + ex.mwSlug} target="_blank" rel="noopener noreferrer" className="btn primary">
+                  <a href={exerciseGuideUrl(ex)} target="_blank" rel="noopener noreferrer" className="btn primary">
                     Ver en MuscleWiki
                   </a>
                 </div>

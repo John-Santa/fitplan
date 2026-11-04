@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { RoutineId, Session } from '../types'
-import { ROUTINES, SESSION_KIND_FOR_DAY, blockPhase, routineById, routineDaysLabel, routineForWeekday, routineSetCount } from '../lib/plan'
+import { SESSION_KIND_FOR_DAY, blockPhase, exerciseNameFor, routineDaysLabel, routineForWeekday, routineSetCount } from '../lib/plan'
 import { doneSets, fmtDate, fmtDuration, mmss, sessionVolume, todayISO } from '../lib/calc'
 import { DISCIPLINES, SWIM_STROKE_LABELS, finishSwimSession, metresToLaps, sessionDigest, swimDistance, swimPaceSecPer100m } from '../lib/disciplines'
 import { useStore } from '../lib/store'
@@ -16,7 +16,7 @@ import { Empty } from '../components/ui'
 type ProgressTarget = { kind: 'strength'; routineId: RoutineId } | { kind: 'swim' }
 
 export default function Train() {
-  const { sessions, config, saveSession, deleteSession } = useStore()
+  const { sessions, config, routines, saveSession, deleteSession } = useStore()
   const [active, setActive] = useState<Session | null>(null)
   const [detail, setDetail] = useState<string | null>(null)
   const [progressFor, setProgressFor] = useState<ProgressTarget | null>(null)
@@ -58,7 +58,7 @@ export default function Train() {
   if (detail) {
     const s = sessions.find(x => x.id === detail)
     if (!s) return null
-    const digest = sessionDigest(s)
+    const digest = sessionDigest(s, routines)
     return (
       <>
         <button className="ghost" onClick={() => setDetail(null)}>← Volver</button>
@@ -80,11 +80,9 @@ export default function Train() {
                     .slice()
                     .sort((a, b) => a.exerciseId.localeCompare(b.exerciseId) || a.setIndex - b.setIndex)
                     .map((x, i) => {
-                      const r = routineById(s.routineId)
-                      const ex = r?.exercises.find(e => e.id === x.exerciseId)
                       return (
                         <tr key={i}>
-                          <td>{ex?.name ?? x.exerciseId}</td>
+                          <td>{exerciseNameFor(routines, x.exerciseId)}</td>
                           <td className="num">{x.setIndex + 1}</td>
                           <td className="num">{x.weight ?? '—'}</td>
                           <td className="num">{x.reps ?? '—'}</td>
@@ -165,7 +163,7 @@ export default function Train() {
 
       <div className="col-a">
         <div className="section-title">Empezar sesión</div>
-        {ROUTINES.map(r => (
+        {routines.map(r => (
           <div className="card" key={r.id} style={{ marginBottom: 10 }}>
             <div className="row">
               <div className="grow">
@@ -220,7 +218,7 @@ export default function Train() {
         ) : (
           <div className="tablewrap">
             {sessions.map(s => {
-              const digest = sessionDigest(s)
+              const digest = sessionDigest(s, routines)
               const metaLine =
                 s.kind === 'strength'
                   ? `${doneSets(s)} series · ${Math.round(sessionVolume(s)).toLocaleString('es-CO')} kg`

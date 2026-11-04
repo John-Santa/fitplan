@@ -2,7 +2,9 @@ import type {
   Config,
   DayKind,
   DayPlan,
+  Exercise,
   Routine,
+  RoutineOverrides,
   RoutineId,
   Session,
   SessionKind,
@@ -15,6 +17,14 @@ import type {
 } from '../types'
 
 export const MW = 'https://musclewiki.com/es-es/exercise/'
+
+/** Guia del ejercicio. Los del catalogo traen slug de MuscleWiki y enlazan
+ *  directo; los que agrega el usuario no, asi que se buscan por nombre
+ *  restringiendo la busqueda a musclewiki.com. */
+export function exerciseGuideUrl(e: Pick<Exercise, 'name' | 'mwSlug'>): string {
+  if (e.mwSlug) return MW + e.mwSlug
+  return 'https://www.google.com/search?q=' + encodeURIComponent(`site:musclewiki.com ${e.name.trim()}`)
+}
 
 /* ---------- semana configurable ---------- */
 
@@ -160,6 +170,7 @@ export const DEFAULT_CONFIG: Config = {
   },
   weeklyRoutine: DEFAULT_WEEKLY_ROUTINE,
   poolLengthM: 25,
+  routineExercises: {},
 }
 
 export const BASELINE = {
@@ -342,6 +353,45 @@ export const ROUTINES: Routine[] = [
   },
 ]
 
+/** Catalogo efectivo: la rutina por defecto con los ejercicios del usuario
+ *  encima, si los hay. */
+export function resolveRoutines(overrides: RoutineOverrides): Routine[] {
+  return ROUTINES.map(r => {
+    const custom = overrides[r.id]
+    return custom ? { ...r, exercises: custom } : r
+  })
+}
+
+/** Nombre de un ejercicio para el historial: primero la rutina vigente, luego
+ *  el catalogo por defecto (ejercicios quitados de la rutina), si no el id. */
+export function exerciseNameFor(routines: Routine[], id: string): string {
+  for (const r of routines) {
+    const e = r.exercises.find(x => x.id === id)
+    if (e) return e.name
+  }
+  return exerciseById(id)?.name ?? id
+}
+
+/** Ejercicio nuevo del usuario. El id es estable y unico (llave del historial). */
+export function newExercise(name: string): Exercise {
+  return {
+    id: `custom-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+    name: name.trim(),
+    sets: 3, repsLow: 10, repsHigh: 12, restSec: 90,
+    cue: '',
+    mwSlug: '',
+  }
+}
+
+/** Mueve el elemento i una posicion (dir -1 arriba, +1 abajo). */
+export function moveItem<T>(list: T[], i: number, dir: -1 | 1): T[] {
+  const j = i + dir
+  if (j < 0 || j >= list.length) return list
+  const out = list.slice()
+  ;[out[i], out[j]] = [out[j], out[i]]
+  return out
+}
+
 export const ALL_EXERCISES = ROUTINES.flatMap(r => r.exercises)
 export const exerciseById = (id: string) => ALL_EXERCISES.find(e => e.id === id)
 export const routineById = (id: string) => ROUTINES.find(r => r.id === id)
@@ -377,6 +427,35 @@ function mergeWeeklyRoutine(stored: unknown): WeeklyRoutine {
     return isDayPlan(v) ? v : DEFAULT_WEEKLY_ROUTINE[i]
   }
   return [at(0), at(1), at(2), at(3), at(4), at(5), at(6)]
+}
+
+function isExercise(v: unknown): v is Exercise {
+  if (typeof v !== 'object' || v === null) return false
+  const e = v as Record<string, unknown>
+  const posInt = (n: unknown) => typeof n === 'number' && Number.isInteger(n) && n >= 1
+  return (
+    typeof e.id === 'string' && e.id !== '' &&
+    typeof e.name === 'string' && e.name.trim() !== '' &&
+    posInt(e.sets) && posInt(e.repsLow) && posInt(e.repsHigh) &&
+    (e.repsHigh as number) >= (e.repsLow as number) &&
+    typeof e.restSec === 'number' && Number.isFinite(e.restSec) && e.restSec >= 0 &&
+    typeof e.cue === 'string' && typeof e.mwSlug === 'string'
+  )
+}
+
+/** Una rutina con lista invalida, vacia o con ids repetidos vuelve a la de por
+ *  defecto entera: misma regla de reparacion que mergeWeeklyRoutine. */
+function mergeRoutineOverrides(stored: unknown): RoutineOverrides {
+  const src = (typeof stored === 'object' && stored !== null ? stored : {}) as Record<string, unknown>
+  const out: RoutineOverrides = {}
+  for (const r of ROUTINES) {
+    const list = src[r.id]
+    if (!Array.isArray(list) || list.length === 0 || !list.every(isExercise)) continue
+    const ids = new Set(list.map(e => e.id))
+    if (ids.size !== list.length) continue
+    out[r.id] = list.map(e => ({ ...e, ...(e.main ? { main: true } : {}) }))
+  }
+  return out
 }
 
 /** Usa el valor guardado si es un numero valido (finito); si no, el de por
@@ -430,6 +509,7 @@ export function mergeConfig(stored: unknown): Config {
     goal: mergeGoal(c.goal),
     weeklyRoutine: mergeWeeklyRoutine(c.weeklyRoutine),
     poolLengthM: num(c.poolLengthM, DEFAULT_CONFIG.poolLengthM),
+    routineExercises: mergeRoutineOverrides(c.routineExercises),
   }
 }
 

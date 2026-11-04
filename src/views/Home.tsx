@@ -1,4 +1,4 @@
-import { blockPhase, blockWeeks, dayTitle, DONE_TODAY, nextWeekdayFor, routineForWeekday, routineSetCount, routineShortName, ROUTINES, SESSION_KIND_FOR_DAY, weekdayAbbr, WEEKDAYS } from '../lib/plan'
+import { blockPhase, blockWeeks, dayTitle, DONE_TODAY, nextWeekdayFor, routineForWeekday, routineSetCount, routineShortName, SESSION_KIND_FOR_DAY, weekdayAbbr, WEEKDAYS } from '../lib/plan'
 import { fmt, fmtDate, fmtSigned, todayISO } from '../lib/calc'
 import { blockSessionCount, weeklySummary } from '../lib/disciplines'
 import { useDerivedMeasurements, useStore } from '../lib/store'
@@ -12,7 +12,7 @@ function deltaClass(delta: number | null, deltaGood: 'lower' | 'higher'): 'up' |
 }
 
 export default function Home({ go }: { go: (tab: 'train' | 'measure') => void }) {
-  const { sessions, config } = useStore()
+  const { sessions, config, routines } = useStore()
   const rows = useDerivedMeasurements()
   const now = new Date()
   const phase = blockPhase(now, config.blockStart)
@@ -189,7 +189,7 @@ export default function Home({ go }: { go: (tab: 'train' | 'measure') => void })
 
       <div className="col-b">
         <div className="section-title">Las tres rutinas</div>
-        {ROUTINES.map(r => {
+        {routines.map(r => {
           const badgeDow = nextWeekdayFor(config.weeklyRoutine, r.id, dow)
           return (
             <div className="list-item" key={r.id}>

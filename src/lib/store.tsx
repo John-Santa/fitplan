@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import type { Config, ExerciseMeta, Measurement, Session } from '../types'
+import type { Config, ExerciseMeta, Measurement, Routine, Session } from '../types'
 import * as db from './db'
-import { BASELINE, DEFAULT_CONFIG, mergeConfig } from './plan'
+import { BASELINE, DEFAULT_CONFIG, mergeConfig, resolveRoutines } from './plan'
 import { derive } from './calc'
 
 interface Store {
@@ -21,6 +21,8 @@ interface Store {
   measurements: Measurement[]
   meta: Record<string, ExerciseMeta>
   config: Config
+  /** Rutinas con los ejercicios personalizados ya aplicados. */
+  routines: Routine[]
   reload: () => Promise<void>
   saveSession: (s: Session) => Promise<void>
   deleteSession: (id: string) => Promise<void>
@@ -91,6 +93,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       measurements,
       meta: Object.fromEntries(metaList.map(m => [m.exerciseId, m])),
       config,
+      routines: resolveRoutines(config.routineExercises),
       reload,
       saveSession: async s => { await db.saveSession(s); await reload() },
       deleteSession: async id => { await db.deleteSession(id); await reload() },

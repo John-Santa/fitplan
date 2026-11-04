@@ -3,6 +3,7 @@ import type { DayPlan } from '../types'
 import { downloadBackupFile, exportBackup, getLastBackupAt, importBackup, saveLastBackupAt, wipeAll } from '../lib/db'
 import { useStore } from '../lib/store'
 import { Tile, useToast } from '../components/ui'
+import RoutineEditor from './RoutineEditor'
 import { daysSince, fmt, fmtDate } from '../lib/calc'
 import { DAY_KINDS, dayTitle, isDayKind, isRoutineId, KIND_LABELS, MEASUREMENT_KEYS, MEASUREMENT_LABELS, MEASUREMENT_UNITS, ROUTINES, suggestRoutineId, weekdayLabel, withDay, withText } from '../lib/plan'
 
@@ -179,6 +180,9 @@ export default function Settings() {
       </div>
 
       <div className="col-a">
+        <div className="section-title">Ejercicios de las rutinas</div>
+        <RoutineEditor />
+
         <div className="section-title">Metas de la semana 8</div>
         <div className="card">
           <div className="formgrid">
