@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import { DONE_TODAY, SESSION_KIND_FOR_DAY, weekdayAbbr, WEEKDAYS } from '../lib/plan'
 import { activeRoutines, dayTitleFor, nextWeekdayFor, planWeekStates, routineForWeekday, routineSetCount, routineShortName, weekLabel } from '../lib/planQueries'
 import { blockWeekNumber, phaseForWeek } from '../lib/phases'
@@ -104,7 +105,7 @@ export default function Home({ go }: { go: (tab: 'train' | 'measure') => void })
               {phase && phase.loadNote !== '' && <div className="muted">Esta semana: {phase.loadNote}</div>}
             </div>
           </div>
-          <div className="weekbar" style={{ marginTop: 9, gridTemplateColumns: `repeat(${plan.weeks}, 1fr)` }}>
+          <div className="weekbar" style={{ marginTop: 9, '--weeks': plan.weeks } as CSSProperties}>
             {planWeekStates(plan.weeks, week).map(w => (
               <div key={w.week}>
                 <i className={w.state} />

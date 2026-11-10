@@ -104,9 +104,17 @@ const DEFAULTS: Record<ExerciseCategory, Default> = {
   cardio: { sets: 1, target: { kind: 'time', lowSec: 1200, highSec: 1500 }, restSec: 0 },
 }
 
+/** Ejercicios de una rutina, en todos sus bloques. Un ejercicio aparece una
+ *  sola vez por rutina: el registro de series se agrupa por exerciseId +
+ *  setIndex, asi que dos slots del mismo ejercicio compartirian series. */
+export function routineExerciseIds(plan: TrainingPlan, routineId: string): Set<string> {
+  const routine = plan.routines.find(r => r.id === routineId)
+  return new Set(routine ? routine.blocks.flatMap(b => b.slots.map(s => s.exerciseId)) : [])
+}
+
 export function addSlot(plan: TrainingPlan, routineId: string, blockId: string, exerciseId: string, index?: number): TrainingPlan {
   const exercise = resolveExercise(plan, exerciseId)
-  if (!exercise) return plan
+  if (!exercise || routineExerciseIds(plan, routineId).has(exerciseId)) return plan
   const d = DEFAULTS[exercise.category]
   return editBlock(plan, routineId, blockId, (block, routine) => {
     const taken = new Set([...routine.blocks.flatMap(b => b.slots.map(s => s.id)), ...plan.warmup.slots.map(s => s.id)])
@@ -192,7 +200,7 @@ export function updateSlot(
 
 /** Cambia el ejercicio y conserva series, objetivo, descanso y nota. */
 export function swapExercise(plan: TrainingPlan, routineId: string, blockId: string, slotId: string, exerciseId: string): TrainingPlan {
-  if (!resolveExercise(plan, exerciseId)) return plan
+  if (!resolveExercise(plan, exerciseId) || routineExerciseIds(plan, routineId).has(exerciseId)) return plan
   return editBlock(plan, routineId, blockId, block => {
     const slot = block.slots.find(s => s.id === slotId)
     if (!slot || slot.exerciseId === exerciseId) return null

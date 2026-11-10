@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import type { PlanRoutine, PlanSlot, RoutineBlock, TrainingPlan } from '../../types'
 import ExerciseSheet from '../../components/ExerciseSheet'
 import { resolveExercise } from '../../lib/library'
-import { addCustomExercise, addSlot, moveSlot, removeSlot, renameRoutine, swapExercise } from '../../lib/planEdits'
+import { addCustomExercise, addSlot, moveSlot, removeSlot, renameRoutine, routineExerciseIds, swapExercise } from '../../lib/planEdits'
 import { formatTarget } from '../../lib/phases'
 import ExercisePicker, { type NewExerciseInput } from './ExercisePicker'
 import { Icon } from './icons'
@@ -189,6 +189,7 @@ export default function RoutineEditor({ plan, routine, onBack, onCommit, onArchi
           plan={plan}
           mode={picker.mode}
           currentExerciseId={picker.mode === 'swap' ? edit?.slot.exerciseId : undefined}
+          taken={routineExerciseIds(plan, routine.id)}
           onPick={pick}
           onCreate={create}
           onClose={() => setPicker(null)}

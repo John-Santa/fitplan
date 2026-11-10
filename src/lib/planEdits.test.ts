@@ -5,7 +5,7 @@ import type { TrainingPlan } from '../types'
 import { DEFAULT_PLAN } from './defaultPlan'
 import {
   addCustomExercise, addRoutine, addSlot, archiveRoutine, moveSlot, removeSlot, renameRoutine,
-  resetToTemplate, restoreRoutine, swapExercise, updateSlot,
+  resetToTemplate, restoreRoutine, routineExerciseIds, swapExercise, updateSlot,
 } from './planEdits'
 
 const base = (): TrainingPlan => structuredClone(DEFAULT_PLAN)
@@ -44,10 +44,10 @@ describe('renameRoutine', () => {
 describe('addSlot', () => {
   it('agrega al final con la prescripcion por defecto de fuerza', () => {
     const p = base()
-    const next = addSlot(p, R, blockOf(p).id, 'leg-press')
+    const next = addSlot(p, R, blockOf(p).id, 'chest-press')
     const s = blockOf(next).slots.at(-1)!
     expect(blockOf(next).slots).toHaveLength(blockOf(p).slots.length + 1)
-    expect(s).toMatchObject({ exerciseId: 'leg-press', sets: 3, restSec: 90, target: { kind: 'reps', low: 10, high: 12 } })
+    expect(s).toMatchObject({ exerciseId: 'chest-press', sets: 3, restSec: 90, target: { kind: 'reps', low: 10, high: 12 } })
   })
   it('core: 3 x 10 con 45 s de descanso', () => {
     const p = base()
@@ -205,9 +205,9 @@ describe('swapExercise', () => {
   it('cambia el ejercicio y conserva series, objetivo y descanso', () => {
     const p = base()
     const before = blockOf(p).slots[0]
-    const next = swapExercise(p, R, blockOf(p).id, before.id, 'leg-extension')
+    const next = swapExercise(p, R, blockOf(p).id, before.id, 'single-leg-press')
     const after = blockOf(next).slots[0]
-    expect(after.exerciseId).toBe('leg-extension')
+    expect(after.exerciseId).toBe('single-leg-press')
     expect(after.id).toBe(before.id)
     expect(after.sets).toBe(before.sets)
     expect(after.target).toEqual(before.target)
@@ -362,5 +362,32 @@ describe('resetToTemplate', () => {
     const snap = structuredClone(p)
     resetToTemplate(p)
     expect(p).toEqual(snap)
+  })
+})
+
+// El registro de series se agrupa por exerciseId + setIndex: un mismo ejercicio
+// dos veces en una rutina compartiria series. Por eso es una regla del plan.
+describe('un ejercicio aparece una sola vez por rutina', () => {
+  it('addSlot no agrega un ejercicio que ya esta en la rutina', () => {
+    const p = base()
+    expect(addSlot(p, R, blockOf(p).id, 'leg-press')).toBe(p)
+  })
+  it('swapExercise no cambia a un ejercicio que ya esta en la rutina', () => {
+    const p = base()
+    const [first, second] = blockOf(p).slots
+    expect(swapExercise(p, R, blockOf(p).id, second.id, first.exerciseId)).toBe(p)
+  })
+  it('routineExerciseIds lista los ejercicios de todos los bloques', () => {
+    const p = base()
+    const ids = routineExerciseIds(p, 'espalda-d3')
+    expect(ids.has('mcgill-curl-up')).toBe(true)
+    expect(ids.has('zone2-cardio')).toBe(true)
+    expect(ids.has('leg-press')).toBe(false)
+  })
+  it('ninguna rutina del plan por defecto repite un ejercicio', () => {
+    for (const r of DEFAULT_PLAN.routines) {
+      const all = r.blocks.flatMap(b => b.slots.map(s => s.exerciseId))
+      expect(new Set(all).size, r.id).toBe(all.length)
+    }
   })
 })

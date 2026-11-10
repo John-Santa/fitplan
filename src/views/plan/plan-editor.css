@@ -157,6 +157,9 @@
   text-transform: none; letter-spacing: normal;
 }
 .pe-pick:hover { background: var(--surface-2); }
+/* Ya esta en la rutina: visible pero no elegible (regla de un ejercicio por rutina). */
+.pe-pick:disabled { opacity: 0.45; cursor: not-allowed; }
+.pe-pick:disabled:hover { background: none; }
 .pe-pick-text { flex: 1; min-width: 0; }
 
 /* ---------- formularios ---------- */

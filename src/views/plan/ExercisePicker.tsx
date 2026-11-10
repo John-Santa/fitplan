@@ -22,10 +22,12 @@ export interface NewExerciseInput {
 /** Minusculas sin tildes, para que "dorsal" encuentre "Dorsal ancho". */
 const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
-export default function ExercisePicker({ plan, mode, currentExerciseId, onPick, onCreate, onClose }: {
+export default function ExercisePicker({ plan, mode, currentExerciseId, taken, onPick, onCreate, onClose }: {
   plan: TrainingPlan
   mode: 'add' | 'swap'
   currentExerciseId?: string
+  /** Ejercicios que ya estan en la rutina: no se pueden elegir de nuevo (routineExerciseIds). */
+  taken: ReadonlySet<string>
   onPick: (exerciseId: string) => void
   onCreate: (input: NewExerciseInput) => void
   onClose: () => void
@@ -90,9 +92,11 @@ export default function ExercisePicker({ plan, mode, currentExerciseId, onPick, 
         </div>
       ) : (
         <ul className="pe-list">
-          {results.map(e => (
+          {results.map(e => {
+            const inRoutine = taken.has(e.id) && e.id !== currentExerciseId
+            return (
             <li key={e.id}>
-              <button type="button" className="pe-pick" onClick={() => onPick(e.id)} aria-current={e.id === currentExerciseId ? 'true' : undefined}>
+              <button type="button" className="pe-pick" onClick={() => onPick(e.id)} disabled={inRoutine} aria-current={e.id === currentExerciseId ? 'true' : undefined}>
                 <span className="pe-pick-text">
                   <span className="pe-name">{e.name}</span>
                   <span className="pe-sub">
@@ -102,9 +106,11 @@ export default function ExercisePicker({ plan, mode, currentExerciseId, onPick, 
                 </span>
                 {e.custom && <span className="pill">Propio</span>}
                 {e.id === currentExerciseId && <span className="pill good">Actual</span>}
+                {inRoutine && <span className="pill">En la rutina</span>}
               </button>
             </li>
-          ))}
+            )
+          })}
         </ul>
       )}
     </Sheet>
