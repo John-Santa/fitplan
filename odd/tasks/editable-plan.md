@@ -29,8 +29,8 @@ Assumptions: **A1** replace the stored week only when it references legacy routi
 | T1 | S1 S2 S3 S6 | delegated (user-mandated model routing) | sonnet | done (typecheck ok, 106 tests; RED observed; assess medium/under_budget) | f927318 |
 | T2 | S4 S5 | delegated; Risk item 1+3, own commit, independent verifier | sonnet (+opus verify) | written; isolated commit tsc ok + 135 tests; assess high (escalated item 1) → opus verifier running, native review pending | 6ba9e64 |
 | T3 | S7 S8 | delegated, parallel (L7) | sonnet | running | — |
-| T4 | S9 S10 | delegated, parallel (L7) | haiku | done (typecheck ok, 192 tests in shared tree; RED observed; 57 guide strings verbatim-checked) | this commit |
-| T5 | S11 | delegated, parallel (L7) | sonnet | running | — |
+| T4 | S9 S10 | delegated, parallel (L7) | haiku | done (typecheck ok, 192 tests in shared tree; RED observed; 57 guide strings verbatim-checked) | fa3e059 |
+| T5 | S11 | delegated, parallel (L7) | sonnet | done (48 tests, RED observed; Playwright 375px light/dark: no h-scroll, 0 targets <44px) + parent App.tsx Plan tab/Guide wiring | this commit |
 | T6 | S12 | inline + delegated harness | haiku | pending | — |
 
 Forecast: ~2,500 authored changed lines (content-heavy T1) → exceeds 400, chain strategy needed before first commit.
@@ -47,7 +47,9 @@ Forecast: ~2,500 authored changed lines (content-heavy T1) → exceeds 400, chai
 - **L8 (2026-11-10, T1 result):** reused legacy ids leg-press, leg-extension, leg-curl, hip-abduction, chest-press, lat-pulldown, shoulder-press, pec-deck, triceps-pushdown, neutral-pulldown (history continues). Legacy-only exercises keep their previously shipped slugs (existing behavior). Parent added `sideUnit: 'pierna'` so split squat, step-up and single-leg press render "por pierna" verbatim (RED observed, then GREEN).
 - **L9 (2026-11-10, T2 result):** `DEFAULT_WEEKLY_ROUTINE` kept as legacy fixture; new `PLAN_WEEKLY_ROUTINE` (literal copy of DEFAULT_PLAN.weekTemplate, equality-tested, avoids a plan.ts↔defaultPlan.ts import cycle) used by DEFAULT_CONFIG and as merge fallback. Two old tests that asserted 'diaX' ids are invalid were rewritten (contradict S4). Importing an old v2 backup does not re-run the migration (legacy ids still resolve through archived routines). `normalizePlan` drops unknown fields: any new field in plan types must be added to planStorage.ts (DEFAULT_PLAN round-trip test guards it).
 - **L10 (2026-11-10, T4 result + parent):** dark `--ring` (#2b2b2b) is invisible as a focus ring on #0b0b0b; parent added a global `:focus-visible` using `--accent-ink` (both themes ≥4.5:1) in styles.css and removed the sheet-local rule. Component behavior is not unit-tested (vitest node env, no DOM) → covered by the UI harness in T6.
-- Next: T2 verifier + native review, T3/T5 results, seam check, App.tsx commit, harness.
+- **L11 (2026-11-10, T5 result):** resetToTemplate resets routines only (not warmup/phases/tips/weekTemplate); restSec ≥ 0 allowed (mobility/cardio rest 0); warm-up block not editable (not in S11, open question). `src/views/plan/Sheet.tsx` duplicates `components/BottomSheet.tsx` (same props; built before T4 landed) → unify in the seam step.
+- **L12 (2026-11-10, process):** native committed-only review targets base..HEAD, so the T2 review must run in a separate worktree pinned at 6ba9e64 to stay isolated from later commits.
+- Next: T2 verifier + native review, T3 result, seam (sheet unification, full suite once), harness.
 
 ### L1 pasted document (verbatim)
 
