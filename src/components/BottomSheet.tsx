@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import './sheet.css'
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])'
@@ -7,11 +8,16 @@ interface BottomSheetProps {
   title: string
   onClose: () => void
   children: ReactNode
+  /** Clase extra para estilos propios de una vista (p. ej. `pe-scope` del editor). */
+  className?: string
 }
 
 /** Hoja inferior compartida: scrim, cierre con Escape o toque en el scrim,
  *  foco dentro de la hoja y devuelto al cerrar, y bloqueo del scroll de fondo. */
-export default function BottomSheet({ title, onClose, children }: BottomSheetProps) {
+/** Unica hoja modal de la app (ficha, señales de alarma, editor del plan).
+ *  Se monta en un portal sobre el body para quedar por encima del toast y de
+ *  la barra de pestañas sin depender del contexto de apilamiento de la vista. */
+export default function BottomSheet({ title, onClose, children, className }: BottomSheetProps) {
   const titleId = useId()
   const sheetRef = useRef<HTMLDivElement>(null)
   const onCloseRef = useRef(onClose)
@@ -24,7 +30,8 @@ export default function BottomSheet({ title, onClose, children }: BottomSheetPro
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    sheetRef.current?.focus()
+    // El foco va al panel, no a un campo: no abre el teclado del telefono ni desplaza la vista.
+    sheetRef.current?.focus({ preventScroll: true })
 
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -51,14 +58,14 @@ export default function BottomSheet({ title, onClose, children }: BottomSheetPro
     return () => {
       document.removeEventListener('keydown', onKey)
       document.body.style.overflow = previousOverflow
-      previous?.focus()
+      previous?.focus({ preventScroll: true })
     }
   }, [])
 
-  return (
+  return createPortal(
     <div className="sheet-root">
       <div className="sheet-scrim" aria-hidden="true" onClick={onClose} />
-      <div className="sheet" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} ref={sheetRef}>
+      <div className={className ? `sheet ${className}` : 'sheet'} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} ref={sheetRef}>
         <header className="sheet-head">
           <h2 id={titleId} className="sheet-title">{title}</h2>
           <button type="button" className="sheet-close" aria-label="Cerrar" onClick={onClose}>
@@ -69,6 +76,7 @@ export default function BottomSheet({ title, onClose, children }: BottomSheetPro
         </header>
         <div className="sheet-body">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

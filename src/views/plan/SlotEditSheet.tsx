@@ -6,7 +6,7 @@ import type { PlanSlot, Target, TrainingPlan } from '../../types'
 import { resolveExercise } from '../../lib/library'
 import { updateSlot, type SlotPatch } from '../../lib/planEdits'
 import { Icon } from './icons'
-import Sheet from './Sheet'
+import Sheet from '../../components/BottomSheet'
 
 /** Texto de un campo numerico a numero; vacio = NaN (updateSlot lo rechaza). */
 const num = (s: string) => (s.trim() === '' ? Number.NaN : Number(s.trim().replace(',', '.')))
@@ -87,7 +87,7 @@ export default function SlotEditSheet({ plan, routineId, blockId, slot, onSave, 
   const unit = t.kind === 'time' ? 'Segundos' : t.kind === 'distance' ? 'Metros' : 'Repeticiones'
 
   return (
-    <Sheet title="Editar ejercicio" onClose={onClose}>
+    <Sheet className="pe-scope" title="Editar ejercicio" onClose={onClose}>
       <p className="pe-edit-name">{exercise?.name ?? slot.exerciseId}</p>
       <button type="button" className="pe-gap-md" onClick={onSwap}>
         <Icon name="swap" /> Cambiar ejercicio

@@ -13,7 +13,6 @@ const PATHS: Record<string, ReactNode> = {
   next: <path d="m9 5 7 7-7 7" />,
   plus: <path d="M12 5v14M5 12h14" />,
   minus: <path d="M5 12h14" />,
-  close: <path d="M6 6l12 12M18 6 6 18" />,
   book: <><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4Z" /><path d="M5 17a3 3 0 0 1 3-3h11" /></>,
   check: <path d="m5 12 5 5 9-10" />,
 }

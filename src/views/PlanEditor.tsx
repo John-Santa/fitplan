@@ -9,7 +9,7 @@ import { addRoutine, archiveRoutine, resetToTemplate, restoreRoutine } from '../
 import ConfirmSheet from './plan/ConfirmSheet'
 import { Icon } from './plan/icons'
 import RoutineEditor from './plan/RoutineEditor'
-import Sheet from './plan/Sheet'
+import Sheet from '../components/BottomSheet'
 import './plan/plan-editor.css'
 
 const UNDO_MS = 6000
@@ -222,7 +222,7 @@ function NewRoutineSheet({ onCreate, onClose }: { onCreate: (name: string) => vo
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
   return (
-    <Sheet title="Agregar rutina" onClose={onClose}>
+    <Sheet className="pe-scope" title="Agregar rutina" onClose={onClose}>
       <form
         noValidate
         onSubmit={e => {

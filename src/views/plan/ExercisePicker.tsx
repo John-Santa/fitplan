@@ -5,7 +5,7 @@ import { useMemo, useState } from 'react'
 import type { ExerciseCategory, LibraryExercise, TrainingPlan } from '../../types'
 import { EXERCISE_LIBRARY } from '../../lib/library'
 import { Icon } from './icons'
-import Sheet from './Sheet'
+import Sheet from '../../components/BottomSheet'
 
 export const CATEGORY_LABEL: Record<ExerciseCategory, string> = {
   strength: 'Fuerza', core: 'Core', mobility: 'Movilidad', cardio: 'Cardio',
@@ -50,7 +50,7 @@ export default function ExercisePicker({ plan, mode, currentExerciseId, taken, o
 
   if (view === 'create') {
     return (
-      <Sheet title="Ejercicio propio" onClose={onClose}>
+      <Sheet className="pe-scope" title="Ejercicio propio" onClose={onClose}>
         <CreateForm
           submitLabel={mode === 'swap' ? 'Crear y usar' : 'Crear y agregar'}
           onBack={() => setView('list')}
@@ -61,7 +61,7 @@ export default function ExercisePicker({ plan, mode, currentExerciseId, taken, o
   }
 
   return (
-    <Sheet title={title} onClose={onClose}>
+    <Sheet className="pe-scope" title={title} onClose={onClose}>
       <label htmlFor="pe-search">Buscar</label>
       <input
         id="pe-search"
