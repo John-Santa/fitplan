@@ -6,7 +6,8 @@
 // verifica tsc -b.
 import { describe, expect, it } from 'vitest'
 import type { Config } from '../types'
-import { DEFAULT_CONFIG, mergeConfig, normalizeSession } from './plan'
+import { DEFAULT_CONFIG, DEFAULT_WEEKLY_ROUTINE, mergeConfig, normalizeSession } from './plan'
+import { DEFAULT_PLAN } from './defaultPlan'
 
 describe('mergeConfig', () => {
   it('rellena un campo de primer nivel faltante (regresion 53590ef)', () => {
@@ -56,9 +57,9 @@ describe('mergeConfig', () => {
     expect(merged.weeklyRoutine[6]).toEqual(DEFAULT_CONFIG.weeklyRoutine[6])
   })
 
-  it('un dia de entreno con routineId invalido tambien se repara', () => {
+  it('un dia de entreno con routineId invalido (no es texto) tambien se repara', () => {
     const week = DEFAULT_CONFIG.weeklyRoutine.map((d, i) =>
-      i === 1 ? { kind: 'training', routineId: 'diaX', title: '', note: '' } : d,
+      i === 1 ? { kind: 'training', routineId: 7, title: '', note: '' } : d,
     )
     const merged = mergeConfig({ weeklyRoutine: week })
     expect(merged.weeklyRoutine[1]).toEqual(DEFAULT_CONFIG.weeklyRoutine[1])
@@ -140,8 +141,46 @@ describe('normalizeSession', () => {
     expect(normalizeSession({ ...legacyStrengthRow, kind: 'running' })).toBeNull()
   })
 
-  it('un routineId invalido en una fila de fuerza descarta la sesion entera', () => {
-    expect(normalizeSession({ ...legacyStrengthRow, routineId: 'diaX' })).toBeNull()
+  it('un routineId que no es texto, o es vacio, descarta la fila de fuerza', () => {
+    expect(normalizeSession({ ...legacyStrengthRow, routineId: 7 })).toBeNull()
+    expect(normalizeSession({ ...legacyStrengthRow, routineId: '' })).toBeNull()
+    expect(normalizeSession({ ...legacyStrengthRow, routineId: undefined })).toBeNull()
+  })
+
+  it('conserva sesiones de una rutina del plan nuevo y de una rutina desconocida (S4)', () => {
+    expect(normalizeSession({ ...legacyStrengthRow, routineId: 'espalda-d3' })).toMatchObject({ routineId: 'espalda-d3' })
+    expect(normalizeSession({ ...legacyStrengthRow, routineId: 'diaX' })).toMatchObject({ routineId: 'diaX' })
+  })
+
+  it('una sesion legacy dia1 normaliza igual que antes (sin pain ni campos nuevos)', () => {
+    expect(normalizeSession(legacyStrengthRow)).toEqual({ kind: 'strength', ...legacyStrengthRow })
+  })
+
+  it('conserva durationSec y distanceM de una serie y omite los no finitos sin perder la serie', () => {
+    const s = normalizeSession({
+      ...legacyStrengthRow,
+      sets: [
+        { exerciseId: 'plank', setIndex: 0, weight: null, reps: null, done: true, durationSec: 30, distanceM: null },
+        { exerciseId: 'carry', setIndex: 0, weight: 10, reps: null, done: true, distanceM: 30 },
+        { exerciseId: 'bad', setIndex: 0, weight: null, reps: null, done: true, durationSec: Number.NaN },
+      ],
+    })
+    expect(s?.kind === 'strength' && s.sets).toEqual([
+      { exerciseId: 'plank', setIndex: 0, weight: null, reps: null, done: true, durationSec: 30, distanceM: null },
+      { exerciseId: 'carry', setIndex: 0, weight: 10, reps: null, done: true, distanceM: 30 },
+      { exerciseId: 'bad', setIndex: 0, weight: null, reps: null, done: true },
+    ])
+  })
+
+  it('conserva pain y descarta lo invalido; acota a 0-10', () => {
+    const s = normalizeSession({ ...legacyStrengthRow, pain: { a: 3, b: 14, c: -2, d: 'x', e: Number.NaN } })
+    expect(s?.kind === 'strength' && s.pain).toEqual({ a: 3, b: 10, c: 0 })
+  })
+
+  it('un pain que no es objeto se ignora sin descartar la sesion', () => {
+    const s = normalizeSession({ ...legacyStrengthRow, pain: 'mucho' })
+    expect(s).not.toBeNull()
+    expect(s?.kind === 'strength' && s.pain).toBeUndefined()
   })
 
   it('valores que no son objeto, o son null, devuelven null sin reventar', () => {
@@ -184,5 +223,34 @@ describe('normalizeSession', () => {
         kind: 'swim', id: 'swim-1', date: '2026-08-05', startedAt: 1000, finishedAt: null, blocks: [], rpe: null, notes: '',
       }),
     ).toBeNull()
+  })
+})
+
+describe('semana por defecto y rutinas del plan', () => {
+  it('DEFAULT_CONFIG usa la semana del plan y las fechas de 12 semanas (A2)', () => {
+    expect(DEFAULT_CONFIG.weeklyRoutine).toEqual(DEFAULT_PLAN.weekTemplate)
+    expect(DEFAULT_CONFIG.blockStart).toBe('2026-11-16')
+    expect(DEFAULT_CONFIG.blockEnd).toBe('2027-02-07')
+  })
+
+  it('DEFAULT_WEEKLY_ROUTINE sigue siendo la semana anterior (dia1..dia3 y natacion)', () => {
+    const ids = DEFAULT_WEEKLY_ROUTINE.flatMap(d => (d.kind === 'training' ? [d.routineId] : []))
+    expect(ids).toEqual(['dia1', 'dia2', 'dia3'])
+  })
+
+  it('un dia de entreno con un id de rutina del plan o desconocido se conserva tal cual', () => {
+    const week = DEFAULT_CONFIG.weeklyRoutine.map((d, i) =>
+      i === 1 ? { kind: 'training', routineId: 'espalda-d1', title: '', note: 'x' } : i === 2 ? { kind: 'training', routineId: 'borrada', title: '', note: '' } : d,
+    )
+    const merged = mergeConfig({ weeklyRoutine: week })
+    expect(merged.weeklyRoutine[1]).toMatchObject({ kind: 'training', routineId: 'espalda-d1', note: 'x' })
+    expect(merged.weeklyRoutine[2]).toMatchObject({ kind: 'training', routineId: 'borrada' })
+  })
+
+  it('un dia de entreno con routineId vacio se repara', () => {
+    const week = DEFAULT_CONFIG.weeklyRoutine.map((d, i) =>
+      i === 1 ? { kind: 'training', routineId: '', title: '', note: '' } : d,
+    )
+    expect(mergeConfig({ weeklyRoutine: week }).weeklyRoutine[1]).toEqual(DEFAULT_CONFIG.weeklyRoutine[1])
   })
 })

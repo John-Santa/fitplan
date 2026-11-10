@@ -43,7 +43,7 @@ Todo está en IndexedDB de **ese** navegador. Si borras los datos del sitio, cam
 
 Si más adelante quieres sincronizar entre dispositivos, el punto de entrada es `src/lib/db.ts`: toda la persistencia pasa por ahí y por `exportBackup()` / `importBackup()`. Reemplazar esa capa por una API remota no toca ninguna vista.
 
-**Compatibilidad de respaldos hacia atrás, no hacia adelante.** Desde que existe el motor de disciplinas (`Session` como unión de fuerza y natación), los respaldos llevan `version: 2`. Restaurar un respaldo v2 en una versión de FitPlan **anterior** a este cambio falla: esa build no sabe leer el campo `kind` y revienta al calcular el volumen de una sesión. Restaura siempre con la versión de la app que generó el respaldo, o una más nueva — nunca una más vieja.
+**Compatibilidad de respaldos hacia atrás, no hacia adelante.** Desde que existe el motor de disciplinas (`Session` como unión de fuerza y natación), los respaldos llevan `version: 2`. Restaurar un respaldo v2 en una versión de FitPlan **anterior** a este cambio falla: esa build no sabe leer el campo `kind` y revienta al calcular el volumen de una sesión. Restaura siempre con la versión de la app que generó el respaldo, o una más nueva — nunca una más vieja. Desde el plan editable los respaldos llevan `version: 3` e incluyen el plan; importar un respaldo v1 o v2 (sin plan) sigue funcionando y conserva el plan actual.
 
 ## Estructura
 

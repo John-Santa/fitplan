@@ -1,12 +1,14 @@
-import type { Session, Measurement, ExerciseMeta, Config, Backup } from '../types'
+import type { Session, Measurement, ExerciseMeta, Config, Backup, TrainingPlan } from '../types'
 import { mergeConfig, normalizeSession } from './plan'
+import { normalizePlan, planFromBackup } from './planStorage'
 
 const DB_NAME = 'fitplan'
 const DB_VERSION = 1
 /** Version de respaldo mas alta que este build sabe leer. Ver
- *  checkBackupVersion: 1 y 2 se aceptan, cualquier version mayor se rechaza
- *  con un mensaje real en vez de intentar leerla a ciegas. */
-const CURRENT_BACKUP_VERSION = 2
+ *  checkBackupVersion: 1, 2 y 3 se aceptan, cualquier version mayor se
+ *  rechaza con un mensaje real en vez de intentar leerla a ciegas. La 3
+ *  agrega el plan de entrenamiento. */
+const CURRENT_BACKUP_VERSION = 3
 
 const STORE_SESSIONS = 'sessions'
 const STORE_MEASUREMENTS = 'measurements'
@@ -145,6 +147,14 @@ export const getConfig = () =>
   tx<Config | undefined>(STORE_CONFIG, 'readonly', s => s.get('config') as IDBRequest<Config | undefined>)
 export const saveConfig = (c: Config) => put(STORE_CONFIG, c, 'config')
 
+/* ---------- plan de entrenamiento ---------- */
+/** Vive en el almacen `config` bajo la llave 'plan' (llaves externas), asi
+ *  que no hace falta subir DB_VERSION. Devuelve lo guardado SIN validar:
+ *  undefined = nunca se guardo; normalizePlan decide si es legible. */
+export const getPlan = () =>
+  tx<unknown>(STORE_CONFIG, 'readonly', s => s.get('plan') as IDBRequest<unknown>)
+export const savePlan = (p: TrainingPlan) => put(STORE_CONFIG, p, 'plan')
+
 /* ---------- respaldo: marca local del ultimo export ---------- */
 export const getLastBackupAt = () =>
   tx<number | undefined>(STORE_CONFIG, 'readonly', s => s.get('lastBackupAt') as IDBRequest<number | undefined>)
@@ -153,7 +163,7 @@ export const saveLastBackupAt = (ts: number) => put(STORE_CONFIG, ts, 'lastBacku
 /* ---------- respaldo ---------- */
 
 /** Compuerta de version, extraida como funcion pura (sin IndexedDB) para que
- *  sea testeable directamente. Acepta 1 y 2; cualquier version mayor se
+ *  sea testeable directamente. Acepta 1, 2 y 3; cualquier version mayor se
  *  rechaza con un mensaje real en espanol en vez de intentar leerla — surge
  *  a traves de Settings.tsx, que ya renderiza e.message. Cualquier otra
  *  cosa (version ausente, no numerica, fraccionaria o menor a 1) se trata
@@ -171,12 +181,15 @@ export function checkBackupVersion(version: unknown): void {
 }
 
 export async function exportBackup(): Promise<Backup> {
-  const [{ sessions }, measurements, exerciseMeta, config] = await Promise.all([
+  const [{ sessions }, measurements, exerciseMeta, config, storedPlan] = await Promise.all([
     getSessions(),
     getMeasurements(),
     getExerciseMeta(),
     getConfig(),
+    getPlan(),
   ])
+  // Solo un plan legible: uno corrupto no se propaga a un respaldo.
+  const plan = normalizePlan(storedPlan)
   return {
     app: 'fitplan',
     version: CURRENT_BACKUP_VERSION,
@@ -189,6 +202,7 @@ export async function exportBackup(): Promise<Backup> {
     // una config sin reparar, internamente inconsistente. Con esto,
     // exportar -> importar es idempotente.
     config: config ? mergeConfig(config) : null,
+    ...(plan ? { plan } : {}),
   }
 }
 
@@ -210,6 +224,9 @@ export async function importBackup(data: unknown, mode: 'replace' | 'merge' = 'r
     ...(b.exerciseMeta ?? []).map(m => saveExerciseMeta(m)),
   ])
   if (b.config) await saveConfig(mergeConfig(b.config))
+  // Respaldos v1/v2 (o con plan ilegible) no traen plan: se conserva el actual.
+  const plan = planFromBackup(b)
+  if (plan) await savePlan(plan)
 }
 
 /** Dispara la descarga de un respaldo ya generado: Blob + URL de objeto +

@@ -13,12 +13,16 @@ describe('checkBackupVersion', () => {
     expect(() => checkBackupVersion(1)).not.toThrow()
   })
 
-  it('acepta la version 2 (CURRENT_BACKUP_VERSION)', () => {
+  it('acepta la version 2 (respaldos con disciplinas, sin plan)', () => {
     expect(() => checkBackupVersion(2)).not.toThrow()
   })
 
+  it('acepta la version 3 (CURRENT_BACKUP_VERSION, con plan)', () => {
+    expect(() => checkBackupVersion(3)).not.toThrow()
+  })
+
   it('rechaza una version mayor a la actual con un mensaje real, no generico', () => {
-    expect(() => checkBackupVersion(3)).toThrow(/versión más nueva de FitPlan/)
+    expect(() => checkBackupVersion(4)).toThrow(/versión más nueva de FitPlan/)
   })
 
   it('trata version ausente, no numerica, fraccionaria o menor a 1 como "no es un respaldo"', () => {

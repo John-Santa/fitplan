@@ -278,13 +278,15 @@ export interface Config {
  *  sesion. version 2 = union discriminada con normalizeSession aplicado al
  *  leer. Union literal a proposito, no `number`: un `number` desnudo pierde
  *  la compuerta de compilacion que obliga a decidir que hacer con cada
- *  version nueva. */
+ *  version nueva. version 3 = incluye el plan editable. */
 export interface Backup {
   app: 'fitplan'
-  version: 1 | 2
+  version: 1 | 2 | 3
   exportedAt: string
   sessions: Session[]
   measurements: Measurement[]
   exerciseMeta: ExerciseMeta[]
   config: Config | null
+  /** Plan de entrenamiento (desde la version 3). Ausente en v1/v2. */
+  plan?: TrainingPlan
 }
