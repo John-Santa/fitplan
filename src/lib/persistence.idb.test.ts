@@ -169,6 +169,35 @@ describe('persistencia sobre IndexedDB en memoria', () => {
     expect(await db.getPlan()).toEqual(defaults.defaultPlanWithLegacy())
   })
 
+  // PR #1: la app publicada guardaba ejercicios personalizados por rutina en
+  // config.routineExercises. Actualizar no debe perderlos.
+  const bulgara = {
+    id: 'custom-abc123', name: 'Sentadilla búlgara', sets: 4, repsLow: 8, repsHigh: 10, restSec: 120, cue: '', mwSlug: '',
+  }
+
+  it('actualizar con rutinas personalizadas: la archivada conserva la lista y el ejercicio propio queda en el plan', async () => {
+    const { db, boot, oldConfig } = await fresh()
+    await db.saveConfig({ ...oldConfig, routineExercises: { dia1: [bulgara] } })
+    await boot()
+    const plan = (await db.getPlan()) as TrainingPlan
+    const dia1 = plan.routines.find(r => r.id === 'dia1')!
+    expect(dia1.archived).toBe(true)
+    expect(dia1.blocks.flatMap(b => b.slots).map(s => s.exerciseId)).toEqual(['custom-abc123'])
+    expect(plan.customExercises).toMatchObject([{ id: 'custom-abc123', name: 'Sentadilla búlgara', custom: true }])
+    // El dato heredado sigue en la config: la migracion lo lee, no lo borra.
+    expect((await db.getConfig())!.routineExercises).toEqual({ dia1: [bulgara] })
+  })
+
+  it('restaurar un respaldo v2 con ejercicios propios los agrega al plan sin tocar sus rutinas', async () => {
+    const { db, boot, oldConfig } = await fresh()
+    await boot()
+    const before = (await db.getPlan()) as TrainingPlan
+    await db.importBackup(v2Backup({ ...oldConfig, routineExercises: { dia2: [bulgara] } }), 'replace')
+    const after = (await db.getPlan()) as TrainingPlan
+    expect(after.customExercises.map(e => e.id)).toEqual(['custom-abc123'])
+    expect(after.routines).toEqual(before.routines)
+  })
+
   it('exportar con un plan guardado corrupto omite el plan', async () => {
     const { db, boot } = await fresh()
     await boot()

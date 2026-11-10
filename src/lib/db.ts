@@ -3,6 +3,7 @@ import { mergeConfig, normalizeSession } from './plan'
 import { normalizePlan, planFromBackup } from './planStorage'
 import { defaultPlanWithLegacy } from './defaultPlan'
 import { migrateLegacyConfig } from './legacyConfig'
+import { addLegacyCustomExercises } from './legacyRoutines'
 
 const DB_NAME = 'fitplan'
 const DB_VERSION = 1
@@ -229,6 +230,7 @@ export async function importBackup(data: unknown, mode: 'replace' | 'merge' = 'r
   const plan = planFromBackup(b)
   if (b.config) {
     let config = mergeConfig(b.config)
+    let withCustoms: TrainingPlan | null = null
     if (!plan) {
       // La config de un respaldo sin plan es de antes del plan editable: puede
       // traer la semana dia1..dia3 y el bloque viejo, y la migracion de
@@ -237,8 +239,14 @@ export async function importBackup(data: unknown, mode: 'replace' | 'merge' = 'r
       // v3 con plan trae una config escrita por esta version: se deja igual.
       const active = normalizePlan(await getPlan()) ?? defaultPlanWithLegacy()
       config = migrateLegacyConfig(config, active.weekTemplate) ?? config
+      // Ejercicios propios del editor anterior (routineExercises): se agregan
+      // los que falten para que el historial restaurado los nombre. Las
+      // rutinas del plan actual no se tocan.
+      const next = addLegacyCustomExercises(active, config.routineExercises)
+      if (next !== active) withCustoms = next
     }
     await saveConfig(config)
+    if (withCustoms) await savePlan(withCustoms)
   }
   if (plan) await savePlan(plan)
 }

@@ -5,6 +5,7 @@ import type { Config, TrainingPlan } from '../types'
 import * as db from './db'
 import { defaultPlanWithLegacy } from './defaultPlan'
 import { migrateLegacyConfig } from './legacyConfig'
+import { applyLegacyRoutineExercises } from './legacyRoutines'
 
 export { OLD_BLOCK_START } from './legacyConfig'
 
@@ -24,7 +25,9 @@ const NOTHING: MigrationResult = { plan: null, config: null }
  *  (el store usa el de por defecto en memoria hasta que se edite). */
 export function planMigration(storedPlanRaw: unknown, config: Config): MigrationResult {
   if (storedPlanRaw !== undefined) return NOTHING
-  const plan = defaultPlanWithLegacy()
+  // Las listas del editor anterior (routineExercises) quedan en las rutinas
+  // archivadas y sus ejercicios propios en el plan: actualizar no las pierde.
+  const plan = applyLegacyRoutineExercises(defaultPlanWithLegacy(), config.routineExercises)
   return { plan, config: migrateLegacyConfig(config, plan.weekTemplate) }
 }
 
