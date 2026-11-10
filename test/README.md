@@ -1,8 +1,11 @@
 # UI verification harness
 
-This is fitplan's only test infrastructure. There is no unit-test runner —
-`pnpm typecheck` is the sole other check. These scripts drive the real app in
-headless Chromium (via `playwright-core`, no bundled browser download) across
+This is fitplan's browser-level verification. Pure logic (`src/lib`: plan
+queries, phases, pain verdicts, migration, persistence) is covered by the
+vitest suite (`pnpm test`, node environment, no DOM) and `pnpm typecheck`
+covers types; neither renders anything, so layout, focus, real IndexedDB
+round-trips and the plan UI are verified only here. These scripts drive the
+real app in headless Chromium (via `playwright-core`, no bundled browser download) across
 a matrix of viewports and assert on real, computed layout: element sizes,
 document overflow, and occlusion by fixed-position UI. They were built to
 catch a class of bug that a type checker cannot see: things that only break
@@ -20,21 +23,27 @@ anywhere but a session scratchpad:
 ## Files
 
 - `lib.mjs` — shared helpers: Chromium executable discovery, the
-  `seedConfig()`/`seedMeasurements()`/`seedSessions()` IndexedDB helpers, and
-  a small pass/fail checklist used by both scripts.
+  `seedConfig()`/`seedMeasurements()`/`seedSessions()`/`seedAll()` IndexedDB
+  helpers, `readStoreValue()` (read back what the app persisted), and a small
+  pass/fail checklist used by both scripts.
 - `ui-harness.mjs` — the main harness. 8 viewports (6 mobile/tablet + 2
-  desktop, 1200x800 and 1920x1080) × navigation tabs × all three routines
-  (with an `ORD-01` guard that the start-button count still matches the
-  routine count — 3 routines + the swim card, since F1-5), the swim
-  progression view (`SWIM-04`, F1-6), worst-case hero strings, light-theme
-  color check, a `seedConfig()` regression check, a `seedMeasurements()`-backed
+  desktop, 1200x800 and 1920x1080) × the 5 navigation tabs (Inicio, Entrenar,
+  Plan, Medidas, Ajustes) × every routine of the active plan (Día 1–5, with an
+  `ORD-01` guard that the start-button count matches the active routine count
+  + the swim card, and that archived routines have none, and a `WARMUP-01`
+  guard that the rail starts with the "Cal" warm-up step), the swim
+  progression view (`SWIM-04`), worst-case hero strings, light-theme color
+  check, a `seedConfig()` regression check, a `seedMeasurements()`-backed
   desktop table-breakout check, `seedSessions()`-backed legacy/mixed-discipline
-  checks (`LEGACY-01`, `LEGACY-02`, `MIX-01`), and the swim-logger checks
-  (`SWIM-01`, `SWIM-02`) added in F1-5.
+  checks (`LEGACY-01`, `LEGACY-02`, `LEGACY-03`, `MIX-01`), the swim-logger
+  checks (`SWIM-01`, `SWIM-02`), and the editable-plan scenarios described
+  below (`MIG-01`, `PLAN-01`, `PLAN-02`, `SHEET-01`, `GUIDE-01`, `PAIN-01`,
+  `LAYOUT-01`).
 - `occlusion.mjs` — a focused probe for one failure mode: does a fixed
   overlay (rest timer, tab bar) cover the current-set/current-block and its
   first input, in portrait and landscape. Runs the probe twice: once against
-  a strength routine, once against the swim logger (`SWIM-03`, F1-5).
+  a strength routine (Día 2, first exercise — the warm-up step is skipped),
+  once against the swim logger (`SWIM-03`, F1-5).
 
 ## Running
 
@@ -44,6 +53,16 @@ pnpm check:occlusion                           # against production
 BASE=http://localhost:5173/ pnpm check:ui      # against local dev
 BASE=http://localhost:5173/ pnpm check:occlusion
 ```
+
+Local dev needs the server running first (`pnpm dev --port 5173 --strictPort`,
+wait until it serves, stop it afterwards). The full `check:ui` run takes about
+5 minutes (8 viewports × 5 routines, then the scenarios). If another
+project already owns `127.0.0.1:5173`, `localhost` may resolve to it instead
+of this app: pick a free port (`--port 5188`) and match `BASE`.
+
+The scenarios are isolated: each opens its own browser context (empty
+IndexedDB), and a scenario that throws (missing element, timeout) is reported
+as a failed `<NAME>/excepcion` check instead of aborting the run.
 
 `BASE` defaults to `https://john-santa.github.io/fitplan/`. Both scripts
 exit non-zero on any failure, so they compose with CI or a pre-push hook the
@@ -104,12 +123,19 @@ const config = await seedConfig(page, { blockStart: '2020-01-15', blockEnd: '202
 // deep).
 ```
 
+The baseline is the app's **current** default (block 2026-11-16..2027-02-07,
+Mon–Fri = Días 1–5, Sat/Sun "Descanso activo"), not the pre-plan config: the
+boot migration rewrites the old week and block, so a baseline carrying them
+would turn every `seedConfig()` check into a migration check. A scenario that
+needs the old config passes it whole as its own fixture (`MIG-01`).
+
 Implementation notes (see `lib.mjs` for the full comments):
 
 - The database name (`fitplan`), version (`1`), store names, and the
   `config` store's literal key (`'config'`) are copied from `src/lib/db.ts`,
   not guessed. If that file's schema changes, update the constants at the
-  top of `lib.mjs` to match.
+  top of `lib.mjs` to match. The editable plan lives in the same `config`
+  store under the key `'plan'` (out-of-line keys, so no `DB_VERSION` bump).
 - It is race-free by construction: it navigates with `waitUntil: 'commit'`
   (the origin exists, but no page script has run yet), writes and fully
   awaits the IndexedDB transaction from Node, then does the *real*
@@ -158,28 +184,47 @@ await seedSessions(page, [
 ])
 ```
 
+## seedAll / readStoreValue — first-boot and persistence scenarios
+
+`seedConfig()` and `seedSessions()` each finish with the real navigation, so
+calling both in a row boots the app after the first one. That is fatal for a
+migration scenario, where the config **and** the sessions must already be on
+disk (and no `plan` record yet) at the app's first boot.
+`seedAll(page, { config, sessions, measurements }, base?)` writes every given
+store, never writes the `plan` key, then navigates once.
+
+`readStoreValue(page, key, storeName = 'config')` reads a persisted value back
+from IndexedDB (`null` when absent) — used to assert on the `plan` and
+`config` records the app wrote, not only on what the UI renders.
+
 ## data-testid — introduced narrowly, only where a check binds to a value
 
-There is no `data-testid` anywhere else in `src/`. It exists in exactly
-three places: the four `<Tile>`s on Inicio (`Tile` in `src/components/ui.tsx`
-takes an optional `testId` prop), the per-routine start button on Entrenar
-(`data-testid={\`start-${r.id}\`}` in `Train.tsx`), and the swim start button
-(`data-testid="start-swim"`, same file, F1-5).
+There is no `data-testid` in `src/` outside these places: the four `<Tile>`s
+on Inicio (`Tile` in `src/components/ui.tsx` takes an optional `testId`
+prop), the per-routine start button on Entrenar
+(`data-testid={\`start-${r.id}\`}` in `Train.tsx`; with the default plan the
+ids are `espalda-d1`..`espalda-d5`, and archived routines such as the legacy
+`dia1`..`dia3` have no start button), and the swim start button
+(`data-testid="start-swim"`, same file, F1-5). The plan editor, the exercise
+sheet, the Guide and the session's pain control have no testids: their
+scenarios select by role, accessible name and visible text (`getByRole`,
+`getByLabel`), which is also what a user and a screen reader see.
 
 The rule for adding another one: a check needs it when it must bind to a
 **value** rather than a **position**. `MIX-01` needs the exact "Volumen"
 tile regardless of how many tiles render before it — a testid, not an
 ordinal `.nth()`. `ORD-01` (below) exists precisely because the *positional*
 selector it replaced (`button.primary.nth(i)`) would silently repoint to the
-wrong routine the moment a fourth `button.primary` appears — `ui-harness.mjs`
-and `occlusion.mjs` bind to `[data-testid="start-dia1"]`/`[data-testid="start-swim"]`
-etc. instead, and `ORD-01` separately asserts the start-button *count*. F1-5
-is exactly the predicted reshuffle: the swim card is a fourth
-`button.primary`, so `ORD-01`'s expected count moved from `ROUT_IDS.length`
-to `ROUT_IDS.length + 1` in that same change — the check did its job (would
-have failed loudly instead of silently exercising the wrong routine) and
-was updated deliberately, not silenced. The tap-target check still selects
-by tag and role, so none of this perturbs it.
+wrong routine the moment another `button.primary` appears —
+`ui-harness.mjs` and `occlusion.mjs` bind to
+`[data-testid="start-espalda-d1"]`/`[data-testid="start-swim"]` etc. instead,
+and `ORD-01` separately asserts the start-button *count*: one per **active**
+routine (`PLAN_ROUTINES.length`, mirrored from `src/lib/defaultPlan.ts`) plus
+the swim card, and none for the archived legacy routines. Since the routine
+list comes from the persisted plan, the count moves whenever someone
+archives, restores or adds a routine in the default plan — update
+`PLAN_ROUTINES` together with `DEFAULT_PLAN`. The tap-target check still
+selects by tag and role, so none of this perturbs it.
 
 ## SWIM-04 — the swim progression view (F1-6)
 
@@ -228,6 +273,53 @@ purpose-built empty-state check, is what makes the assertion meaningful.
   landscape and portrait, against the swim logger instead. This was nearly
   free because `SwimBody` reuses `.setnow`/`.setrow` verbatim (see A4 in the
   plan) instead of introducing new markup the probe would need to learn.
+
+## Editable-plan scenarios (`ui-harness.mjs`)
+
+All run on a fresh context at 390x844 unless noted; none relies on another's
+state.
+
+- **`MIG-01`** (S5) seeds the *old shipped* config (inlined fixture, from
+  `git show 4d0c2c0:src/lib/plan.ts`: Mon/Wed/Fri `dia1`..`dia3`, Tue/Thu swim,
+  Sat walk, Sun rest, block 2026-08-04..2026-09-28), two legacy `dia1`
+  sessions and **no** plan record, via `seedAll()`. After boot it asserts the
+  `plan` record exists (Días 1–5 active, `dia1`..`dia3` archived), the stored
+  and displayed week is Mon–Fri = Días 1–5, the block is
+  2026-11-16..2027-02-07, the legacy sessions still show in Entrenar's
+  history, and a second boot rewrites nothing.
+- **`PLAN-01`** (S4, S11) Plan → "Día 1 – Tren inferior A" → picker: an
+  exercise already in the routine is disabled with "En la rutina"; add "Dead
+  bug"; reload; it is still there, in the UI and in the IndexedDB `plan`
+  record.
+- **`PLAN-02`** (S4, S11) archive "Día 5 – Tren superior B" → confirmation
+  dialog → it leaves the active list and appears under "Archivadas (N+1)"
+  (kept in storage with `archived: true`, not deleted) → "Deshacer" restores it.
+- **`SHEET-01`** (S9, S12) from a session, the info button of "Prensa de
+  piernas" opens a `role=dialog` (`aria-modal`); the MuscleWiki link has
+  `target=_blank`, `rel` with `noopener` and the verified href
+  `https://musclewiki.com/es-es/exercise/machine-leg-press`; the attribution
+  line is present; "Cerrar" is ≥44px; Escape closes it and focus returns to
+  the opener; the close button also works.
+- **`GUIDE-01`** (S10) Plan → "Guía": the urgent red-flag line is visible, the
+  "Ejercicios a evitar" table has 8 rows, no horizontal overflow, "Volver"
+  returns to Plan; in a session, one tap on "Señales de alarma" opens the
+  red-flags sheet with the urgent line.
+- **`PAIN-01`** (S7) the pain select shows the verdict as text (1 → "Bien", 4
+  → "Baja peso o rango", 7 → "Cambia el ejercicio"); with 4 selected, a
+  finished session's detail shows "Dolor registrado" with 4/10.
+- **`LAYOUT-01`** (S12) at 375x812, light **and** dark (`colorScheme`): no
+  horizontal scroll and no visible interactive element under 44x44 on Inicio,
+  Entrenar, Plan, the routine editor, the picker sheet, the Guide, and a Día 3
+  session at the warm-up, the timed hold (plancha lateral), the carry (maleta)
+  and the cardio block. Inline text links inside paragraphs are exempt. With a
+  sheet open the audit is scoped to the dialog (what is behind a modal is not
+  reachable). Offenders are printed as `tag#id.class "label" WxH`.
+- **`LEGACY-03`** (S4) a session whose routine does not exist in the plan is
+  kept and listed.
+
+`LEGACY-01`/`LEGACY-02` also prove the legacy `dia1`..`dia3` sessions stay
+visible after the migration (archived routine name in the history, exercise
+names resolved in the detail, an "archivada" card in Entrenar).
 
 ## Adding a check
 
