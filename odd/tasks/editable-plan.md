@@ -26,10 +26,10 @@ Assumptions: **A1** replace the stored week only when it references legacy routi
 
 | ID | Specs | Route | Model | Status | Commit |
 |----|-------|-------|-------|--------|--------|
-| T1 | S1 S2 S3 S6 | delegated (user-mandated model routing) | sonnet | done (typecheck ok, 106 tests; RED observed) | this commit |
-| T2 | S4 S5 | delegated; Risk item 1+3, own commit, independent verifier | sonnet (+opus verify) | running | — |
+| T1 | S1 S2 S3 S6 | delegated (user-mandated model routing) | sonnet | done (typecheck ok, 106 tests; RED observed; assess medium/under_budget) | f927318 |
+| T2 | S4 S5 | delegated; Risk item 1+3, own commit, independent verifier | sonnet (+opus verify) | written; isolated commit tsc ok + 135 tests; assess high (escalated item 1) → opus verifier running, native review pending | 6ba9e64 |
 | T3 | S7 S8 | delegated, parallel (L7) | sonnet | running | — |
-| T4 | S9 S10 | delegated, parallel (L7) | haiku | running | — |
+| T4 | S9 S10 | delegated, parallel (L7) | haiku | done (typecheck ok, 192 tests in shared tree; RED observed; 57 guide strings verbatim-checked) | this commit |
 | T5 | S11 | delegated, parallel (L7) | sonnet | running | — |
 | T6 | S12 | inline + delegated harness | haiku | pending | — |
 
@@ -45,7 +45,9 @@ Forecast: ~2,500 authored changed lines (content-heavy T1) → exceeds 400, chai
 - **L6 (2026-11-10, user, verbatim):** delivery question answered "Una sola rama " → strategy `single-pr`: work-unit commits on `feat/editable-plan`, one PR to main at the end (push/PR remain user decisions).
 - **L7 (2026-11-10, user, verbatim):** "paraleliza lo que puedas paralelizar". Parent wrote contract stubs (store `plan`/`savePlan` in-memory, ExerciseSheet, Guide/RedFlagsSheet, PlanEditor) and launched T2, T3, T4, T5 in parallel in the same tree with disjoint surfaces and per-unit CSS files; parent owns App.tsx and styles.css. T1 contract additions: `TrainingPlan.customExercises`, `StrengthSession.pain`, `resolveExercise`.
 - **L8 (2026-11-10, T1 result):** reused legacy ids leg-press, leg-extension, leg-curl, hip-abduction, chest-press, lat-pulldown, shoulder-press, pec-deck, triceps-pushdown, neutral-pulldown (history continues). Legacy-only exercises keep their previously shipped slugs (existing behavior). Parent added `sideUnit: 'pierna'` so split squat, step-up and single-leg press render "por pierna" verbatim (RED observed, then GREEN).
-- Next: T2–T5 results, seam check, App.tsx wiring, harness.
+- **L9 (2026-11-10, T2 result):** `DEFAULT_WEEKLY_ROUTINE` kept as legacy fixture; new `PLAN_WEEKLY_ROUTINE` (literal copy of DEFAULT_PLAN.weekTemplate, equality-tested, avoids a plan.ts↔defaultPlan.ts import cycle) used by DEFAULT_CONFIG and as merge fallback. Two old tests that asserted 'diaX' ids are invalid were rewritten (contradict S4). Importing an old v2 backup does not re-run the migration (legacy ids still resolve through archived routines). `normalizePlan` drops unknown fields: any new field in plan types must be added to planStorage.ts (DEFAULT_PLAN round-trip test guards it).
+- **L10 (2026-11-10, T4 result + parent):** dark `--ring` (#2b2b2b) is invisible as a focus ring on #0b0b0b; parent added a global `:focus-visible` using `--accent-ink` (both themes ≥4.5:1) in styles.css and removed the sheet-local rule. Component behavior is not unit-tested (vitest node env, no DOM) → covered by the UI harness in T6.
+- Next: T2 verifier + native review, T3/T5 results, seam check, App.tsx commit, harness.
 
 ### L1 pasted document (verbatim)
 

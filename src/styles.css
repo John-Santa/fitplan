@@ -678,6 +678,9 @@ figcaption {
   background: var(--surface-1); color: var(--ink-3);
 }
 /* The rail clips at its own edge: draw the focus ring inward, not over it. */
+/* Anillo de foco global. --accent-ink contrasta en ambos temas (amarillo sobre
+   negro, 5,9:1 en claro); --ring es un filete de 1px y casi no se ve como foco. */
+:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
 .rail button:focus-visible { outline-offset: -2px; }
 .rail button.current { background: var(--accent); color: var(--on-accent); }
 .rail button.done { background: var(--accent-dim); color: var(--accent-ink); }
