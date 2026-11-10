@@ -4,10 +4,11 @@ import { downloadBackupFile, exportBackup, getLastBackupAt, importBackup, saveLa
 import { useStore } from '../lib/store'
 import { Tile, useToast } from '../components/ui'
 import { daysSince, fmt, fmtDate } from '../lib/calc'
-import { DAY_KINDS, dayTitle, isDayKind, isRoutineId, KIND_LABELS, MEASUREMENT_KEYS, MEASUREMENT_LABELS, MEASUREMENT_UNITS, ROUTINES, suggestRoutineId, weekdayLabel, withDay, withText } from '../lib/plan'
+import { DAY_KINDS, isDayKind, KIND_LABELS, MEASUREMENT_KEYS, MEASUREMENT_LABELS, MEASUREMENT_UNITS, weekdayLabel, withDay, withText } from '../lib/plan'
+import { activeRoutines, dayTitleFor, findRoutine, routineTitle, suggestRoutineIdFor } from '../lib/planQueries'
 
 export default function Settings() {
-  const { config, saveConfig, reload, sessions, droppedSessionCount, measurements } = useStore()
+  const { config, saveConfig, reload, sessions, droppedSessionCount, measurements, plan } = useStore()
   const toast = useToast()
   const fileRef = useRef<HTMLInputElement>(null)
   const [height, setHeight] = useState(String(config.heightCm))
@@ -129,7 +130,7 @@ export default function Settings() {
               <summary className="list-item">
                 <span className="grow">
                   <span className="t1">{weekdayLabel(dow)}</span>
-                  <span className="t2">{KIND_LABELS[day.kind]} · {dayTitle(day)}</span>
+                  <span className="t2">{KIND_LABELS[day.kind]} · {dayTitleFor(plan, day)}</span>
                 </span>
                 <span className="caret" aria-hidden="true">+</span>
               </summary>
@@ -140,9 +141,14 @@ export default function Settings() {
                   onChange={e => {
                     const k = e.target.value
                     if (!isDayKind(k)) return
-                    saveDay(dow, k === 'training'
-                      ? { kind: 'training', routineId: suggestRoutineId(config.weeklyRoutine), title: day.title, note: day.note }
-                      : { kind: k, title: day.title, note: day.note })
+                    if (k === 'training') {
+                      const routineId = suggestRoutineIdFor(plan, config.weeklyRoutine)
+                      // Un plan sin rutinas no tiene a que apuntar: no se cambia el dia.
+                      if (routineId === null) return
+                      saveDay(dow, { kind: 'training', routineId, title: day.title, note: day.note })
+                    } else {
+                      saveDay(dow, { kind: k, title: day.title, note: day.note })
+                    }
                   }}
                 >
                   {DAY_KINDS.map(k => <option key={k} value={k}>{KIND_LABELS[k]}</option>)}
@@ -154,16 +160,23 @@ export default function Settings() {
                       id={`r-${dow}`} value={day.routineId}
                       onChange={e => {
                         const v = e.target.value
-                        if (isRoutineId(v)) saveDay(dow, { kind: 'training', routineId: v, title: day.title, note: day.note })
+                        // Solo ids que el plan conoce: las opciones son las rutinas
+                        // activas y la que el dia ya apunta.
+                        if (findRoutine(plan, v)) saveDay(dow, { kind: 'training', routineId: v, title: day.title, note: day.note })
                       }}
                     >
-                      {ROUTINES.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                      {activeRoutines(plan).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                      {/* Un dia que apunta a una rutina archivada o desconocida
+                         la muestra tal cual, marcada, en vez de reescribirla. */}
+                      {!activeRoutines(plan).some(r => r.id === day.routineId) && (
+                        <option value={day.routineId}>{routineTitle(plan, day.routineId)} (archivada)</option>
+                      )}
                     </select>
                   </>
                 )}
                 <label htmlFor={`t-${dow}`}>Título</label>
                 <input
-                  id={`t-${dow}`} type="text" defaultValue={day.title} placeholder={dayTitle(day)}
+                  id={`t-${dow}`} type="text" defaultValue={day.title} placeholder={dayTitleFor(plan, day)}
                   onBlur={e => saveDay(dow, withText(day, { title: e.target.value.trim() }))}
                 />
                 <label htmlFor={`n-${dow}`}>Nota</label>
@@ -179,7 +192,7 @@ export default function Settings() {
       </div>
 
       <div className="col-a">
-        <div className="section-title">Metas de la semana 8</div>
+        <div className="section-title">Metas del bloque</div>
         <div className="card">
           <div className="formgrid">
             {MEASUREMENT_KEYS.map(k => (
@@ -216,7 +229,7 @@ export default function Settings() {
       </div>
 
       <p className="hint" style={{ textAlign: 'center', marginTop: 22 }}>
-        FitPlan · bloque 4 ago – 28 sep 2026<br />
+        FitPlan · bloque {fmtDate(config.blockStart)} – {fmtDate(config.blockEnd, true)}<br />
         Herramienta personal de seguimiento. No sustituye valoración médica ni nutricional.
       </p>
       {toast.node}

@@ -1,4 +1,6 @@
-import { blockPhase, blockWeeks, dayTitle, DONE_TODAY, nextWeekdayFor, routineForWeekday, routineSetCount, routineShortName, ROUTINES, SESSION_KIND_FOR_DAY, weekdayAbbr, WEEKDAYS } from '../lib/plan'
+import { DONE_TODAY, SESSION_KIND_FOR_DAY, weekdayAbbr, WEEKDAYS } from '../lib/plan'
+import { activeRoutines, dayTitleFor, nextWeekdayFor, planWeekStates, routineForWeekday, routineSetCount, routineShortName, weekLabel } from '../lib/planQueries'
+import { blockWeekNumber, phaseForWeek } from '../lib/phases'
 import { fmt, fmtDate, fmtSigned, todayISO } from '../lib/calc'
 import { blockSessionCount, weeklySummary } from '../lib/disciplines'
 import { useDerivedMeasurements, useStore } from '../lib/store'
@@ -12,13 +14,18 @@ function deltaClass(delta: number | null, deltaGood: 'lower' | 'higher'): 'up' |
 }
 
 export default function Home({ go }: { go: (tab: 'train' | 'measure') => void }) {
-  const { sessions, config } = useStore()
+  const { sessions, config, plan } = useStore()
   const rows = useDerivedMeasurements()
   const now = new Date()
-  const phase = blockPhase(now, config.blockStart)
+  const week = blockWeekNumber(now, config.blockStart)
+  const phase = phaseForWeek(plan, week)
   const dow = now.getDay()
   const today = config.weeklyRoutine[dow]
-  const suggested = routineForWeekday(config.weeklyRoutine, dow)
+  const suggested = routineForWeekday(plan, config.weeklyRoutine, dow)
+  const routines = activeRoutines(plan)
+  // Linea bajo el titulo del dia: enfoque de la rutina y nota del dia, o solo
+  // la nota si el dia no tiene rutina (natacion, etc.).
+  const todayLine = (suggested ? [suggested.focus, today.note] : [today.note]).filter(t => t !== '').join(' · ')
   // "Ya entrenaste hoy" debe significar "ya hice la disciplina de HOY", no
   // "termine cualquier sesion hoy": sin esto, una natacion de mañana
   // reemplazaba el llamado a accion del gimnasio (R1). Un dia sin
@@ -47,7 +54,7 @@ export default function Home({ go }: { go: (tab: 'train' | 'measure') => void })
   return (
     <>
       <div className="eyebrow">
-        {WEEKDAYS[dow]} {fmtDate(todayISO())} · Semana {phase.week} de 8
+        {WEEKDAYS[dow]} {fmtDate(todayISO())} · {weekLabel(plan.weeks, week)}
       </div>
       <h1 className="hero">
         Hoy
@@ -71,24 +78,19 @@ export default function Home({ go }: { go: (tab: 'train' | 'measure') => void })
             </>
           ) : todayKind ? (
             <>
-              <h2 style={{ fontSize: 19, marginTop: 2 }}>{dayTitle(today)}</h2>
+              <h2 style={{ fontSize: 19, marginTop: 2 }}>{dayTitleFor(plan, today)}</h2>
               {/* suggested es null en un dia de natacion (routineForWeekday
                  solo resuelve dias de entreno): sin zona de rutina que
                  mostrar, solo la nota del dia si existe. El boton, en
                  cambio, se habilita por disciplina planificada (todayKind),
                  no por si hay una rutina de fuerza — antes routineForWeekday
                  devolvia null para natacion y el CTA desaparecia entero. */}
-              {(suggested ? suggested.zone : today.note) !== '' && (
-                <p style={{ marginBottom: 10 }}>
-                  {suggested ? suggested.zone : today.note}
-                  {suggested && today.note !== '' && ` · ${today.note}`}
-                </p>
-              )}
+              {todayLine !== '' && <p style={{ marginBottom: 10 }}>{todayLine}</p>}
               <button className="primary big block" onClick={() => go('train')}>Empezar la sesión</button>
             </>
           ) : (
             <>
-              <h2 style={{ fontSize: 19, marginTop: 2 }}>{dayTitle(today)}</h2>
+              <h2 style={{ fontSize: 19, marginTop: 2 }}>{dayTitleFor(plan, today)}</h2>
               {today.note !== '' && <p style={{ marginBottom: 0 }}>{today.note}</p>}
             </>
           )}
@@ -97,12 +99,13 @@ export default function Home({ go }: { go: (tab: 'train' | 'measure') => void })
         <div className="card tight">
           <div className="row">
             <div className="grow">
-              <strong>Semana {phase.week} de 8 · {phase.label}</strong>
-              <div className="muted">{phase.intent}</div>
+              <strong>{weekLabel(plan.weeks, week)}{phase && ` · ${phase.intensity}`}</strong>
+              {phase && <div className="muted">{phase.goal}</div>}
+              {phase && phase.loadNote !== '' && <div className="muted">Esta semana: {phase.loadNote}</div>}
             </div>
           </div>
-          <div className="weekbar" style={{ marginTop: 9 }}>
-            {blockWeeks(phase.week).map(w => (
+          <div className="weekbar" style={{ marginTop: 9, gridTemplateColumns: `repeat(${plan.weeks}, 1fr)` }}>
+            {planWeekStates(plan.weeks, week).map(w => (
               <div key={w.week}>
                 <i className={w.state} />
                 <span className={w.state === 'current' ? 'wnum current' : 'wnum'}>{w.week}</span>
@@ -188,8 +191,8 @@ export default function Home({ go }: { go: (tab: 'train' | 'measure') => void })
       </div>
 
       <div className="col-b">
-        <div className="section-title">Las tres rutinas</div>
-        {ROUTINES.map(r => {
+        <div className="section-title">Rutinas del plan</div>
+        {routines.map(r => {
           const badgeDow = nextWeekdayFor(config.weeklyRoutine, r.id, dow)
           return (
             <div className="list-item" key={r.id}>
@@ -198,9 +201,9 @@ export default function Home({ go }: { go: (tab: 'train' | 'measure') => void })
               </div>
               <div className="grow">
                 <div className="t1">{r.name}</div>
-                <div className="t2">{r.zone}</div>
+                <div className="t2">{r.focus !== '' ? r.focus : r.duration}</div>
               </div>
-              <div className="muted num">{routineSetCount(r, phase.setsDelta)} ser</div>
+              <div className="muted num">{routineSetCount(plan, r, week)} ser</div>
             </div>
           )
         })}

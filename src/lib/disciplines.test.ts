@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest'
 import type { Session, StrengthSession, SwimSession, WeeklyRoutine } from '../types'
 import { todayISO } from './calc'
 import { DEFAULT_WEEKLY_ROUTINE } from './plan'
+import { DEFAULT_PLAN, defaultPlanWithLegacy } from './defaultPlan'
 import {
   blockSessionCount,
   dayCountFor,
@@ -164,18 +165,45 @@ describe('weeklySummary', () => {
 })
 
 describe('sessionDigest', () => {
+  const plan = defaultPlanWithLegacy()
+
   it('arma un digest de fuerza con el nombre de la rutina y una linea por ejercicio con datos', () => {
-    const digest = sessionDigest(strengthSession())
+    // Misma forma que antes: titulo de la rutina, "<ejercicio>: <kg> kg × <reps>".
+    // El nombre del ejercicio ahora sale de la biblioteca del plan.
+    const digest = sessionDigest(strengthSession(), plan)
     expect(digest.title).toBe('Día 1 — Pierna')
     expect(digest.hasEntries).toBe(true)
-    expect(digest.lines).toEqual(['Prensa de piernas 45°: 80,0 kg × 12'])
+    expect(digest.lines).toEqual(['Prensa de piernas (leg press): 80,0 kg × 12'])
+  })
+
+  it('una sesion de la rutina archivada dia1 sigue mostrando su nombre y sus ejercicios', () => {
+    const digest = sessionDigest(strengthSession({ routineId: 'dia1' }), plan)
+    expect(digest.title).toBe('Día 1 — Pierna')
+    expect(digest.lines).toHaveLength(1)
+  })
+
+  it('una sesion de espalda-d1 usa el nombre de la rutina del plan', () => {
+    const digest = sessionDigest(strengthSession({ routineId: 'espalda-d1' }), plan)
+    expect(digest.title).toBe('Día 1 – Tren inferior A')
+    expect(digest.lines).toEqual(['Prensa de piernas (leg press): 80,0 kg × 12'])
+  })
+
+  it('una rutina desconocida muestra "Rutina eliminada" y conserva las series registradas', () => {
+    const digest = sessionDigest(strengthSession({ routineId: 'borrada' }), plan)
+    expect(digest.title).toBe('Rutina eliminada')
+    expect(digest.lines).toHaveLength(1)
   })
 
   it('arma un digest de natacion con una linea por bloque marcado', () => {
-    const digest = sessionDigest(swimSession())
+    const digest = sessionDigest(swimSession(), plan)
     expect(digest.title).toBe('Natación')
     expect(digest.hasEntries).toBe(true)
     expect(digest.lines).toEqual(['Bloque 1: 400 m · 8:00'])
+  })
+
+  it('weeklySummary sigue contando los dias de fuerza programados con la plantilla del plan nuevo', () => {
+    const strength = weeklySummary([], DEFAULT_PLAN.weekTemplate).find(l => l.kind === 'strength')
+    expect(strength?.target).toBe(5)
   })
 })
 

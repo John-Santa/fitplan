@@ -28,9 +28,9 @@ Assumptions: **A1** replace the stored week only when it references legacy routi
 |----|-------|-------|-------|--------|--------|
 | T1 | S1 S2 S3 S6 | delegated (user-mandated model routing) | sonnet | done (typecheck ok, 106 tests; RED observed; assess medium/under_budget) | f927318 |
 | T2 | S4 S5 | delegated; Risk item 1+3, own commit, independent verifier | sonnet (+opus verify) | written; isolated commit tsc ok + 135 tests; assess high (escalated item 1) → opus verifier running, native review pending | 6ba9e64 |
-| T3 | S7 S8 | delegated, parallel (L7) | sonnet | running | — |
+| T3 | S7 S8 | delegated, parallel (L7) | sonnet | done (typecheck, 219 tests, build ok; planQueries RED observed, pain/disciplines tests written alongside; Playwright smoke d1/d3/d5 at 375px clean) | this commit |
 | T4 | S9 S10 | delegated, parallel (L7) | haiku | done (typecheck ok, 192 tests in shared tree; RED observed; 57 guide strings verbatim-checked) | fa3e059 |
-| T5 | S11 | delegated, parallel (L7) | sonnet | done (48 tests, RED observed; Playwright 375px light/dark: no h-scroll, 0 targets <44px) + parent App.tsx Plan tab/Guide wiring | this commit |
+| T5 | S11 | delegated, parallel (L7) | sonnet | done (48 tests, RED observed; Playwright 375px light/dark: no h-scroll, 0 targets <44px) + parent App.tsx Plan tab/Guide wiring | 80f0ff4 |
 | T6 | S12 | inline + delegated harness | haiku | pending | — |
 
 Forecast: ~2,500 authored changed lines (content-heavy T1) → exceeds 400, chain strategy needed before first commit.
@@ -49,7 +49,9 @@ Forecast: ~2,500 authored changed lines (content-heavy T1) → exceeds 400, chai
 - **L10 (2026-11-10, T4 result + parent):** dark `--ring` (#2b2b2b) is invisible as a focus ring on #0b0b0b; parent added a global `:focus-visible` using `--accent-ink` (both themes ≥4.5:1) in styles.css and removed the sheet-local rule. Component behavior is not unit-tested (vitest node env, no DOM) → covered by the UI harness in T6.
 - **L11 (2026-11-10, T5 result):** resetToTemplate resets routines only (not warmup/phases/tips/weekTemplate); restSec ≥ 0 allowed (mobility/cardio rest 0); warm-up block not editable (not in S11, open question). `src/views/plan/Sheet.tsx` duplicates `components/BottomSheet.tsx` (same props; built before T4 landed) → unify in the seam step.
 - **L12 (2026-11-10, process):** native committed-only review targets base..HEAD, so the T2 review must run in a separate worktree pinned at 6ba9e64 to stay isolated from later commits.
-- Next: T2 verifier + native review, T3 result, seam (sheet unification, full suite once), harness.
+- **L13 (2026-11-10, opus verifier on 6ba9e64):** S4 PASS; S5 PARTIAL with blocker B1 — restoring a v1/v2 backup restores the legacy week and old dates and the migration never re-runs (db.ts importBackup saves mergeConfig(b.config) as-is). Advisory 1: migration writes plan before config, so a failed config write leaves it legacy forever. Accepted advisories: pain clamped 0..10; SetLog whitelist (new fields must be added to normalizeSetLog); corrupt stored plan skips migration. S1–S3/S6 no regression. Correction batch (one) launched: extract pure legacy-config rewrite, apply on old-backup import, write config before plan, port verifier probes as committed regression tests. Recheck limited to B1 + write order.
+- **L14 (2026-11-10, T3 result):** `sessionDigest(s, plan)` / `Discipline.digest(s, plan)` take the plan; ActiveSession no longer takes setsDelta (week from session.startedAt + config.blockStart). Legacy exercise names now come from the library (e.g. leg-press "Prensa de piernas (leg press)"). ExerciseProgress range uses the sets due in each session's own week. Settings "Metas de la semana 8" → "Metas del bloque"; footer dates from config. Pain control is a labelled native select (Sin registro, 0–10). Found: tabbar fixed at 4 columns (wraps with 5 tabs), weekbar fixed at 8 columns, same exercise twice in a routine would share SetLogs (editor allows it) → parent fixes.
+- Next: parent fixes (tabbar, weekbar, duplicate exercise guard), T2 correction + recheck, then native review (isolated worktree), T3 result, seam (sheet unification, full suite once), harness.
 
 ### L1 pasted document (verbatim)
 

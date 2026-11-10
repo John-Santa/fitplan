@@ -1,6 +1,10 @@
 import { useState } from 'react'
 import type { RoutineId, Session } from '../types'
-import { ROUTINES, SESSION_KIND_FOR_DAY, blockPhase, routineById, routineDaysLabel, routineForWeekday, routineSetCount } from '../lib/plan'
+import { SESSION_KIND_FOR_DAY } from '../lib/plan'
+import { routineDaysLabel, routineForWeekday, routineSetCount, routineSlots, weekLabel } from '../lib/planQueries'
+import { blockWeekNumber, phaseForWeek } from '../lib/phases'
+import { resolveExercise } from '../lib/library'
+import { isPainValue, painVerdict } from '../lib/pain'
 import { doneSets, fmtDate, fmtDuration, mmss, sessionVolume, todayISO } from '../lib/calc'
 import { DISCIPLINES, SWIM_STROKE_LABELS, finishSwimSession, metresToLaps, sessionDigest, swimDistance, swimPaceSecPer100m } from '../lib/disciplines'
 import { useStore } from '../lib/store'
@@ -16,13 +20,21 @@ import { Empty } from '../components/ui'
 type ProgressTarget = { kind: 'strength'; routineId: RoutineId } | { kind: 'swim' }
 
 export default function Train() {
-  const { sessions, config, saveSession, deleteSession } = useStore()
+  const { sessions, config, plan, saveSession, deleteSession } = useStore()
   const [active, setActive] = useState<Session | null>(null)
   const [detail, setDetail] = useState<string | null>(null)
   const [progressFor, setProgressFor] = useState<ProgressTarget | null>(null)
 
-  const phase = blockPhase(new Date(), config.blockStart)
-  const suggested = routineForWeekday(config.weeklyRoutine, new Date().getDay())
+  const week = blockWeekNumber(new Date(), config.blockStart)
+  const phase = phaseForWeek(plan, week)
+  const suggested = routineForWeekday(plan, config.weeklyRoutine, new Date().getDay())
+  // Las activas, mas la de hoy si el dia semanal todavia apunta a una archivada.
+  const routines = plan.routines.filter(r => !r.archived || r.id === suggested?.id)
+  // Rutinas archivadas con historial: ya no se empiezan, pero su progresion
+  // sigue consultable.
+  const archivedWithHistory = plan.routines.filter(
+    r => r.archived && sessions.some(s => s.kind === 'strength' && s.routineId === r.id),
+  )
   // Que disciplina, si alguna, planifica hoy — gobierna la pildora "hoy" de
   // la tarjeta de natacion, igual criterio que Home.tsx usa para su CTA.
   const todayKind = SESSION_KIND_FOR_DAY[config.weeklyRoutine[new Date().getDay()].kind]
@@ -31,7 +43,6 @@ export default function Train() {
     return (
       <ActiveSession
         session={active}
-        setsDelta={phase.setsDelta}
         onChange={setActive}
         onFinish={async () => {
           const finished: Session =
@@ -58,7 +69,7 @@ export default function Train() {
   if (detail) {
     const s = sessions.find(x => x.id === detail)
     if (!s) return null
-    const digest = sessionDigest(s)
+    const digest = sessionDigest(s, plan)
     return (
       <>
         <button className="ghost" onClick={() => setDetail(null)}>← Volver</button>
@@ -80,20 +91,29 @@ export default function Train() {
                     .slice()
                     .sort((a, b) => a.exerciseId.localeCompare(b.exerciseId) || a.setIndex - b.setIndex)
                     .map((x, i) => {
-                      const r = routineById(s.routineId)
-                      const ex = r?.exercises.find(e => e.id === x.exerciseId)
+                      const done = x.durationSec != null ? `${x.durationSec} s` : x.distanceM != null ? `${x.distanceM} m` : '—'
                       return (
                         <tr key={i}>
-                          <td>{ex?.name ?? x.exerciseId}</td>
+                          <td>{resolveExercise(plan, x.exerciseId)?.name ?? x.exerciseId}</td>
                           <td className="num">{x.setIndex + 1}</td>
                           <td className="num">{x.weight ?? '—'}</td>
-                          <td className="num">{x.reps ?? '—'}</td>
+                          <td className="num">{x.reps ?? done}</td>
                         </tr>
                       )
                     })}
                 </tbody>
               </table>
             </div>
+            {s.pain && Object.keys(s.pain).length > 0 && (
+              <div className="card" style={{ marginTop: 12 }}>
+                <div className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em' }}>Dolor registrado</div>
+                {Object.entries(s.pain).filter(([, v]) => isPainValue(v)).map(([id, v]) => (
+                  <p key={id} style={{ margin: 0 }}>
+                    {resolveExercise(plan, id)?.name ?? id}: <strong className="num">{v}/10</strong> · {painVerdict(v).label}
+                  </p>
+                ))}
+              </div>
+            )}
           </>
         ) : (
           <>
@@ -151,29 +171,34 @@ export default function Train() {
 
   return (
     <>
-      <div className="eyebrow">Semana {phase.week} de 8</div>
+      <div className="eyebrow">{weekLabel(plan.weeks, week)}</div>
       <h1>Entrenar</h1>
 
-      <div className="card accent tight">
-        <div className="row">
-          <div className="grow">
-            <strong>{phase.label}</strong>
-            <div className="muted">{phase.rir}{phase.setsDelta !== 0 && ' · una serie menos por ejercicio'}</div>
+      {phase && (
+        <div className="card accent tight">
+          <div className="row">
+            <div className="grow">
+              <strong>{phase.intensity}</strong>
+              <div className="muted">
+                {phase.sets}
+                {phase.loadNote !== '' && ` · ${phase.loadNote}`}
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       <div className="col-a">
         <div className="section-title">Empezar sesión</div>
-        {ROUTINES.map(r => (
+        {routines.map(r => (
           <div className="card" key={r.id} style={{ marginBottom: 10 }}>
             <div className="row">
               <div className="grow">
                 <strong>{r.name}</strong>
                 {suggested?.id === r.id && <span className="pill" style={{ marginLeft: 8 }}>hoy</span>}
-                <div className="muted">{routineDaysLabel(config.weeklyRoutine, r.id)} · {r.zone}</div>
+                <div className="muted">{routineDaysLabel(config.weeklyRoutine, r.id)}{r.focus !== '' && ` · ${r.focus}`}</div>
                 <div className="muted num" style={{ fontSize: 12.5 }}>
-                  {r.exercises.length} ejercicios · {routineSetCount(r, phase.setsDelta)} series
+                  {routineSlots(r, week).length} ejercicios · {routineSetCount(plan, r, week)} series
                 </div>
               </div>
               <button
@@ -184,6 +209,16 @@ export default function Train() {
                 {DISCIPLINES.strength.startLabel}
               </button>
             </div>
+            <button className="ghost" style={{ marginTop: 10, padding: '7px 12px', fontSize: 13 }} onClick={() => setProgressFor({ kind: 'strength', routineId: r.id })}>
+              Ver progresión
+            </button>
+          </div>
+        ))}
+
+        {archivedWithHistory.map(r => (
+          <div className="card" key={r.id} style={{ marginBottom: 10 }}>
+            <strong>{r.name}</strong> <span className="pill">archivada</span>
+            <div className="muted">Ya no se empieza desde aquí; tu historial se conserva.</div>
             <button className="ghost" style={{ marginTop: 10, padding: '7px 12px', fontSize: 13 }} onClick={() => setProgressFor({ kind: 'strength', routineId: r.id })}>
               Ver progresión
             </button>
@@ -220,7 +255,7 @@ export default function Train() {
         ) : (
           <div className="tablewrap">
             {sessions.map(s => {
-              const digest = sessionDigest(s)
+              const digest = sessionDigest(s, plan)
               const metaLine =
                 s.kind === 'strength'
                   ? `${doneSets(s)} series · ${Math.round(sessionVolume(s)).toLocaleString('es-CO')} kg`
