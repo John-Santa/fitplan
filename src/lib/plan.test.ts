@@ -254,3 +254,34 @@ describe('semana por defecto y rutinas del plan', () => {
     expect(mergeConfig({ weeklyRoutine: week }).weeklyRoutine[1]).toEqual(DEFAULT_CONFIG.weeklyRoutine[1])
   })
 })
+
+// routineExercises lo escribia el editor de rutinas anterior al plan editable
+// (PR #1). Ya no se edita, pero mergeConfig lo conserva: es el dato que la
+// migracion lleva al plan (rutinas archivadas y ejercicios propios).
+describe('routineExercises heredado', () => {
+  const custom = {
+    id: 'custom-abc123', name: 'Sentadilla búlgara',
+    sets: 4, repsLow: 10, repsHigh: 12, restSec: 90, cue: '', mwSlug: '',
+  }
+
+  it('mergeConfig conserva ejercicios personalizados validos', () => {
+    const merged = mergeConfig({ routineExercises: { dia1: [custom] } })
+    expect(merged.routineExercises.dia1).toEqual([custom])
+    expect(merged.routineExercises.dia2).toBeUndefined()
+  })
+
+  it('mergeConfig descarta listas invalidas, vacias o con ids repetidos', () => {
+    const merged = mergeConfig({
+      routineExercises: {
+        dia1: [],
+        dia2: [{ ...custom, sets: 0 }],
+        dia3: [custom, custom],
+      },
+    })
+    expect(merged.routineExercises).toEqual({})
+  })
+
+  it('una config sin routineExercises queda con un objeto vacio', () => {
+    expect(mergeConfig({ heightCm: 170 }).routineExercises).toEqual({})
+  })
+})

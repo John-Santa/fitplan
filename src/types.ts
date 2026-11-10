@@ -261,6 +261,11 @@ export type DayPlan = TrainingDay | OtherDay
 /** Indice 0 = domingo .. 6 = sabado, igual que Date.getDay(). */
 export type WeeklyRoutine = readonly [DayPlan, DayPlan, DayPlan, DayPlan, DayPlan, DayPlan, DayPlan]
 
+/** Ejercicios personalizados por rutina. Una clave ausente = la rutina usa los
+ *  ejercicios por defecto del catalogo; presente = lista completa y ordenada
+ *  que reemplaza a la de por defecto. */
+export type RoutineOverrides = Partial<Record<RoutineId, Exercise[]>>
+
 export interface Config {
   heightCm: number
   blockStart: string
@@ -272,6 +277,8 @@ export interface Config {
    *  mergeConfig): un objeto anidado reintroduciria el defecto de campo sin
    *  rellenar de 53590ef. */
   poolLengthM: number
+  /** Ejercicios que el usuario eligio para cada rutina (ver RoutineOverrides). */
+  routineExercises: RoutineOverrides
 }
 
 /** version 1 = una sola disciplina (fuerza), sin `kind` en el registro de

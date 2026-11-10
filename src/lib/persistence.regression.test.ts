@@ -16,8 +16,9 @@ const GYM_NOTE = '20:30 en el gimnasio'
 const SWIM_NOTE =
   '20:00 a 21:00. Cierra el segundo trabajo a las 19:30 y come la fruta o el batido antes de salir. En casa a las 22:30, cena lista para calentar y a dormir a las 23:30.'
 
-/** DEFAULT_CONFIG tal como la traia la app en 4d0c2c0, antes del plan editable. */
-const OLD_SHIPPED_CONFIG: Config = {
+/** DEFAULT_CONFIG tal como la traia la app en 4d0c2c0, antes del plan editable
+ *  (y antes de routineExercises, que llego con el PR #1). */
+const OLD_SHIPPED_CONFIG: Omit<Config, 'routineExercises'> = {
   heightCm: 173,
   blockStart: '2026-08-04',
   blockEnd: '2026-09-28',
@@ -34,7 +35,8 @@ const OLD_SHIPPED_CONFIG: Config = {
   poolLengthM: 25,
 }
 
-const oldConfig = (): Config => structuredClone(OLD_SHIPPED_CONFIG)
+/** La misma config tal como la deja mergeConfig hoy: routineExercises vacio. */
+const oldConfig = (): Config => ({ ...structuredClone(OLD_SHIPPED_CONFIG), routineExercises: {} })
 
 const legacySet = { exerciseId: 'leg-press', setIndex: 0, weight: 80, reps: 10, done: true }
 const legacy = { id: 's1', kind: 'strength', routineId: 'dia1', date: '2026-09-01', startedAt: 1, finishedAt: 2, sets: [legacySet], notes: 'x' }
@@ -42,7 +44,7 @@ const legacy = { id: 's1', kind: 'strength', routineId: 'dia1', date: '2026-09-0
 describe('el fixture de la config anterior', () => {
   it('coincide con la semana legada que conserva plan.ts y no cambia al pasar por mergeConfig', () => {
     expect(OLD_SHIPPED_CONFIG.weeklyRoutine).toEqual(DEFAULT_WEEKLY_ROUTINE)
-    expect(mergeConfig(oldConfig())).toEqual(OLD_SHIPPED_CONFIG)
+    expect(mergeConfig(oldConfig())).toEqual(oldConfig())
   })
 })
 
@@ -91,7 +93,7 @@ describe('migrateLegacyConfig', () => {
 
   it('semana anterior y bloque anterior: reemplaza ambos y conserva el resto', () => {
     const next = migrateLegacyConfig(oldConfig(), week)
-    expect(next).toEqual({ ...OLD_SHIPPED_CONFIG, weeklyRoutine: week, blockStart: NEW_BLOCK_START, blockEnd: NEW_BLOCK_END })
+    expect(next).toEqual({ ...oldConfig(), weeklyRoutine: week, blockStart: NEW_BLOCK_START, blockEnd: NEW_BLOCK_END })
     expect([NEW_BLOCK_START, NEW_BLOCK_END]).toEqual(['2026-11-16', '2027-02-07'])
   })
 
@@ -127,7 +129,7 @@ describe('migrateLegacyConfig', () => {
   it('no muta la config recibida y es idempotente', () => {
     const cfg = oldConfig()
     const next = migrateLegacyConfig(cfg, week)!
-    expect(cfg).toEqual(OLD_SHIPPED_CONFIG)
+    expect(cfg).toEqual(oldConfig())
     expect(migrateLegacyConfig(next, week)).toBeNull()
   })
 })

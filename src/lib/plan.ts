@@ -2,7 +2,9 @@ import type {
   Config,
   DayKind,
   DayPlan,
+  Exercise,
   Routine,
+  RoutineOverrides,
   RoutineId,
   Session,
   SessionKind,
@@ -176,6 +178,7 @@ export const DEFAULT_CONFIG: Config = {
   },
   weeklyRoutine: PLAN_WEEKLY_ROUTINE,
   poolLengthM: 25,
+  routineExercises: {},
 }
 
 export const BASELINE = {
@@ -399,6 +402,35 @@ function mergeWeeklyRoutine(stored: unknown): WeeklyRoutine {
   return [at(0), at(1), at(2), at(3), at(4), at(5), at(6)]
 }
 
+function isExercise(v: unknown): v is Exercise {
+  if (typeof v !== 'object' || v === null) return false
+  const e = v as Record<string, unknown>
+  const posInt = (n: unknown) => typeof n === 'number' && Number.isInteger(n) && n >= 1
+  return (
+    typeof e.id === 'string' && e.id !== '' &&
+    typeof e.name === 'string' && e.name.trim() !== '' &&
+    posInt(e.sets) && posInt(e.repsLow) && posInt(e.repsHigh) &&
+    (e.repsHigh as number) >= (e.repsLow as number) &&
+    typeof e.restSec === 'number' && Number.isFinite(e.restSec) && e.restSec >= 0 &&
+    typeof e.cue === 'string' && typeof e.mwSlug === 'string'
+  )
+}
+
+/** Una rutina con lista invalida, vacia o con ids repetidos vuelve a la de por
+ *  defecto entera: misma regla de reparacion que mergeWeeklyRoutine. */
+function mergeRoutineOverrides(stored: unknown): RoutineOverrides {
+  const src = (typeof stored === 'object' && stored !== null ? stored : {}) as Record<string, unknown>
+  const out: RoutineOverrides = {}
+  for (const r of ROUTINES) {
+    const list = src[r.id]
+    if (!Array.isArray(list) || list.length === 0 || !list.every(isExercise)) continue
+    const ids = new Set(list.map(e => e.id))
+    if (ids.size !== list.length) continue
+    out[r.id] = list.map(e => ({ ...e, ...(e.main ? { main: true } : {}) }))
+  }
+  return out
+}
+
 /** Usa el valor guardado si es un numero valido (finito); si no, el de por
  *  defecto. Sin esto, cada campo escalar de mergeConfig repetiria el mismo
  *  condicional a mano. */
@@ -450,6 +482,7 @@ export function mergeConfig(stored: unknown): Config {
     goal: mergeGoal(c.goal),
     weeklyRoutine: mergeWeeklyRoutine(c.weeklyRoutine),
     poolLengthM: num(c.poolLengthM, DEFAULT_CONFIG.poolLengthM),
+    routineExercises: mergeRoutineOverrides(c.routineExercises),
   }
 }
 
