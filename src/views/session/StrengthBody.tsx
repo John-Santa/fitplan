@@ -142,7 +142,7 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
               {phaseText && <> · {phaseText}</>}
             </p>
             <button type="button" className="sp-alarm" onClick={() => setFlagsOpen(true)}>
-              <AlertIcon /> Señales de alarma
+              <AlertIcon /> <span className="sp-alarm-label">Señales de alarma</span>
             </button>
           </div>
           <div className="rail" ref={railRef}>

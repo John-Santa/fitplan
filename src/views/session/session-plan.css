@@ -142,3 +142,22 @@
 @media (prefers-reduced-motion: reduce) {
   .sp-chevron { transition: none; }
 }
+
+/* Una sesion cambia de alto al pasar de paso: sin esto, el anclaje de scroll
+   de Chrome mueve el documento en pantallas de 768 px o mas. */
+.main:has(.session-head) { overflow-anchor: none; }
+
+/* Horizontal bajo (mismo corte que styles.css §15): la fila de fase se lee
+   solo con lector de pantalla y "Señales de alarma" queda como icono de 44 px
+   junto al titulo, para que la cabecera no tape la serie actual. */
+@media (max-height: 480px) and (min-width: 480px) {
+  .session-head h1 { padding-right: 52px; }
+  .sp-phase { position: absolute; top: 4px; right: 0; margin: 0; }
+  .sp-phase-text,
+  .sp-alarm-label {
+    position: absolute; width: 1px; height: 1px; margin: -1px;
+    padding: 0; border: 0; overflow: hidden;
+    clip-path: inset(50%); white-space: nowrap;
+  }
+  .sp-alarm { width: 44px; padding: 0; justify-content: center; }
+}

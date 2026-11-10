@@ -128,6 +128,12 @@
 
 .guide-table td { padding: var(--sp-1) 0; }
 
+/* styles.css pone nowrap en th/td para las tablas de datos; esta es de texto
+   y debe partir lineas, o la pagina se ensancha y la barra de pestañas se va
+   fuera de pantalla en el telefono. */
+.guide-table th,
+.guide-table td { white-space: normal; }
+
 .guide-table td::before {
   content: attr(data-label);
   display: block; margin-bottom: 2px;
