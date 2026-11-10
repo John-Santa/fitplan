@@ -1,6 +1,8 @@
 import type { Session, Measurement, ExerciseMeta, Config, Backup, TrainingPlan } from '../types'
 import { mergeConfig, normalizeSession } from './plan'
 import { normalizePlan, planFromBackup } from './planStorage'
+import { defaultPlanWithLegacy } from './defaultPlan'
+import { migrateLegacyConfig } from './legacyConfig'
 
 const DB_NAME = 'fitplan'
 const DB_VERSION = 1
@@ -223,9 +225,21 @@ export async function importBackup(data: unknown, mode: 'replace' | 'merge' = 'r
     ...(b.measurements ?? []).map(m => saveMeasurement(m)),
     ...(b.exerciseMeta ?? []).map(m => saveExerciseMeta(m)),
   ])
-  if (b.config) await saveConfig(mergeConfig(b.config))
   // Respaldos v1/v2 (o con plan ilegible) no traen plan: se conserva el actual.
   const plan = planFromBackup(b)
+  if (b.config) {
+    let config = mergeConfig(b.config)
+    if (!plan) {
+      // La config de un respaldo sin plan es de antes del plan editable: puede
+      // traer la semana dia1..dia3 y el bloque viejo, y la migracion de
+      // arranque no vuelve a correr porque ya hay un plan guardado. Se
+      // reescribe aqui con la semana del plan que queda activo. Un respaldo
+      // v3 con plan trae una config escrita por esta version: se deja igual.
+      const active = normalizePlan(await getPlan()) ?? defaultPlanWithLegacy()
+      config = migrateLegacyConfig(config, active.weekTemplate) ?? config
+    }
+    await saveConfig(config)
+  }
   if (plan) await savePlan(plan)
 }
 

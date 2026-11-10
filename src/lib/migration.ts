@@ -4,15 +4,9 @@
 import type { Config, TrainingPlan } from '../types'
 import * as db from './db'
 import { defaultPlanWithLegacy } from './defaultPlan'
+import { migrateLegacyConfig } from './legacyConfig'
 
-/** Ids de las tres rutinas anteriores al plan editable. */
-const LEGACY_ROUTINE_IDS: readonly string[] = ['dia1', 'dia2', 'dia3']
-
-/** Inicio del bloque que traia la app antes de este plan. */
-export const OLD_BLOCK_START = '2026-08-04'
-/** Bloque de 12 semanas del plan nuevo (supuesto A2). */
-const NEW_BLOCK_START = '2026-11-16'
-const NEW_BLOCK_END = '2027-02-07'
+export { OLD_BLOCK_START } from './legacyConfig'
 
 export interface MigrationResult {
   /** Plan a escribir, o null si no hay nada que escribir. */
@@ -31,21 +25,18 @@ const NOTHING: MigrationResult = { plan: null, config: null }
 export function planMigration(storedPlanRaw: unknown, config: Config): MigrationResult {
   if (storedPlanRaw !== undefined) return NOTHING
   const plan = defaultPlanWithLegacy()
-  let next: Config = config
-  // A1: la semana se reemplaza solo si todavia apunta a rutinas anteriores.
-  const usesLegacy = config.weeklyRoutine.some(
-    d => d.kind === 'training' && LEGACY_ROUTINE_IDS.includes(d.routineId),
-  )
-  if (usesLegacy) next = { ...next, weeklyRoutine: plan.weekTemplate }
-  // A2: solo el bloque que traia la app; fechas editadas por la persona se respetan.
-  if (config.blockStart === OLD_BLOCK_START) next = { ...next, blockStart: NEW_BLOCK_START, blockEnd: NEW_BLOCK_END }
-  return { plan, config: next === config ? null : next }
+  return { plan, config: migrateLegacyConfig(config, plan.weekTemplate) }
 }
 
 /** Corre la migracion contra IndexedDB y devuelve la config vigente. */
 export async function applyPlanMigration(config: Config): Promise<Config> {
   const result = planMigration(await db.getPlan(), config)
-  if (result.plan) await db.savePlan(result.plan)
+  // Primero la config y al final el plan: el plan guardado es la marca de
+  // "migracion hecha" (planMigration no hace nada si existe). Si la config
+  // fallara despues de escribir el plan, quedaria con la semana y el bloque
+  // anteriores para siempre; en este orden, un fallo a medias reintenta en el
+  // siguiente arranque (la reescritura es idempotente).
   if (result.config) await db.saveConfig(result.config)
+  if (result.plan) await db.savePlan(result.plan)
   return result.config ?? config
 }
