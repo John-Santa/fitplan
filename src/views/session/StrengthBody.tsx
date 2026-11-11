@@ -4,6 +4,7 @@ import { lastPerformance } from '../../lib/calc'
 import { blockWeekNumber, phaseForWeek, setsForSlot } from '../../lib/phases'
 import { buildSessionSteps, findRoutine, groupLabel, slotExerciseName, weekLabel, type SessionStep } from '../../lib/planQueries'
 import { useStore } from '../../lib/store'
+import BottomSheet from '../../components/BottomSheet'
 import ExerciseSheet from '../../components/ExerciseSheet'
 import { RedFlagsSheet } from '../Guide'
 import SessionShell from './SessionShell'
@@ -72,6 +73,7 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
   /** Series saltadas ("slotId:indice"). Solo pantalla: no se guardan. */
   const [skipped, setSkipped] = useState<Set<string>>(() => new Set())
   const [sheetSlot, setSheetSlot] = useState<PlanSlot | null>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
   const [flagsOpen, setFlagsOpen] = useState(false)
 
   const nameOf = (slot: PlanSlot) => slotExerciseName(plan, slot)
@@ -112,7 +114,6 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
   const item = items[safeIndex]
   const multiBlock = routine.blocks.length > 1
   const isLastItem = safeIndex === items.length - 1
-  const next = items[safeIndex + 1]
 
   const segs = items.map((it, i) => {
     const done = it.kind === 'warmup' ? plan.warmup.slots.filter(s => warmupTicked[s.id]).length : stepDone(it.step)
@@ -120,6 +121,11 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
     const state = i === safeIndex ? 'current' : done >= target ? 'done' : done > 0 ? 'partial' : 'pending'
     return { i, name: itemName(it), done, target, state, warm: it.kind === 'warmup' }
   })
+  // Next exercise = the first unfinished one after the current (wrapping), so
+  // the user can train in whatever order the gym allows; linear otherwise.
+  const pendingAfter = [...segs.slice(safeIndex + 1), ...segs.slice(0, safeIndex)].find(sg => sg.state !== 'done' && !sg.warm)
+  const nextIndex = pendingAfter ? pendingAfter.i : safeIndex + 1 < items.length ? safeIndex + 1 : null
+  const next = nextIndex != null ? items[nextIndex] : undefined
   const workPos = safeIndex - (hasWarmup ? 1 : 0) + 1
   const workCount = steps.length
   const pct = totalTarget > 0 ? Math.round((totalDone / totalTarget) * 100) : 0
@@ -128,7 +134,10 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
   const progress = (
     <div className="ses-prog">
       <div className="ses-prog-meta">
-        <span>{item?.kind === 'warmup' ? 'Calentamiento' : `Ejercicio ${workPos} de ${workCount}`}</span>
+        <button type="button" className="ses-pick" onClick={() => setPickerOpen(true)} aria-haspopup="dialog">
+          {item?.kind === 'warmup' ? 'Calentamiento' : `Ejercicio ${workPos} de ${workCount}`}
+          <span className="ses-pick-cta">Elegir</span>
+        </button>
         <span className="good">{pct}% completado</span>
       </div>
       <div className="ses-segs">
@@ -165,7 +174,7 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
     }
   }
 
-  const goNext = () => next && setCurrentIndex(safeIndex + 1)
+  const goNext = () => { if (nextIndex != null) setCurrentIndex(nextIndex) }
 
   return (
     <SessionShell
@@ -307,6 +316,28 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
             {body}
             {sheetSlot && <ExerciseSheet exerciseId={sheetSlot.exerciseId} slot={sheetSlot} onClose={() => setSheetSlot(null)} />}
             {flagsOpen && <RedFlagsSheet onClose={() => setFlagsOpen(false)} />}
+            {pickerOpen && (
+              <BottomSheet title="Elegir ejercicio" onClose={() => setPickerOpen(false)}>
+                <p className="ses-pick-hint">Haz el que esté libre en el gimnasio; el orden no importa.</p>
+                <ul className="ses-pick-list">
+                  {segs.map(sg => (
+                    <li key={sg.i}>
+                      <button
+                        type="button"
+                        className={`ses-pick-item ${sg.state}`}
+                        aria-current={sg.state === 'current' ? 'step' : undefined}
+                        onClick={() => { setCurrentIndex(sg.i); setPickerOpen(false) }}
+                      >
+                        <span className="ses-pick-name">{sg.name}</span>
+                        <span className="ses-pick-meta">
+                          {sg.state === 'done' ? 'Hecho' : sg.state === 'current' ? 'En curso' : `${sg.done} de ${sg.target} ${sg.warm ? 'items' : 'series'}`}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </BottomSheet>
+            )}
           </>
         )
       }}

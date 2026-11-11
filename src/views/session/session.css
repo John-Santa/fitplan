@@ -273,3 +273,28 @@
   .ses-chevron { transition: none; }
   .ses-iconbtn:active, .ses-round:active, .ses-primary:active { transform: none; }
 }
+
+/* ---------- elegir ejercicio (orden libre segun disponibilidad) ---------- */
+.ses-pick {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 32px; padding: 0; margin: 0;
+  background: none; border: none; font: inherit; color: inherit; cursor: pointer;
+}
+.ses-pick-cta { padding: 2px 10px; border-radius: 999px; background: var(--fp-s2); border: 1px solid var(--fp-line); color: var(--fp-primary); font-weight: 600; }
+.ses-pick-hint { margin: 0 0 12px; font-size: 14px; color: var(--fp-ink2); }
+.ses-pick-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.ses-pick-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 56px;
+  padding: 12px 16px; border-radius: var(--fp-r-btn); background: var(--fp-s2); border: 1px solid var(--fp-line);
+  font: inherit; color: var(--fp-ink); text-align: left; cursor: pointer;
+}
+.ses-pick-item.current { border-color: var(--fp-primary); }
+.ses-pick-item.done { opacity: .6; }
+.ses-pick-item.done .ses-pick-meta { color: var(--fp-success); }
+.ses-pick-name { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.ses-pick-meta { flex: none; font-size: 13px; color: var(--fp-ink2); }
+
+/* Peso y reps no caben lado a lado en un telefono: un stepper por fila. */
+@media (max-width: 520px) {
+  .ses-steppers { grid-template-columns: 1fr; }
+  .ses-stepper-row { gap: 12px; }
+}
