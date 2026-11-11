@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react'
+import { useState, type CSSProperties, type ReactNode } from 'react'
 import { DONE_TODAY, SESSION_KIND_FOR_DAY, weekdayLabel } from '../lib/plan'
 import {
   dayTitleFor,
@@ -85,7 +85,12 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
   const phase = phaseForWeek(plan, week)
   const dow = now.getDay()
   const today = config.weeklyRoutine[dow]
-  const suggested = routineForWeekday(plan, config.weeklyRoutine, dow)
+  // Dia elegido en la tira semanal: por defecto hoy, pero se puede entrenar la
+  // rutina de cualquier dia (adelantar, recuperar o cambiar el orden).
+  const [picked, setPicked] = useState(dow)
+  const isPickedToday = picked === dow
+  const pickedDay = config.weeklyRoutine[picked]
+  const suggested = routineForWeekday(plan, config.weeklyRoutine, picked)
   // "Ya entrenaste hoy" = ya hice la disciplina de HOY (un dia sin disciplina
   // asignada nunca cuenta como hecho).
   const todayKind = SESSION_KIND_FOR_DAY[today.kind]
@@ -120,7 +125,8 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
   const chips = names.slice(0, MAX_CHIPS)
   const extra = names.length - chips.length
 
-  const showHero = suggested != null && doneKind == null
+  // "Ya entrenaste hoy" solo tapa la tarjeta cuando el dia elegido es hoy.
+  const showHero = suggested != null && (!isPickedToday || doneKind == null)
   const planActive = week <= plan.weeks
 
   const progress = (
@@ -157,6 +163,12 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
           <section className="hoy-hero">
             <div className="hoy-hero-glow" aria-hidden="true" />
             {progress}
+            {!isPickedToday && (
+              <div className="hoy-picked">
+                <span>Rutina del <strong>{weekdayLabel(picked).toLowerCase()}</strong></span>
+                <button type="button" className="hoy-link" onClick={() => setPicked(dow)}>Volver a hoy</button>
+              </div>
+            )}
             <h1 className="hoy-title">{suggested.name.replace(/\s[–—-]\s/, ' · ')}</h1>
             <div className="hoy-meta">
               <span className="hoy-pill">
@@ -196,7 +208,13 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
           <section className="hoy-hero">
             <div className="hoy-hero-glow" aria-hidden="true" />
             {progress}
-            {doneKind ? (
+            {!isPickedToday && (
+              <div className="hoy-picked">
+                <span>Elegiste el <strong>{weekdayLabel(picked).toLowerCase()}</strong></span>
+                <button type="button" className="hoy-link" onClick={() => setPicked(dow)}>Volver a hoy</button>
+              </div>
+            )}
+            {isPickedToday && doneKind ? (
               <>
                 <div className="hoy-calm-icon"><Icon name="check" size={20} /></div>
                 <h1 className="hoy-title">{DONE_TODAY[doneKind].title}</h1>
@@ -205,10 +223,10 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
             ) : (
               <>
                 <div className="hoy-calm-icon rest">
-                  <Icon name={today.kind === 'swim' ? 'swim' : today.kind === 'walk' ? 'walk' : 'moon'} size={20} />
+                  <Icon name={pickedDay.kind === 'swim' ? 'swim' : pickedDay.kind === 'walk' ? 'walk' : 'moon'} size={20} />
                 </div>
-                <h1 className="hoy-title">{dayTitleFor(plan, today)}</h1>
-                {today.note !== '' && <p className="hoy-note">{today.note}</p>}
+                <h1 className="hoy-title">{dayTitleFor(plan, pickedDay)}</h1>
+                {pickedDay.note !== '' && <p className="hoy-note">{pickedDay.note}</p>}
               </>
             )}
             {next && (
@@ -240,6 +258,7 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
               const routine = routineForWeekday(plan, config.weeklyRoutine, d)
               const cls = ['hoy-day']
               if (isToday) cls.push('today')
+              if (d === picked) cls.push('picked')
               if (isDone) cls.push('done')
               if (kind == null) cls.push('rest')
 
@@ -285,10 +304,17 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
               }
 
               return (
-                <div key={d} className={cls.join(' ')}>
+                <button
+                  key={d}
+                  type="button"
+                  className={cls.join(' ')}
+                  aria-pressed={d === picked}
+                  aria-label={`${weekdayLabel(d)}: ${routine ? routine.name : dayTitleFor(plan, day)}`}
+                  onClick={() => setPicked(d)}
+                >
                   <span className="hoy-day-letter">{DAY_LETTERS[d]}</span>
                   {body}
-                </div>
+                </button>
               )
             })}
           </div>

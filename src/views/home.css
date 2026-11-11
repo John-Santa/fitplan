@@ -128,7 +128,10 @@
   display: flex; flex-direction: column; align-items: center; justify-content: space-between;
   text-align: center;
   background: var(--fp-s1); border: 1px solid var(--fp-line); border-radius: 12px;
+  width: 100%; font: inherit; color: inherit; cursor: pointer; appearance: none;
+  touch-action: manipulation;
 }
+.hoy-day:hover { border-color: var(--fp-ink3); }
 .hoy-day-letter { font-size: 11px; font-weight: 500; color: var(--fp-ink2); }
 .hoy-day-main { margin: auto 0; font-size: 12px; font-weight: 600; color: var(--fp-ink); }
 .hoy-day-sub {
@@ -143,7 +146,8 @@
   border: 1px solid color-mix(in srgb, var(--fp-success) 30%, transparent);
   color: var(--fp-success);
 }
-.hoy-day.today {
+/* El dia elegido lleva el borde naranja; hoy conserva su letra en naranja. */
+.hoy-day.picked {
   background: var(--fp-s2); border: 2px solid var(--fp-primary); padding: 7px;
   box-shadow: 0 1px 2px 0 color-mix(in srgb, var(--fp-primary) 10%, transparent);
 }
@@ -221,3 +225,10 @@
 }
 .hoy-nudge p { margin: 0; font-size: 12px; line-height: 1.4; color: var(--fp-ink2); }
 .hoy-nudge strong { display: block; font-size: 13px; color: var(--fp-ink); }
+
+/* Aviso cuando la tarjeta muestra otro dia que no es hoy. */
+.hoy-picked {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin: 4px 0 8px; font-size: 13px; color: var(--fp-ink2);
+}
+.hoy-picked strong { color: var(--fp-ink); font-weight: 600; }
