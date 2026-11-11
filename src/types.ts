@@ -176,6 +176,9 @@ export interface StrengthSession extends SessionBase {
   /** Version minima ("dia dificil"): calentamiento + primer ejercicio. Opcional:
    *  las sesiones guardadas antes de este campo siguen siendo validas. */
   minimal?: true
+  /** Exercises swapped for this session only (slot id -> exercise id), e.g.
+   *  when a machine is busy. Optional: older sessions stay valid. */
+  swaps?: Record<string, string>
 }
 
 /** Estilo de un bloque de natacion. Todavia no hay forma de elegirlo desde la

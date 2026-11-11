@@ -2,6 +2,9 @@ import { useMemo, useState } from 'react'
 import type { PlanRoutine, PlanSlot, SetLog, StrengthSession } from '../../types'
 import { lastPerformance } from '../../lib/calc'
 import { blockWeekNumber, phaseForWeek, setsForSlot } from '../../lib/phases'
+import { addCustomExercise, swapExercise } from '../../lib/planEdits'
+import ExercisePicker, { type NewExerciseInput } from '../plan/ExercisePicker'
+import '../plan/plan-editor.css'
 import { buildSessionSteps, findRoutine, groupLabel, slotExerciseName, weekLabel, type SessionStep } from '../../lib/planQueries'
 import { useStore } from '../../lib/store'
 import BottomSheet from '../../components/BottomSheet'
@@ -45,15 +48,25 @@ export default function StrengthBody(props: Props) {
 }
 
 function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }: Props & { routine: PlanRoutine }) {
-  const { sessions, meta, saveMeta, plan, config } = useStore()
+  const { sessions, meta, saveMeta, plan, config, savePlan } = useStore()
   // lastPerformance solo mira fuerza (calc.ts la tipa a StrengthSession[]):
   // una sesion de natacion no tiene .sets.
   const strengthSessions = sessions.filter((s): s is StrengthSession => s.kind === 'strength')
   const week = blockWeekNumber(new Date(session.startedAt), config.blockStart)
   const phase = phaseForWeek(plan, week)
   const minimal = session.minimal === true
+  const swaps = session.swaps
   const steps = useMemo(() => {
-    const all = buildSessionSteps(routine, week)
+    // Session-only swaps replace the exercise (and drop the plan's custom label).
+    const all = buildSessionSteps(routine, week).map(st => ({
+      ...st,
+      slots: st.slots.map(sl => {
+        const to = swaps?.[sl.id]
+        if (!to) return sl
+        const { label: _label, ...rest } = sl
+        return { ...rest, exerciseId: to }
+      }),
+    }))
     if (!minimal) return all
     // Version minima: solo el primer ejercicio de trabajo (primer slot que no es nota).
     for (const st of all) {
@@ -61,7 +74,7 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
       if (slot) return [{ ...st, group: null, slots: [slot] }]
     }
     return all
-  }, [routine, week, minimal])
+  }, [routine, week, minimal, swaps])
   const hasWarmup = routine.warmup && plan.warmup.slots.length > 0
   const items: Item[] = useMemo(
     () => [...(hasWarmup ? [{ kind: 'warmup' } as const] : []), ...steps.map(step => ({ kind: 'work', step }) as const)],
@@ -74,6 +87,7 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
   const [skipped, setSkipped] = useState<Set<string>>(() => new Set())
   const [sheetSlot, setSheetSlot] = useState<PlanSlot | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [swapTarget, setSwapTarget] = useState<{ slot: PlanSlot; blockId: string } | null>(null)
   const [flagsOpen, setFlagsOpen] = useState(false)
 
   const nameOf = (slot: PlanSlot) => slotExerciseName(plan, slot)
@@ -105,6 +119,28 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
   const setPain = (exerciseId: string, value: number | null) => {
     const { [exerciseId]: _removed, ...rest } = session.pain ?? {}
     onChange({ ...session, pain: value === null ? rest : { ...rest, [exerciseId]: value } })
+  }
+
+  const applySwap = (slotId: string, exerciseId: string) => {
+    onChange({ ...session, swaps: { ...(session.swaps ?? {}), [slotId]: exerciseId } })
+  }
+  const keepInPlan = async (slotId: string, blockId: string) => {
+    const to = session.swaps?.[slotId]
+    if (!to) return
+    const next = swapExercise(plan, routine.id, blockId, slotId, to)
+    if (next === plan) return
+    await savePlan(next)
+    const { [slotId]: _done, ...rest } = session.swaps ?? {}
+    onChange({ ...session, swaps: Object.keys(rest).length > 0 ? rest : undefined })
+  }
+  const createAndSwap = async (input: NewExerciseInput) => {
+    if (!swapTarget) return
+    const withCustom = addCustomExercise(plan, input)
+    const created = withCustom.customExercises.at(-1)
+    if (!created) return
+    await savePlan(withCustom)
+    applySwap(swapTarget.slot.id, created.id)
+    setSwapTarget(null)
   }
 
   const totalDone = steps.reduce((a, st) => a + stepDone(st), 0)
@@ -259,6 +295,9 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
             onPain={v => setPain(slot.exerciseId, v)}
             onInfo={() => setSheetSlot(slot)}
             onSeat={v => saveMeta({ exerciseId: slot.exerciseId, seat: v, note: meta[slot.exerciseId]?.note ?? '' })}
+            onSwap={step ? () => setSwapTarget({ slot, blockId: step.blockId }) : undefined}
+            swapped={session.swaps?.[slot.id] != null}
+            onKeepInPlan={step ? () => { void keepInPlan(slot.id, step.blockId) } : undefined}
           />
         )
 
@@ -316,6 +355,17 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
             {body}
             {sheetSlot && <ExerciseSheet exerciseId={sheetSlot.exerciseId} slot={sheetSlot} onClose={() => setSheetSlot(null)} />}
             {flagsOpen && <RedFlagsSheet onClose={() => setFlagsOpen(false)} />}
+            {swapTarget && (
+              <ExercisePicker
+                plan={plan}
+                mode="swap"
+                currentExerciseId={swapTarget.slot.exerciseId}
+                taken={new Set(steps.flatMap(st => st.slots.map(sl => sl.exerciseId)))}
+                onPick={id => { applySwap(swapTarget.slot.id, id); setSwapTarget(null) }}
+                onCreate={input => { void createAndSwap(input) }}
+                onClose={() => setSwapTarget(null)}
+              />
+            )}
             {pickerOpen && (
               <BottomSheet title="Elegir ejercicio" onClose={() => setPickerOpen(false)}>
                 <p className="ses-pick-hint">Haz el que esté libre en el gimnasio; el orden no importa.</p>

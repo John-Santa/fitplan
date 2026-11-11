@@ -298,3 +298,4 @@
   .ses-steppers { grid-template-columns: 1fr; }
   .ses-stepper-row { gap: 12px; }
 }
+.ses-swapped { margin: 8px 0 0; font-size: 13px; color: var(--fp-ink2); }

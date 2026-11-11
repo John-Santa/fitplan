@@ -584,6 +584,14 @@ function isSwimBlock(v: unknown): v is SwimBlock {
   )
 }
 
+/** Session-only exercise swaps: keeps string -> non-empty string entries. */
+function normalizeSwaps(v: unknown): Record<string, string> | undefined {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return undefined
+  const out: Record<string, string> = {}
+  for (const [k, x] of Object.entries(v)) if (typeof x === 'string' && x !== '') out[k] = x
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
 /** Un routineId que no es texto (o es vacio) descarta la sesion entera. Un id
  *  de texto que no esta en el plan (rutina archivada o borrada) NO descarta:
  *  el historial nunca se pierde por editar el plan (S4); las vistas muestran
@@ -599,6 +607,7 @@ function normalizeStrengthSession(r: Record<string, unknown>): StrengthSession |
   if (typeof r.startedAt !== 'number') return null
   if (!Array.isArray(r.sets)) return null
   const pain = normalizePain(r.pain)
+  const swaps = normalizeSwaps(r.swaps)
   return {
     kind: 'strength',
     id: r.id,
@@ -610,6 +619,7 @@ function normalizeStrengthSession(r: Record<string, unknown>): StrengthSession |
     notes: typeof r.notes === 'string' ? r.notes : '',
     ...(pain ? { pain } : {}),
     ...(r.minimal === true ? { minimal: true as const } : {}),
+    ...(swaps ? { swaps } : {}),
   }
 }
 

@@ -29,6 +29,12 @@ export interface SlotCardProps {
   onPain: (v: number | null) => void
   onInfo: () => void
   onSeat: (v: string) => void
+  /** Opens the exercise picker to swap this exercise (library or MuscleWiki). */
+  onSwap?: () => void
+  /** The exercise was swapped for this session only. */
+  swapped?: boolean
+  /** Saves the session-only swap into the plan. */
+  onKeepInPlan?: () => void
 }
 
 const num = (v: string): number | null => (v === '' ? null : Number(v))
@@ -222,7 +228,18 @@ export default function SlotCard(p: SlotCardProps) {
             <button type="button" className="ses-chip btn" aria-label={`Ver ficha de ${name}`} onClick={p.onInfo}>
               <InfoIcon /> Ficha
             </button>
+            {p.onSwap && (
+              <button type="button" className="ses-chip btn" aria-label={`Cambiar ${name} por otro ejercicio`} onClick={p.onSwap}>
+                Cambiar
+              </button>
+            )}
           </div>
+          {p.swapped && (
+            <p className="ses-swapped">
+              Cambiado solo por hoy.{' '}
+              {p.onKeepInPlan && <button type="button" className="ses-textbtn" onClick={p.onKeepInPlan}>Guardar en el plan</button>}
+            </p>
+          )}
         </div>
       </div>
 
