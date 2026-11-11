@@ -257,9 +257,10 @@ export default function PlanEditor({ onOpenGuide }: { onOpenGuide: () => void })
         </div>
         <div className="pe-legend">
           {plan.phases.map((p, i) => (
-            <div key={i} className="pe-legend-item" data-current={phase === p} style={{ flex: p.toWeek - p.fromWeek + 1 }}>
-              <span className="pe-legend-name">{p.goal}</span>
+            <div key={i} className="pe-legend-item" data-current={phase === p} aria-current={phase === p ? 'step' : undefined}>
+              <span className={`pe-legend-dot pe-seg-${i % 5}`} aria-hidden="true" />
               <span className="pe-legend-range">{weeksLabel(p.fromWeek, p.toWeek, true)}</span>
+              <span className="pe-legend-name">{p.goal}</span>
             </div>
           ))}
         </div>
