@@ -609,6 +609,7 @@ function normalizeStrengthSession(r: Record<string, unknown>): StrengthSession |
     sets: r.sets.flatMap(x => normalizeSetLog(x) ?? []),
     notes: typeof r.notes === 'string' ? r.notes : '',
     ...(pain ? { pain } : {}),
+    ...(r.minimal === true ? { minimal: true as const } : {}),
   }
 }
 

@@ -173,6 +173,9 @@ export interface StrengthSession extends SessionBase {
   /** Dolor 0-10 por ejercicio (llave = exerciseId). Opcional: las sesiones
    *  guardadas antes de este campo siguen siendo validas. */
   pain?: Record<string, number>
+  /** Version minima ("dia dificil"): calentamiento + primer ejercicio. Opcional:
+   *  las sesiones guardadas antes de este campo siguen siendo validas. */
+  minimal?: true
 }
 
 /** Estilo de un bloque de natacion. Todavia no hay forma de elegirlo desde la

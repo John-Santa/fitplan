@@ -18,7 +18,7 @@ import { Empty } from '../components/ui'
  *  una disciplina nueva con progresion propia exige agregarle su rama aca. */
 type ProgressTarget = { kind: 'strength'; routineId: RoutineId } | { kind: 'swim' }
 
-export default function Train({ autoStart, onAutoStarted }: { autoStart?: string; onAutoStarted?: () => void } = {}) {
+export default function Train({ autoStart, autoStartMinimal, onAutoStarted }: { autoStart?: string; autoStartMinimal?: boolean; onAutoStarted?: () => void } = {}) {
   const { sessions, config, plan, saveSession, deleteSession } = useStore()
   const [active, setActive] = useState<Session | null>(null)
   const [detail, setDetail] = useState<string | null>(null)
@@ -27,7 +27,8 @@ export default function Train({ autoStart, onAutoStarted }: { autoStart?: string
   // Arranque directo desde Hoy: igual que el boton "start" de la rutina.
   useEffect(() => {
     if (!autoStart || active) return
-    setActive(DISCIPLINES.strength.create(todayISO(), autoStart))
+    const created = DISCIPLINES.strength.create(todayISO(), autoStart)
+    setActive(autoStartMinimal ? { ...created, minimal: true } : created)
     onAutoStarted?.()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoStart])

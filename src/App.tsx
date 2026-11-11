@@ -4,12 +4,13 @@ import { ErrorScreen } from './components/ErrorScreen'
 import Home from './views/Home'
 import Train from './views/Train'
 import Measure from './views/Measure'
+import Habit from './views/Habit'
 import Settings from './views/Settings'
 import PlanEditor from './views/PlanEditor'
 import Guide from './views/Guide'
 
 type Tab = 'home' | 'plan' | 'progreso' | 'perfil'
-type ProgressView = 'train' | 'measure'
+type ProgressView = 'habit' | 'train' | 'measure'
 
 const TABS: { id: Tab; label: string; icon: ReactNode }[] = [
   { id: 'home', label: 'Hoy', icon: <><path d="M6.5 6.5v11M17.5 6.5v11M3.5 9v6M20.5 9v6M6.5 12h11" /></> },
@@ -21,15 +22,20 @@ const TABS: { id: Tab; label: string; icon: ReactNode }[] = [
 function Shell() {
   const { ready, dbError } = useStore()
   const [tab, setTab] = useState<Tab>('home')
-  const [progressView, setProgressView] = useState<ProgressView>('train')
-  const [autoStart, setAutoStart] = useState<string | undefined>(undefined)
+  const [progressView, setProgressView] = useState<ProgressView>('habit')
+  const [auto, setAuto] = useState<{ id: string; minimal: boolean } | undefined>(undefined)
   // La Guia es una pantalla secundaria: se abre desde Plan y no tiene pestaña propia.
   const [guideOpen, setGuideOpen] = useState(false)
-  const selectTab = (t: Tab) => { setGuideOpen(false); setTab(t) }
-  const startRoutine = (routineId: string) => {
+  // Tapping Progreso always lands on Hábito, the default segment.
+  const selectTab = (t: Tab) => {
+    setGuideOpen(false)
+    if (t === 'progreso') setProgressView('habit')
+    setTab(t)
+  }
+  const startRoutine = (routineId: string, opts?: { minimal?: boolean }) => {
     setGuideOpen(false)
     setProgressView('train')
-    setAutoStart(routineId)
+    setAuto({ id: routineId, minimal: opts?.minimal === true })
     setTab('progreso')
   }
 
@@ -61,6 +67,14 @@ function Shell() {
                 <div className="seg" role="tablist" aria-label="Progreso">
                   <button
                     role="tab"
+                    aria-selected={progressView === 'habit'}
+                    className={progressView === 'habit' ? 'active' : ''}
+                    onClick={() => setProgressView('habit')}
+                  >
+                    Hábito
+                  </button>
+                  <button
+                    role="tab"
                     aria-selected={progressView === 'train'}
                     className={progressView === 'train' ? 'active' : ''}
                     onClick={() => setProgressView('train')}
@@ -76,9 +90,11 @@ function Shell() {
                     Medidas
                   </button>
                 </div>
-                {progressView === 'train'
-                  ? <Train autoStart={autoStart} onAutoStarted={() => setAutoStart(undefined)} />
-                  : <Measure />}
+                {progressView === 'habit' && <Habit />}
+                {progressView === 'train' && (
+                  <Train autoStart={auto?.id} autoStartMinimal={auto?.minimal} onAutoStarted={() => setAuto(undefined)} />
+                )}
+                {progressView === 'measure' && <Measure />}
               </>
             )}
             {tab === 'perfil' && <Settings />}

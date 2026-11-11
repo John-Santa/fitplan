@@ -232,3 +232,81 @@
   margin: 4px 0 8px; font-size: 13px; color: var(--fp-ink2);
 }
 .hoy-picked strong { color: var(--fp-ink); font-weight: 600; }
+
+/* ---- habito: identidad, aviso, intencion, version minima, faltó ---- */
+.hoy-identity {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--fp-s1); border: 1px solid var(--fp-line); border-radius: 16px; padding: 14px;
+}
+.hoy-identity-item { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; }
+.hoy-identity-icon {
+  width: 44px; height: 44px; border-radius: 9999px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.hoy-identity-icon.flame {
+  background: color-mix(in srgb, var(--fp-primary) 15%, transparent); color: var(--fp-primary);
+}
+.hoy-identity-icon.vote {
+  width: 36px; height: 36px;
+  background: color-mix(in srgb, var(--fp-success) 15%, transparent); color: var(--fp-success);
+}
+.hoy-identity-text { display: flex; flex-direction: column; min-width: 0; }
+.hoy-identity-text strong { font-size: 15px; line-height: 1.3; font-weight: 700; color: var(--fp-ink); }
+.hoy-identity-text span { font-size: 11px; line-height: 1.3; color: var(--fp-ink2); }
+.hoy-identity-sep { width: 1px; align-self: stretch; background: var(--fp-line); }
+
+.hoy-banner {
+  display: flex; align-items: center; gap: 12px; padding: 14px;
+  background: color-mix(in srgb, var(--fp-warning) 10%, var(--fp-s1));
+  border: 1px solid color-mix(in srgb, var(--fp-warning) 35%, transparent); border-radius: 16px;
+}
+.hoy-banner-icon {
+  width: 40px; height: 40px; border-radius: 9999px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--fp-warning) 18%, transparent); color: var(--fp-warning);
+}
+.hoy-banner strong { display: block; font-size: 14px; line-height: 1.35; font-weight: 600; color: var(--fp-warning); }
+.hoy-banner p { margin: 2px 0 0; font-size: 12px; line-height: 1.4; color: var(--fp-ink2); }
+
+.hoy-intention {
+  display: flex; align-items: center; gap: 10px; min-height: 44px; margin-bottom: 16px;
+  background: var(--fp-s2); border: 1px solid var(--fp-line); border-radius: 12px; padding: 4px 6px 4px 12px;
+  color: var(--fp-primary);
+}
+.hoy-intention-text {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 13px; font-weight: 500; color: var(--fp-ink);
+}
+.hoy-intention-edit {
+  flex-shrink: 0; min-height: 40px; padding: 0 10px; border: 0; background: none; cursor: pointer;
+  font-family: var(--fp-font); font-size: 13px; font-weight: 600; color: var(--fp-primary);
+}
+.hoy-intention-set {
+  display: flex; align-items: center; gap: 8px; min-height: 44px; margin: 0 0 12px; padding: 0 4px;
+  border: 0; background: none; cursor: pointer;
+  font-family: var(--fp-font); font-size: 13px; font-weight: 500; color: var(--fp-ink2);
+}
+.hoy-intention-set:hover { color: var(--fp-ink); }
+
+.hoy-minimal {
+  width: 100%; min-height: 56px; margin-top: 12px; padding: 10px 14px; text-align: left; cursor: pointer;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  background: var(--fp-s2); border: 1px solid var(--fp-line); border-radius: 12px;
+  font-family: var(--fp-font); color: var(--fp-ink2);
+}
+.hoy-minimal:hover { border-color: var(--fp-ink3); }
+.hoy-minimal strong { display: block; font-size: 14px; font-weight: 600; color: var(--fp-ink); }
+.hoy-minimal small { display: block; margin-top: 2px; font-size: 12px; color: var(--fp-ink2); }
+
+.hoy-checkin.on {
+  color: var(--fp-success);
+  border-color: color-mix(in srgb, var(--fp-success) 40%, transparent);
+}
+
+.hoy-day-miss {
+  width: 24px; height: 24px; margin: 2px 0; border-radius: 9999px;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--fp-danger) 12%, transparent);
+}
+.hoy-day-miss i { display: block; width: 8px; height: 8px; border-radius: 9999px; background: var(--fp-danger); opacity: .75; }
+.hoy-day.missed .hoy-day-sub { color: var(--fp-danger); font-weight: 500; }

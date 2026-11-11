@@ -50,7 +50,17 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
   const strengthSessions = sessions.filter((s): s is StrengthSession => s.kind === 'strength')
   const week = blockWeekNumber(new Date(session.startedAt), config.blockStart)
   const phase = phaseForWeek(plan, week)
-  const steps = useMemo(() => buildSessionSteps(routine, week), [routine, week])
+  const minimal = session.minimal === true
+  const steps = useMemo(() => {
+    const all = buildSessionSteps(routine, week)
+    if (!minimal) return all
+    // Version minima: solo el primer ejercicio de trabajo (primer slot que no es nota).
+    for (const st of all) {
+      const slot = st.slots.find(s => s.target.kind !== 'note')
+      if (slot) return [{ ...st, group: null, slots: [slot] }]
+    }
+    return all
+  }, [routine, week, minimal])
   const hasWarmup = routine.warmup && plan.warmup.slots.length > 0
   const items: Item[] = useMemo(
     () => [...(hasWarmup ? [{ kind: 'warmup' } as const] : []), ...steps.map(step => ({ kind: 'work', step }) as const)],
@@ -159,7 +169,7 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
 
   return (
     <SessionShell
-      eyebrow={routine.name}
+      eyebrow={minimal ? `${routine.name} · Versión mínima` : routine.name}
       startedAt={session.startedAt}
       doneCount={totalDone}
       totalCount={totalTarget}

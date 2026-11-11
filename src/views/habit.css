@@ -1,0 +1,94 @@
+/* Hábito (Stitch "Progreso · Hábito"). Solo tokens --fp-*. */
+.hab { display: flex; flex-direction: column; gap: 16px; font-family: var(--fp-font); color: var(--fp-ink); }
+.hab svg { display: block; flex-shrink: 0; }
+.hab-card {
+  background: var(--fp-s1); border: 1px solid var(--fp-line); border-radius: var(--fp-r-card);
+  padding: 20px; display: flex; flex-direction: column; gap: 10px;
+}
+.hab-hero { background: linear-gradient(160deg, var(--fp-s1) 55%, rgba(255, 107, 44, .12)); }
+.hab-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.hab-title { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -.01em; }
+.hab-sub { margin: 0; font-size: 13px; color: var(--fp-ink2); }
+.hab-sub.strong { font-weight: 600; }
+.hab-badge {
+  display: inline-flex; align-items: center; padding: 6px 12px; border-radius: 9999px;
+  font-size: 13px; font-weight: 600; border: 1px solid var(--fp-line);
+}
+.hab-badge.warm { color: var(--fp-primary); border-color: var(--fp-primary); background: rgba(255, 107, 44, .1); }
+.hab-badge.good { color: var(--fp-success); border-color: var(--fp-success); background: rgba(34, 197, 94, .1); }
+.hab-best { font-size: 13px; color: var(--fp-ink2); }
+.hab-best strong { color: var(--fp-ink); }
+.hab-big { margin: 0; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.hab-num { font-size: 56px; line-height: 1; font-weight: 800; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.hab-unit { font-size: 22px; font-weight: 700; color: var(--fp-primary); }
+.hab-unit.plain { font-size: 16px; font-weight: 500; color: var(--fp-ink2); }
+.hab-chip {
+  margin: 4px 0 0; padding: 14px 16px; border-radius: var(--fp-r-btn);
+  background: var(--fp-s2); border: 1px solid var(--fp-line);
+  font-size: 14px; line-height: 1.5; color: var(--fp-ink2);
+}
+.hab-chip strong { color: var(--fp-ink); }
+
+/* ---- 12-week grid ---- */
+.hab-gridwrap { display: flex; gap: 8px; margin-top: 8px; }
+.hab-labels { display: grid; grid-template-rows: repeat(7, 1fr); gap: 5px; font-size: 11px; color: var(--fp-ink3); align-items: center; }
+.hab-grid { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(12, 1fr); gap: 5px; }
+.hab-col { display: grid; grid-template-rows: repeat(7, auto); gap: 5px; }
+.hab-cell {
+  display: block; position: relative; aspect-ratio: 1; width: 100%; border-radius: 5px;
+  background: var(--fp-s2); border: 1.5px solid transparent;
+}
+.hab-cell.kept-session { background: var(--fp-primary); }
+.hab-cell.kept-check { background: var(--fp-success); }
+.hab-cell.rest::after {
+  content: ''; position: absolute; top: 50%; left: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px;
+  border-radius: 9999px; background: var(--fp-ink3);
+}
+.hab-cell.missed { background: rgba(240, 82, 82, .1); border-color: var(--fp-danger); }
+.hab-cell.pending { background: transparent; border-color: var(--fp-primary); }
+.hab-cell.none, .hab-cell.future { background: var(--fp-s2); opacity: .55; }
+.hab-legend {
+  list-style: none; margin: 8px 0 0; padding: 14px 0 0; border-top: 1px solid var(--fp-line);
+  display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 12px; color: var(--fp-ink2);
+}
+.hab-legend li { display: flex; align-items: center; gap: 6px; }
+.hab-legend .hab-cell { width: 12px; height: 12px; border-radius: 3px; aspect-ratio: auto; }
+.hab-legend .hab-cell.rest::after { width: 3px; height: 3px; margin: -1.5px 0 0 -1.5px; }
+
+/* ---- identity votes ---- */
+.hab-quote {
+  margin: 4px 0; padding: 2px 0 2px 14px; border-left: 3px solid var(--fp-primary);
+  font-style: italic; font-size: 14px; line-height: 1.5; color: var(--fp-ink2);
+}
+.hab-week { margin-top: 6px; padding-top: 14px; border-top: 1px solid var(--fp-line); font-size: 14px; font-weight: 600; }
+.hab-good { color: var(--fp-success); }
+.hab-segs { display: flex; gap: 6px; }
+.hab-segs span { flex: 1; height: 6px; border-radius: 9999px; background: var(--fp-s2); }
+.hab-segs span.on { background: var(--fp-success); }
+
+/* ---- action plan ---- */
+.hab-plan { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; }
+.hab-plan li { border-top: 1px solid var(--fp-line); }
+.hab-plan li:first-child { border-top: 0; }
+.hab-planrow {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 14px 0; background: none; border: 0; color: var(--fp-ink); text-align: left; cursor: pointer;
+  font: inherit; min-height: 48px;
+}
+.hab-planrow svg { width: 18px; height: 18px; fill: none; stroke: var(--fp-ink3); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: transform .15s; }
+.hab-plan li.open .hab-planrow svg { transform: rotate(90deg); }
+.hab-planmain { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.hab-planmain strong { font-size: 16px; font-weight: 700; }
+.hab-kind { font-size: 12px; color: var(--fp-ink3); }
+.hab-when { font-size: 14px; color: var(--fp-ink2); }
+.hab-when.empty { color: var(--fp-ink3); font-style: italic; }
+.hab-edit { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 0 0 16px; }
+.hab-edit label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--fp-ink2); }
+.hab-edit input { min-height: 46px; padding: 10px 12px; }
+.hab-save {
+  grid-column: 1 / -1; min-height: 48px; border: 0; border-radius: var(--fp-r-btn); cursor: pointer;
+  background: var(--fp-primary); color: var(--fp-on-primary); font: 700 15px var(--fp-font);
+}
+.hab-save:hover:not(:disabled) { background: var(--fp-primary-press); }
+.hab-save:disabled { opacity: .6; cursor: default; }
+@media (max-width: 360px) { .hab-edit { grid-template-columns: 1fr; } }

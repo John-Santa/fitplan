@@ -12,6 +12,7 @@ import {
 import { blockWeekNumber, phaseForWeek } from '../lib/phases'
 import { fmtDate, sessionVolume, todayISO } from '../lib/calc'
 import { finishedIn } from '../lib/disciplines'
+import { dayStatus, intentionFor, missedYesterday, streak as habitStreak, toggleCheckIn, votes as habitVotes } from '../lib/habit'
 import { useDerivedMeasurements, useStore } from '../lib/store'
 import './home.css'
 
@@ -37,6 +38,12 @@ const ICONS: Record<string, ReactNode> = {
   trend: <path d="M22 7l-8.5 8.5-5-5L2 17M16 7h6v6" />,
   shield: <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />,
   chevron: <path d="m9 18 6-6-6-6" />,
+  flame: <path d="M12 22a7 7 0 0 0 7-7c0-3-2-5-3-7-1 1-2 2-3 2 0-3-1-6-4-8 0 4-4 6-4 12a7 7 0 0 0 7 8z" />,
+  badge: (<><path d="M12 2l2.4 2 3.1-.3 1 3 2.8 1.5-.9 3 .9 3-2.8 1.5-1 3-3.1-.3L12 22l-2.4-2-3.1.3-1-3L2.7 15.8l.9-3-.9-3 2.8-1.5 1-3 3.1.3z" /><path d="m9 12 2 2 4-4" /></>),
+  bolt: <path d="M13 2 4 14h7l-1 8 9-12h-7z" />,
+  alarm: (<><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2 2M5 3 2 6M19 3l3 3" /></>),
+  pin: (<><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0z" /><circle cx="12" cy="10" r="3" /></>),
+  sliders: <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6" />,
 }
 
 function Icon({ name, size = 20, className }: { name: keyof typeof ICONS; size?: number; className?: string }) {
@@ -76,19 +83,40 @@ const fmtThousands = (n: number): string => Math.round(n).toString().replace(/\B
 
 const dayNumber = (name: string): string | null => /^D[ií]a\s+(\d+)/i.exec(name)?.[1] ?? null
 
-export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; startRoutine: (routineId: string) => void }) {
-  const { sessions, config, plan } = useStore()
+export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; startRoutine: (routineId: string, opts?: { minimal?: boolean }) => void }) {
+  const { sessions, config, plan, saveConfig } = useStore()
   const rows = useDerivedMeasurements()
   const now = new Date()
   const iso = todayISO(now)
   const week = blockWeekNumber(now, config.blockStart)
   const phase = phaseForWeek(plan, week)
   const dow = now.getDay()
+  const habitCtx = { sessions, config, today: iso }
+  const streakInfo = habitStreak(habitCtx)
+  const voteCount = habitVotes(habitCtx)
+  const todayKept = dayStatus(iso, habitCtx) === 'kept'
+  const showMissedBanner = missedYesterday(habitCtx) && !todayKept
   const today = config.weeklyRoutine[dow]
   // Dia elegido en la tira semanal: por defecto hoy, pero se puede entrenar la
   // rutina de cualquier dia (adelantar, recuperar o cambiar el orden).
   const [picked, setPicked] = useState(dow)
   const isPickedToday = picked === dow
+  const intention = intentionFor(config, picked)
+  const intentionText = intention
+    ? `${isPickedToday ? 'Hoy' : weekdayLabel(picked)}${intention.time !== '' ? ` a las ${intention.time}` : ''}${intention.place !== '' ? ` en ${intention.place}` : ''}`
+    : null
+  const intentionRow = intentionText != null ? (
+    <div className="hoy-intention">
+      <Icon name={intention!.time !== '' ? 'alarm' : 'pin'} size={18} />
+      <span className="hoy-intention-text">{intentionText}</span>
+      <button type="button" className="hoy-intention-edit" onClick={() => go('progreso')}>Editar</button>
+    </div>
+  ) : (
+    <button type="button" className="hoy-intention-set" onClick={() => go('progreso')}>
+      <Icon name="alarm" size={16} />
+      Define cuándo y dónde entrenas
+    </button>
+  )
   const pickedDay = config.weeklyRoutine[picked]
   const suggested = routineForWeekday(plan, config.weeklyRoutine, picked)
   // "Ya entrenaste hoy" = ya hice la disciplina de HOY (un dia sin disciplina
@@ -99,6 +127,8 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
 
   // Semana calendario (lunes a domingo): checks de la tira y tarjetas.
   const range = weekRange(now, 0)
+  const checkedToday = config.habitCheckIns.includes(iso)
+  const canCheckIn = isPickedToday && (pickedDay.kind === 'walk' || pickedDay.kind === 'custom')
   const finishedThisWeek = sessions.filter(s => s.finishedAt != null && s.date >= range.start && s.date <= range.end)
   const plannedDays = config.weeklyRoutine.filter(d => SESSION_KIND_FOR_DAY[d.kind] != null).length
   const doneCount = finishedThisWeek.length
@@ -159,6 +189,36 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
       </header>
 
       <main className="hoy-main">
+        <section className="hoy-identity" aria-label="Tu racha">
+          <div className="hoy-identity-item">
+            <span className="hoy-identity-icon flame"><Icon name="flame" size={22} /></span>
+            <div className="hoy-identity-text">
+              <strong className="hoy-num">
+                {streakInfo.days > 0 ? `${streakInfo.days} ${streakInfo.days === 1 ? 'día' : 'días'}` : 'Empieza tu racha'}
+              </strong>
+              <span>{streakInfo.days > 0 ? 'Racha activa' : 'Hoy es un buen día'}</span>
+            </div>
+          </div>
+          <div className="hoy-identity-sep" aria-hidden="true" />
+          <div className="hoy-identity-item">
+            <span className="hoy-identity-icon vote"><Icon name="badge" size={20} /></span>
+            <div className="hoy-identity-text">
+              <strong className="hoy-num">{voteCount} {voteCount === 1 ? 'entrenamiento' : 'entrenamientos'}</strong>
+              <span>Un voto más por tu atleta</span>
+            </div>
+          </div>
+        </section>
+
+        {showMissedBanner && (
+          <section className="hoy-banner" role="status">
+            <span className="hoy-banner-icon"><Icon name="bolt" size={20} /></span>
+            <div>
+              <strong>Ayer no se pudo. Hoy no falles dos veces.</strong>
+              <p>Una sesión corta también cuenta.</p>
+            </div>
+          </section>
+        )}
+
         {showHero && suggested ? (
           <section className="hoy-hero">
             <div className="hoy-hero-glow" aria-hidden="true" />
@@ -188,6 +248,7 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
                 </span>
               )}
             </div>
+            {intentionRow}
             {chips.length > 0 && (
               <div className="hoy-chips-block">
                 <p className="hoy-eyebrow">Ejercicios principales</p>
@@ -202,6 +263,13 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
             <button type="button" className="hoy-cta" onClick={() => startRoutine(suggested.id)}>
               <Icon name="play" size={22} />
               Empezar entrenamiento
+            </button>
+            <button type="button" className="hoy-minimal" onClick={() => startRoutine(suggested.id, { minimal: true })}>
+              <span>
+                <strong>Día difícil: versión mínima</strong>
+                <small>Calentamiento + primer ejercicio · ~10 min</small>
+              </span>
+              <Icon name="sliders" size={20} />
             </button>
           </section>
         ) : (
@@ -229,6 +297,17 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
                 {pickedDay.note !== '' && <p className="hoy-note">{pickedDay.note}</p>}
               </>
             )}
+            {canCheckIn && (
+              <button
+                type="button"
+                className={`hoy-cta secondary hoy-checkin${checkedToday ? ' on' : ''}`}
+                aria-pressed={checkedToday}
+                onClick={() => void saveConfig(toggleCheckIn(config, iso))}
+              >
+                <Icon name="check" size={20} />
+                {checkedToday ? 'Hecho ✓ · Deshacer' : 'Marcar como hecho'}
+              </button>
+            )}
             {next && (
               <div className="hoy-next">
                 <Icon name="calendar" size={18} />
@@ -254,13 +333,17 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
               const kind = SESSION_KIND_FOR_DAY[day.kind]
               const date = range.days[i]
               const isToday = d === dow
-              const isDone = kind != null && finishedThisWeek.some(s => s.kind === kind && s.date === date)
+              const isDone =
+                (kind != null && finishedThisWeek.some(s => s.kind === kind && s.date === date)) ||
+                config.habitCheckIns.includes(date)
+              const isMissed = !isToday && !isDone && dayStatus(date, habitCtx) === 'missed'
               const routine = routineForWeekday(plan, config.weeklyRoutine, d)
               const cls = ['hoy-day']
               if (isToday) cls.push('today')
               if (d === picked) cls.push('picked')
               if (isDone) cls.push('done')
               if (kind == null) cls.push('rest')
+              if (isMissed) cls.push('missed')
 
               let body: ReactNode
               if (isToday) {
@@ -277,6 +360,13 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
                   <>
                     <span className="hoy-day-check"><Icon name="check" size={16} /></span>
                     <span className="hoy-day-sub">Listo</span>
+                  </>
+                )
+              } else if (isMissed) {
+                body = (
+                  <>
+                    <span className="hoy-day-miss"><i /></span>
+                    <span className="hoy-day-sub">Faltó</span>
                   </>
                 )
               } else if (kind == null) {

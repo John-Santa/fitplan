@@ -117,3 +117,41 @@ export function toggleCheckIn(config: Config, date: string): Config {
   const next = has ? config.habitCheckIns.filter(d => d !== date) : [...config.habitCheckIns, date].sort()
   return { ...config, habitCheckIns: next }
 }
+
+/** Longest chain over all history, same never-miss-twice rule as `streak`,
+ *  walked forward from the first activity to today. */
+export function bestStreak(ctx: HabitContext): number {
+  const first = firstActivity(ctx)
+  if (first === null || first > ctx.today) return 0
+  let best = 0
+  let run = 0
+  let misses = 0
+  let date = first
+  for (let i = 0; i < MAX_WALK_DAYS && date <= ctx.today; i++, date = shift(date, 1)) {
+    const status = dayStatus(date, ctx)
+    if (status === 'kept' || status === 'rest') {
+      run++
+      misses = 0
+      if (run > best) best = run
+    } else if (status === 'missed') {
+      if (++misses >= 2) run = 0
+    } else if (status === 'none') {
+      run = 0
+    }
+  }
+  return best
+}
+
+/** Share of kept days over kept + missed in the last `weeks` weeks, 0..100.
+ *  Rest, pending, future and pre-activity days do not count. 0 with no data. */
+export function consistency(ctx: HabitContext, weeks = 12): number {
+  let kept = 0
+  let missed = 0
+  for (const week of habitGrid(ctx, weeks)) {
+    for (const cell of week) {
+      if (cell.status === 'kept') kept++
+      else if (cell.status === 'missed') missed++
+    }
+  }
+  return kept + missed === 0 ? 0 : Math.round((kept / (kept + missed)) * 100)
+}
