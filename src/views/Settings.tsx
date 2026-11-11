@@ -5,7 +5,7 @@ import { useStore } from '../lib/store'
 import { Tile, useToast } from '../components/ui'
 import { daysSince, fmt, fmtDate } from '../lib/calc'
 import { DAY_KINDS, isDayKind, KIND_LABELS, MEASUREMENT_KEYS, MEASUREMENT_LABELS, MEASUREMENT_UNITS, weekdayLabel, withDay, withText } from '../lib/plan'
-import { activeRoutines, dayTitleFor, findRoutine, routineTitle, suggestRoutineIdFor } from '../lib/planQueries'
+import { activeRoutines, dayTitleFor, findRoutine, routineTitle, suggestRoutineIdFor, routineDisplayName } from '../lib/planQueries'
 
 export default function Settings() {
   const { config, saveConfig, reload, sessions, droppedSessionCount, measurements, plan } = useStore()
@@ -165,7 +165,7 @@ export default function Settings() {
                         if (findRoutine(plan, v)) saveDay(dow, { kind: 'training', routineId: v, title: day.title, note: day.note })
                       }}
                     >
-                      {activeRoutines(plan).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                      {activeRoutines(plan).map(r => <option key={r.id} value={r.id}>{routineDisplayName(r.name)}</option>)}
                       {/* Un dia que apunta a una rutina archivada o desconocida
                          la muestra tal cual, marcada, en vez de reescribirla. */}
                       {!activeRoutines(plan).some(r => r.id === day.routineId) && (

@@ -5,7 +5,7 @@ import { blockWeekNumber, phaseForWeek, setsForSlot } from '../../lib/phases'
 import { addCustomExercise, swapExercise } from '../../lib/planEdits'
 import ExercisePicker, { type NewExerciseInput } from '../plan/ExercisePicker'
 import '../plan/plan-editor.css'
-import { buildSessionSteps, findRoutine, groupLabel, slotExerciseName, weekLabel, type SessionStep } from '../../lib/planQueries'
+import { buildSessionSteps, findRoutine, groupLabel, slotExerciseName, weekLabel, type SessionStep, routineDisplayName } from '../../lib/planQueries'
 import { useStore } from '../../lib/store'
 import BottomSheet from '../../components/BottomSheet'
 import ExerciseSheet from '../../components/ExerciseSheet'
@@ -245,7 +245,7 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
 
   return (
     <SessionShell
-      eyebrow={minimal ? `${routine.name} · Versión mínima` : routine.name}
+      eyebrow={minimal ? `${routineDisplayName(routine.name)} · Versión mínima` : routineDisplayName(routine.name)}
       startedAt={session.startedAt}
       doneCount={totalDone}
       totalCount={totalTarget}

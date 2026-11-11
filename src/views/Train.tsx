@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { RoutineId, Session } from '../types'
 import { SESSION_KIND_FOR_DAY } from '../lib/plan'
-import { exerciseNameInRoutine, routineDaysLabel, routineForWeekday, routineSetCount, routineSlots, weekLabel } from '../lib/planQueries'
+import { exerciseNameInRoutine, routineDaysLabel, routineForWeekday, routineSetCount, routineSlots, weekLabel, routineDisplayName, sortByFocus } from '../lib/planQueries'
 import { blockWeekNumber, phaseForWeek } from '../lib/phases'
 import { isPainValue, painVerdict } from '../lib/pain'
 import { doneSets, fmtDate, fmtDuration, mmss, sessionVolume, todayISO } from '../lib/calc'
@@ -40,7 +40,7 @@ export default function Train({ autoStart, autoStartMinimal, onAutoStarted }: { 
   const phase = phaseForWeek(plan, week)
   const suggested = routineForWeekday(plan, config.weeklyRoutine, new Date().getDay())
   // Las activas, mas la de hoy si el dia semanal todavia apunta a una archivada.
-  const routines = plan.routines.filter(r => !r.archived || r.id === suggested?.id)
+  const routines = sortByFocus(plan.routines.filter(r => !r.archived || r.id === suggested?.id))
   // Rutinas archivadas con historial: ya no se empiezan, pero su progresion
   // sigue consultable.
   const archivedWithHistory = plan.routines.filter(
@@ -205,7 +205,7 @@ export default function Train({ autoStart, autoStartMinimal, onAutoStarted }: { 
           <div className="card" key={r.id} style={{ marginBottom: 10 }}>
             <div className="row">
               <div className="grow">
-                <strong>{r.name}</strong>
+                <strong>{routineDisplayName(r.name)}</strong>
                 {suggested?.id === r.id && <span className="pill" style={{ marginLeft: 8 }}>hoy</span>}
                 <div className="muted">{routineDaysLabel(config.weeklyRoutine, r.id)}{r.focus !== '' && ` · ${r.focus}`}</div>
                 <div className="muted num" style={{ fontSize: 12.5 }}>
@@ -228,7 +228,7 @@ export default function Train({ autoStart, autoStartMinimal, onAutoStarted }: { 
 
         {archivedWithHistory.map(r => (
           <div className="card" key={r.id} style={{ marginBottom: 10 }}>
-            <strong>{r.name}</strong> <span className="pill">archivada</span>
+            <strong>{routineDisplayName(r.name)}</strong> <span className="pill">archivada</span>
             <div className="muted">Ya no se empieza desde aquí; tu historial se conserva.</div>
             <button className="ghost" style={{ marginTop: 10, padding: '7px 12px', fontSize: 13 }} onClick={() => setProgressFor({ kind: 'strength', routineId: r.id })}>
               Ver progresión

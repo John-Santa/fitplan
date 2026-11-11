@@ -22,6 +22,8 @@ import {
   suggestRoutineIdFor,
   weekdaysForRoutine,
   weekLabel,
+  routineDisplayName,
+  sortByFocus,
 } from './planQueries'
 
 const plan = defaultPlanWithLegacy()
@@ -35,8 +37,8 @@ describe('findRoutine / activeRoutines / routineTitle', () => {
   })
 
   it('routineTitle devuelve el nombre y, si el id no existe, "Rutina eliminada"', () => {
-    expect(routineTitle(plan, 'espalda-d1')).toBe('Día 1 – Tren inferior A')
-    expect(routineTitle(plan, 'dia1')).toBe('Día 1 — Pierna')
+    expect(routineTitle(plan, 'espalda-d1')).toBe('Tren inferior A')
+    expect(routineTitle(plan, 'dia1')).toBe('Pierna')
     expect(routineTitle(plan, 'borrada')).toBe('Rutina eliminada')
   })
 })
@@ -60,7 +62,7 @@ describe('semana configurada', () => {
   })
 
   it('dayTitleFor usa el titulo, luego el nombre de la rutina del plan y luego la etiqueta del tipo', () => {
-    expect(dayTitleFor(plan, week[1])).toBe('Día 1 – Tren inferior A')
+    expect(dayTitleFor(plan, week[1])).toBe('Tren inferior A')
     expect(dayTitleFor(plan, { kind: 'training', routineId: 'x', title: '', note: '' })).toBe('Entreno')
     expect(dayTitleFor(plan, { kind: 'training', routineId: 'x', title: 'Mi día', note: '' })).toBe('Mi día')
     expect(dayTitleFor(plan, { kind: 'rest', title: '', note: '' })).toBe('Descanso activo')
@@ -182,5 +184,21 @@ describe('nombres de ejercicio con etiqueta de rutina', () => {
     expect(exerciseNameInRoutine(p, 'espalda-d1', 'leg-curl')).toBe('Curl femoral sentado (máquina)')
     expect(exerciseNameInRoutine(p, 'borrada', 'leg-curl')).toBe('Curl femoral sentado (máquina)')
     expect(exerciseNameInRoutine(p, 'dia1', 'no-existe')).toBe('no-existe')
+  })
+})
+
+describe('routineDisplayName / sortByFocus', () => {
+  it('drops the "Día N –" prefix and keeps names without it', () => {
+    expect(routineDisplayName('Día 3 – Core, movilidad y cardio')).toBe('Core, movilidad y cardio')
+    expect(routineDisplayName('Dia 2 — Empuje')).toBe('Empuje')
+    expect(routineDisplayName('Pierna pesada')).toBe('Pierna pesada')
+    expect(routineDisplayName('Día 1')).toBe('Día 1')
+  })
+  it('orders routines by focus, not by day number', () => {
+    const names = sortByFocus([
+      { name: 'Día 1 – Tren inferior A' }, { name: 'Día 2 – Tren superior A' }, { name: 'Día 3 – Core, movilidad y cardio' },
+      { name: 'Día 4 – Tren inferior B' }, { name: 'Día 5 – Tren superior B' },
+    ]).map(r => routineDisplayName(r.name))
+    expect(names).toEqual(['Core, movilidad y cardio', 'Tren inferior A', 'Tren inferior B', 'Tren superior A', 'Tren superior B'])
   })
 })

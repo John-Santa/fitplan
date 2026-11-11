@@ -310,3 +310,8 @@
 }
 .hoy-day-miss i { display: block; width: 8px; height: 8px; border-radius: 9999px; background: var(--fp-danger); opacity: .75; }
 .hoy-day.missed .hoy-day-sub { color: var(--fp-danger); font-weight: 500; }
+/* Focus name (no day number) in the narrow week cell. */
+.hoy-day-main.hoy-focus {
+  font-size: 11px; line-height: 1.2; text-align: center; overflow-wrap: anywhere; hyphens: auto;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden;
+}

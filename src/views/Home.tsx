@@ -1,14 +1,6 @@
 import { useState, type CSSProperties, type ReactNode } from 'react'
 import { DONE_TODAY, SESSION_KIND_FOR_DAY, weekdayLabel } from '../lib/plan'
-import {
-  dayTitleFor,
-  planWeekStates,
-  routineForWeekday,
-  routineShortName,
-  routineSlots,
-  slotExerciseName,
-  weekLabel,
-} from '../lib/planQueries'
+import { dayTitleFor, planWeekStates, routineForWeekday, routineShortName, routineSlots, slotExerciseName, weekLabel, routineDisplayName } from '../lib/planQueries'
 import { blockWeekNumber, phaseForWeek } from '../lib/phases'
 import { fmtDate, sessionVolume, todayISO } from '../lib/calc'
 import { finishedIn } from '../lib/disciplines'
@@ -81,7 +73,6 @@ function weekRange(now: Date, weeksBack: number): { start: string; end: string; 
 /** 4320 -> "4.320". */
 const fmtThousands = (n: number): string => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')
 
-const dayNumber = (name: string): string | null => /^D[ií]a\s+(\d+)/i.exec(name)?.[1] ?? null
 
 export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; startRoutine: (routineId: string, opts?: { minimal?: boolean }) => void }) {
   const { sessions, config, plan, saveConfig } = useStore()
@@ -229,7 +220,7 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
                 <button type="button" className="hoy-link" onClick={() => setPicked(dow)}>Volver a hoy</button>
               </div>
             )}
-            <h1 className="hoy-title">{suggested.name.replace(/\s[–—-]\s/, ' · ')}</h1>
+            <h1 className="hoy-title">{routineDisplayName(suggested.name)}</h1>
             <div className="hoy-meta">
               <span className="hoy-pill">
                 <Icon name="dumbbell" size={15} />
@@ -377,11 +368,9 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
                   </>
                 )
               } else if (routine) {
-                const n = dayNumber(routine.name)
                 body = (
                   <>
-                    <span className="hoy-day-main hoy-num">{n ? `Día ${n}` : routineShortName(routine)}</span>
-                    <span className="hoy-day-sub">{n ? routineShortName(routine) : ''}</span>
+                    <span className="hoy-day-main hoy-focus">{routineShortName(routine)}</span>
                   </>
                 )
               } else {
@@ -399,7 +388,7 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
                   type="button"
                   className={cls.join(' ')}
                   aria-pressed={d === picked}
-                  aria-label={`${weekdayLabel(d)}: ${routine ? routine.name : dayTitleFor(plan, day)}`}
+                  aria-label={`${weekdayLabel(d)}: ${routine ? routineDisplayName(routine.name) : dayTitleFor(plan, day)}`}
                   onClick={() => setPicked(d)}
                 >
                   <span className="hoy-day-letter">{DAY_LETTERS[d]}</span>

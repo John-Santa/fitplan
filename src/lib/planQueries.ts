@@ -22,16 +22,34 @@ export function activeRoutines(plan: Routines): PlanRoutine[] {
 
 export const UNKNOWN_ROUTINE_TITLE = 'Rutina eliminada'
 
+/** Routine name as shown: the session focus without the "Día N –" prefix,
+ *  because routines are not tied to weekdays in that order. Display only;
+ *  the stored name is untouched. */
+export function routineDisplayName(name: string): string {
+  const stripped = name.replace(/^D[ií]a\s*\d+\s*[–—:.-]\s*/i, '').trim()
+  return stripped === '' ? name : stripped
+}
+
+/** Routines ordered by their focus (display name), not by day number. */
+export function sortByFocus<T extends Pick<PlanRoutine, 'name'>>(routines: readonly T[]): T[] {
+  return [...routines].sort((a, b) =>
+    routineDisplayName(a.name).localeCompare(routineDisplayName(b.name), 'es', { sensitivity: 'base', numeric: true }))
+}
+
 /** Nombre visible de una rutina; si el id ya no existe, un texto fijo. */
 export function routineTitle(plan: Routines, id: RoutineId): string {
-  return findRoutine(plan, id)?.name ?? UNKNOWN_ROUTINE_TITLE
+  const r = findRoutine(plan, id)
+  return r ? routineDisplayName(r.name) : UNKNOWN_ROUTINE_TITLE
 }
 
 /** Titulo visible del dia. title vacio = derivado: el nombre de la rutina si es
  *  entreno, la etiqueta del kind si no. Nunca devuelve cadena vacia. */
 export function dayTitleFor(plan: Routines, day: DayPlan): string {
   if (day.title.trim() !== '') return day.title
-  if (day.kind === 'training') return findRoutine(plan, day.routineId)?.name ?? KIND_LABELS.training
+  if (day.kind === 'training') {
+    const r = findRoutine(plan, day.routineId)
+    return r ? routineDisplayName(r.name) : KIND_LABELS.training
+  }
   return KIND_LABELS[day.kind]
 }
 
@@ -93,6 +111,8 @@ export function routineSetCount(plan: Pick<TrainingPlan, 'routines' | 'phases'>,
 /** Nombre corto de la rutina ("Tren inferior A"), para el titular de inicio.
  *  Corta tras la raya larga o la corta, que separa "Día N" del nombre. */
 export function routineShortName(routine: Pick<PlanRoutine, 'name'>): string {
+  const shown = routineDisplayName(routine.name)
+  if (shown !== routine.name) return shown
   const m = /\s[–—]\s/.exec(routine.name)
   return m ? routine.name.slice(m.index + m[0].length).trim() : routine.name
 }

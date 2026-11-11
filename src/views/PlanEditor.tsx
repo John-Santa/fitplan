@@ -1,4 +1,5 @@
 // Vista "Plan": lista de rutinas, editor de rutina, archivar/restaurar y
+import { routineDisplayName, sortByFocus } from '../lib/planQueries'
 // restablecer el plan original. Cada edicion se persiste al instante con
 // savePlan; las acciones destructivas piden confirmacion y ofrecen deshacer.
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -77,8 +78,8 @@ export default function PlanEditor({ onOpenGuide }: { onOpenGuide: () => void })
     toast.show('Cambio deshecho')
   }
 
-  const active = plan.routines.filter(r => !r.archived)
-  const archived = plan.routines.filter(r => r.archived)
+  const active = sortByFocus(plan.routines.filter(r => !r.archived))
+  const archived = sortByFocus(plan.routines.filter(r => r.archived))
   const open = openId ? plan.routines.find(r => r.id === openId && !r.archived) : undefined
   const archiveTarget = dialog?.kind === 'archive' ? plan.routines.find(r => r.id === dialog.routineId) : undefined
   const assignedInWeek = archiveTarget
@@ -303,7 +304,7 @@ export default function PlanEditor({ onOpenGuide }: { onOpenGuide: () => void })
                 <li key={r.id}>
                   <button type="button" className="pe-routine" onClick={() => setOpenId(r.id)}>
                     <span className="pe-routine-text">
-                      <span className="pe-name">{r.name}</span>
+                      <span className="pe-name">{routineDisplayName(r.name)}</span>
                       {r.focus && <span className="pe-sub">{r.focus}</span>}
                       <span className="pe-meta">
                         {r.duration && <span className="pill">{r.duration}</span>}
@@ -328,7 +329,7 @@ export default function PlanEditor({ onOpenGuide }: { onOpenGuide: () => void })
                 {archived.map(r => (
                   <li key={r.id} className="pe-slot">
                     <div className="pe-slot-text">
-                      <div className="pe-name">{r.name}</div>
+                      <div className="pe-name">{routineDisplayName(r.name)}</div>
                       <div className="pe-sub">{exercisesLabel(countExercises(r))}</div>
                     </div>
                     <button type="button" onClick={() => commit(restoreRoutine(plan, r.id), 'Rutina restaurada')} aria-label={`Restaurar ${r.name}`}>

@@ -171,20 +171,20 @@ describe('sessionDigest', () => {
     // Misma forma que antes: titulo de la rutina, "<ejercicio>: <kg> kg × <reps>".
     // El nombre del ejercicio ahora sale de la biblioteca del plan.
     const digest = sessionDigest(strengthSession(), plan)
-    expect(digest.title).toBe('Día 1 — Pierna')
+    expect(digest.title).toBe('Pierna')
     expect(digest.hasEntries).toBe(true)
     expect(digest.lines).toEqual(['Prensa de piernas (leg press): 80,0 kg × 12'])
   })
 
   it('una sesion de la rutina archivada dia1 sigue mostrando su nombre y sus ejercicios', () => {
     const digest = sessionDigest(strengthSession({ routineId: 'dia1' }), plan)
-    expect(digest.title).toBe('Día 1 — Pierna')
+    expect(digest.title).toBe('Pierna')
     expect(digest.lines).toHaveLength(1)
   })
 
   it('una sesion de espalda-d1 usa el nombre de la rutina del plan', () => {
     const digest = sessionDigest(strengthSession({ routineId: 'espalda-d1' }), plan)
-    expect(digest.title).toBe('Día 1 – Tren inferior A')
+    expect(digest.title).toBe('Tren inferior A')
     expect(digest.lines).toEqual(['Prensa de piernas (leg press): 80,0 kg × 12'])
   })
 

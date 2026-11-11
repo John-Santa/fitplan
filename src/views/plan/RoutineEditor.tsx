@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react'
 import type { PlanRoutine, PlanSlot, RoutineBlock, TrainingPlan } from '../../types'
 import ExerciseSheet from '../../components/ExerciseSheet'
-import { slotExerciseName } from '../../lib/planQueries'
+import { slotExerciseName, routineDisplayName } from '../../lib/planQueries'
 import { addCustomExercise, addSlot, moveSlot, removeSlot, renameRoutine, routineExerciseIds, swapExercise } from '../../lib/planEdits'
 import { formatTarget } from '../../lib/phases'
 import ExercisePicker, { type NewExerciseInput } from './ExercisePicker'
@@ -114,7 +114,7 @@ export default function RoutineEditor({ plan, routine, onBack, onCommit, onArchi
         <Icon name="back" /> Plan
       </button>
       <div className="eyebrow">Rutina · {exerciseCount === 1 ? '1 ejercicio' : `${exerciseCount} ejercicios`}</div>
-      <h1>{routine.name}</h1>
+      <h1>{routineDisplayName(routine.name)}</h1>
 
       <div className="card pe-card-form">
         <TextField id="pe-r-name" label="Nombre" value={routine.name} required onCommit={v => onCommit(renameRoutine(plan, routine.id, { name: v }))} />
