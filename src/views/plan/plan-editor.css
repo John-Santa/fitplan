@@ -261,6 +261,24 @@
 .pe-scope button.pe-pick:disabled { opacity: 0.45; cursor: not-allowed; }
 .pe-pick-text { flex: 1; min-width: 0; }
 
+/* ---------- desde MuscleWiki ---------- */
+
+.pe-wiki { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+.pe-scope a.pe-wiki-link {
+  display: flex; align-items: center; gap: 12px; min-height: 58px; padding: 10px 16px;
+  border: 1px solid var(--fp-primary); border-radius: var(--fp-r-btn);
+  background: var(--fp-s1); color: var(--fp-ink); text-decoration: none;
+}
+.pe-scope a.pe-wiki-link:hover { background: var(--fp-s2); }
+.pe-scope a.pe-wiki-link:focus-visible { outline: 2px solid var(--fp-primary); outline-offset: 2px; }
+.pe-scope a.pe-wiki-link svg {
+  width: 20px; height: 20px; flex: none; fill: none; stroke: var(--fp-primary);
+  stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+}
+.pe-wiki-text { flex: 1; min-width: 0; }
+a.pe-wiki-link.pe-gap-md { margin-top: 16px; }
+.pe-scope .pe-error-plain::before { content: none; }
+
 /* ---------- formularios ---------- */
 
 .pe-fieldset { border: none; margin: 0; padding: 0; min-width: 0; }

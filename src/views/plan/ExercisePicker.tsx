@@ -6,6 +6,7 @@ import type { ExerciseCategory, LibraryExercise, TrainingPlan } from '../../type
 import { EXERCISE_LIBRARY } from '../../lib/library'
 import { Icon } from './icons'
 import Sheet from '../../components/BottomSheet'
+import { musclewikiSearchUrl, parseMusclewikiLink } from '../../lib/musclewiki'
 
 export const CATEGORY_LABEL: Record<ExerciseCategory, string> = {
   strength: 'Fuerza', core: 'Core', mobility: 'Movilidad', cardio: 'Cardio',
@@ -32,7 +33,7 @@ export default function ExercisePicker({ plan, mode, currentExerciseId, taken, o
   onCreate: (input: NewExerciseInput) => void
   onClose: () => void
 }) {
-  const [view, setView] = useState<'list' | 'create'>('list')
+  const [view, setView] = useState<'list' | 'create' | 'wiki'>('list')
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState<ExerciseCategory | 'all'>('all')
 
@@ -48,11 +49,26 @@ export default function ExercisePicker({ plan, mode, currentExerciseId, taken, o
 
   const title = mode === 'swap' ? 'Cambiar ejercicio' : mode === 'browse' ? 'Biblioteca de ejercicios' : 'Agregar ejercicio'
 
+  const submitLabel = mode === 'swap' ? 'Crear y usar' : mode === 'browse' ? 'Crear ejercicio' : 'Crear y agregar'
+
+  if (view === 'wiki') {
+    return (
+      <Sheet className="pe-scope" title="Agregar desde MuscleWiki" onClose={onClose}>
+        <WikiForm
+          query={query}
+          submitLabel={submitLabel}
+          onBack={() => setView('list')}
+          onSubmit={onCreate}
+        />
+      </Sheet>
+    )
+  }
+
   if (view === 'create') {
     return (
       <Sheet className="pe-scope" title="Ejercicio propio" onClose={onClose}>
         <CreateForm
-          submitLabel={mode === 'swap' ? 'Crear y usar' : mode === 'browse' ? 'Crear ejercicio' : 'Crear y agregar'}
+          submitLabel={submitLabel}
           onBack={() => setView('list')}
           onSubmit={onCreate}
         />
@@ -81,6 +97,8 @@ export default function ExercisePicker({ plan, mode, currentExerciseId, taken, o
       </div>
       <button type="button" className="pe-gap-md" onClick={() => setView('create')}>Crear ejercicio propio</button>
 
+      <MuscleWikiRows query={query} onPaste={() => setView('wiki')} />
+
       <p className="muted pe-count" role="status">
         {results.length === 1 ? '1 ejercicio' : `${results.length} ejercicios`}
       </p>
@@ -88,7 +106,7 @@ export default function ExercisePicker({ plan, mode, currentExerciseId, taken, o
       {results.length === 0 ? (
         <div className="pe-empty">
           <h3>Sin resultados</h3>
-          <p className="muted">Prueba con otra palabra o crea el ejercicio tú mismo.</p>
+          <p className="muted">Prueba con otra palabra, búscalo en MuscleWiki o crea el ejercicio tú mismo.</p>
         </div>
       ) : (
         <ul className="pe-list">
@@ -114,6 +132,115 @@ export default function ExercisePicker({ plan, mode, currentExerciseId, taken, o
         </ul>
       )}
     </Sheet>
+  )
+}
+
+/** Camino "Desde MuscleWiki": busqueda externa + alta pegando el enlace de la ficha. */
+function MuscleWikiRows({ query, onPaste }: { query: string; onPaste: () => void }) {
+  return (
+    <div className="pe-wiki">
+      <a
+        className="pe-wiki-link"
+        href={musclewikiSearchUrl(query)}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        <span className="pe-wiki-text">
+          <span className="pe-name">¿No está? Búscalo en MuscleWiki</span>
+          <span className="pe-sub">Se abre en una pestaña nueva</span>
+        </span>
+        <Icon name="external" />
+      </a>
+      <button type="button" className="pe-wiki-add" onClick={onPaste}>
+        <Icon name="plus" /> Agregar desde MuscleWiki
+      </button>
+    </div>
+  )
+}
+
+function WikiForm({ query, submitLabel, onBack, onSubmit }: {
+  query: string
+  submitLabel: string
+  onBack: () => void
+  onSubmit: (input: NewExerciseInput) => void
+}) {
+  const [link, setLink] = useState('')
+  const [name, setName] = useState('')
+  const [nameEdited, setNameEdited] = useState(false)
+  const [category, setCategory] = useState<ExerciseCategory>('strength')
+  const [showLinkError, setShowLinkError] = useState(false)
+  const [nameError, setNameError] = useState(false)
+
+  const parsed = parseMusclewikiLink(link)
+  const linkError = showLinkError && !parsed
+
+  const onLink = (value: string) => {
+    setLink(value)
+    const p = parseMusclewikiLink(value)
+    if (p) setShowLinkError(false)
+    if (p && !nameEdited) setName(p.name)
+  }
+
+  const submit = () => {
+    if (!parsed) {
+      setShowLinkError(true)
+      return
+    }
+    if (name.trim() === '') {
+      setNameError(true)
+      return
+    }
+    onSubmit({ name, category, primaryMuscles: [], musclewikiSlug: parsed.slug })
+  }
+
+  return (
+    <form onSubmit={e => { e.preventDefault(); submit() }} noValidate>
+      <button type="button" className="ghost pe-back" onClick={onBack}>
+        <Icon name="back" /> Volver a la lista
+      </button>
+
+      <p className="muted">
+        Busca el ejercicio en MuscleWiki, copia el enlace de su ficha y pégalo aquí.
+      </p>
+      <a className="pe-wiki-link pe-gap-md" href={musclewikiSearchUrl(query)} target="_blank" rel="noopener noreferrer">
+        <span className="pe-wiki-text">
+          <span className="pe-name">Buscar en MuscleWiki</span>
+          <span className="pe-sub">Se abre en una pestaña nueva</span>
+        </span>
+        <Icon name="external" />
+      </a>
+
+      <div className="pe-field">
+        <label htmlFor="pe-wiki-link">Pega el enlace del ejercicio</label>
+        <input
+          id="pe-wiki-link" type="text" inputMode="url" value={link}
+          onChange={e => onLink(e.target.value)}
+          onBlur={() => { if (link.trim() !== '') setShowLinkError(true) }}
+          placeholder="https://musclewiki.com/exercise/…"
+          aria-invalid={linkError ? true : undefined} aria-describedby={linkError ? 'pe-wiki-link-err' : undefined}
+          autoComplete="off" autoCapitalize="none" spellCheck={false}
+        />
+        {linkError && <p id="pe-wiki-link-err" className="pe-error pe-error-plain" role="alert">Pega un enlace de musclewiki.com/exercise/…</p>}
+      </div>
+      <div className="pe-field">
+        <label htmlFor="pe-wiki-name">Nombre</label>
+        <input
+          id="pe-wiki-name" value={name}
+          onChange={e => { setName(e.target.value); setNameEdited(true); setNameError(false) }}
+          aria-invalid={nameError ? true : undefined} aria-describedby={nameError ? 'pe-wiki-name-err' : undefined}
+          autoComplete="off"
+        />
+        {nameError && <p id="pe-wiki-name-err" className="pe-error" role="alert">Escribe un nombre para el ejercicio.</p>}
+      </div>
+      <div className="pe-field">
+        <label htmlFor="pe-wiki-cat">Categoría</label>
+        <select id="pe-wiki-cat" value={category} onChange={e => setCategory(e.target.value as ExerciseCategory)}>
+          {CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>)}
+        </select>
+      </div>
+
+      <button type="submit" className="primary block pe-gap-lg">{submitLabel}</button>
+    </form>
   )
 }
 
