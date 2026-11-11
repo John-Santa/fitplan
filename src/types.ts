@@ -78,6 +78,10 @@ export interface PlanSlot {
   group?: string
   /** Restringe el slot a un rango de semanas del bloque. */
   weeks?: { from: number; to?: number }
+  /** Nombre visible del ejercicio solo en esta rutina; reemplaza al nombre del
+   *  ejercicio. Lo usa la migracion para conservar nombres que el editor
+   *  anterior permitia cambiar. */
+  label?: string
 }
 
 export interface RoutineBlock {

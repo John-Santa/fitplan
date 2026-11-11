@@ -45,7 +45,7 @@ export default function ExerciseSheet({ exerciseId, slot, onClose }: ExerciseShe
   const alternative = alternativeName ?? ex.alternativeText
 
   return (
-    <BottomSheet title={ex.name} onClose={onClose}>
+    <BottomSheet title={slot?.label ?? ex.name} onClose={onClose}>
       <p className="sheet-meta">
         {CATEGORY_LABEL[ex.category]} · {ex.equipment}
       </p>

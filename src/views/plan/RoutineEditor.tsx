@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react'
 import type { PlanRoutine, PlanSlot, RoutineBlock, TrainingPlan } from '../../types'
 import ExerciseSheet from '../../components/ExerciseSheet'
-import { resolveExercise } from '../../lib/library'
+import { slotExerciseName } from '../../lib/planQueries'
 import { addCustomExercise, addSlot, moveSlot, removeSlot, renameRoutine, routineExerciseIds, swapExercise } from '../../lib/planEdits'
 import { formatTarget } from '../../lib/phases'
 import ExercisePicker, { type NewExerciseInput } from './ExercisePicker'
@@ -75,7 +75,7 @@ export default function RoutineEditor({ plan, routine, onBack, onCommit, onArchi
   const [edit, setEdit] = useState<{ blockId: string; slot: PlanSlot } | null>(null)
   const [picker, setPicker] = useState<PickerState | null>(null)
 
-  const name = (s: PlanSlot) => resolveExercise(plan, s.exerciseId)?.name ?? s.exerciseId
+  const name = (s: PlanSlot) => slotExerciseName(plan, s)
   const singleBlock = routine.blocks.length === 1
 
   const pick = (exerciseId: string) => {

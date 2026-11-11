@@ -6,7 +6,9 @@
 import { describe, expect, it } from 'vitest'
 import type { Exercise } from '../types'
 import { defaultPlanWithLegacy } from './defaultPlan'
-import { addLegacyCustomExercises, applyLegacyRoutineExercises } from './legacyRoutines'
+import { addLegacyCustomExercises, applyLegacyRoutineExercises, legacyRoutinesUntouched } from './legacyRoutines'
+import { LEGACY_ROUTINES } from './defaultPlan'
+import { exerciseNameInRoutine } from './planQueries'
 import { resolveExercise } from './library'
 
 const bulgara: Exercise = {
@@ -71,5 +73,43 @@ describe('lectura del plan migrado', () => {
     const { normalizePlan } = await import('./planStorage')
     const migrated = applyLegacyRoutineExercises(defaultPlanWithLegacy(), { dia1: [bulgara, prensa] })
     expect(normalizePlan(JSON.parse(JSON.stringify(migrated)))).toEqual(migrated)
+  })
+})
+
+describe('etiqueta de rutina para ejercicios renombrados (PR #1)', () => {
+  const renamed: Exercise = {
+    id: 'leg-curl', name: 'Curl femoral acostado (renombrado)', sets: 3, repsLow: 10, repsHigh: 12, restSec: 90, cue: '', mwSlug: 'machine-seated-leg-curl',
+  }
+  const sameName: Exercise = { ...renamed, name: 'Curl femoral sentado (máquina)' }
+
+  it('un ejercicio de la biblioteca renombrado deja su nombre como etiqueta del slot archivado', () => {
+    const next = applyLegacyRoutineExercises(defaultPlanWithLegacy(), { dia1: [renamed] })
+    expect(dia1(next).blocks[0].slots[0].label).toBe('Curl femoral acostado (renombrado)')
+    expect(exerciseNameInRoutine(next, 'dia1', 'leg-curl')).toBe('Curl femoral acostado (renombrado)')
+    // El ejercicio no se renombra globalmente: el Dia 1 nuevo conserva el nombre de la biblioteca.
+    expect(exerciseNameInRoutine(next, 'espalda-d1', 'leg-curl')).toBe('Curl femoral sentado (máquina)')
+  })
+
+  it('sin cambio de nombre no hay etiqueta (ni para ejercicios propios)', () => {
+    const next = applyLegacyRoutineExercises(defaultPlanWithLegacy(), { dia1: [sameName, bulgara] })
+    const slots = dia1(next).blocks[0].slots
+    expect(slots[0]).not.toHaveProperty('label')
+    expect(slots[1]).not.toHaveProperty('label')
+  })
+})
+
+describe('legacyRoutinesUntouched', () => {
+  it('es verdadero con las rutinas archivadas tal como se migraron, o sin ninguna', () => {
+    expect(legacyRoutinesUntouched(defaultPlanWithLegacy())).toBe(true)
+    const noLegacy = defaultPlanWithLegacy()
+    noLegacy.routines = noLegacy.routines.filter(r => !r.archived)
+    expect(legacyRoutinesUntouched(noLegacy)).toBe(true)
+  })
+
+  it('es falso si alguna rutina archivada se edito despues de migrar', () => {
+    const edited = defaultPlanWithLegacy()
+    edited.routines.find(r => r.id === 'dia2')!.blocks[0].slots[0].sets += 1
+    expect(legacyRoutinesUntouched(edited)).toBe(false)
+    expect(LEGACY_ROUTINES.find(r => r.id === 'dia2')!.blocks[0].slots[0].sets).not.toBe(edited.routines.find(r => r.id === 'dia2')!.blocks[0].slots[0].sets)
   })
 })

@@ -1,9 +1,8 @@
 import { useState } from 'react'
 import type { RoutineId, Session } from '../types'
 import { SESSION_KIND_FOR_DAY } from '../lib/plan'
-import { routineDaysLabel, routineForWeekday, routineSetCount, routineSlots, weekLabel } from '../lib/planQueries'
+import { exerciseNameInRoutine, routineDaysLabel, routineForWeekday, routineSetCount, routineSlots, weekLabel } from '../lib/planQueries'
 import { blockWeekNumber, phaseForWeek } from '../lib/phases'
-import { resolveExercise } from '../lib/library'
 import { isPainValue, painVerdict } from '../lib/pain'
 import { doneSets, fmtDate, fmtDuration, mmss, sessionVolume, todayISO } from '../lib/calc'
 import { DISCIPLINES, SWIM_STROKE_LABELS, finishSwimSession, metresToLaps, sessionDigest, swimDistance, swimPaceSecPer100m } from '../lib/disciplines'
@@ -94,7 +93,7 @@ export default function Train() {
                       const done = x.durationSec != null ? `${x.durationSec} s` : x.distanceM != null ? `${x.distanceM} m` : '—'
                       return (
                         <tr key={i}>
-                          <td>{resolveExercise(plan, x.exerciseId)?.name ?? x.exerciseId}</td>
+                          <td>{exerciseNameInRoutine(plan, s.routineId, x.exerciseId)}</td>
                           <td className="num">{x.setIndex + 1}</td>
                           <td className="num">{x.weight ?? '—'}</td>
                           <td className="num">{x.reps ?? done}</td>
@@ -109,7 +108,7 @@ export default function Train() {
                 <div className="muted" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em' }}>Dolor registrado</div>
                 {Object.entries(s.pain).filter(([, v]) => isPainValue(v)).map(([id, v]) => (
                   <p key={id} style={{ margin: 0 }}>
-                    {resolveExercise(plan, id)?.name ?? id}: <strong className="num">{v}/10</strong> · {painVerdict(v).label}
+                    {exerciseNameInRoutine(plan, s.routineId, id)}: <strong className="num">{v}/10</strong> · {painVerdict(v).label}
                   </p>
                 ))}
               </div>

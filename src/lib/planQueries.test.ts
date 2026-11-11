@@ -7,6 +7,7 @@ import {
   activeRoutines,
   buildSessionSteps,
   dayTitleFor,
+  exerciseNameInRoutine,
   findRoutine,
   groupLabel,
   nextWeekdayFor,
@@ -17,6 +18,7 @@ import {
   routineShortName,
   routineSlots,
   routineTitle,
+  slotExerciseName,
   suggestRoutineIdFor,
   weekdaysForRoutine,
   weekLabel,
@@ -155,5 +157,30 @@ describe('plan sin rutinas activas', () => {
     const r: PlanRoutine = { ...DEFAULT_PLAN.routines[0], archived: true }
     const onlyArchived = { ...DEFAULT_PLAN, routines: [r] } as TrainingPlan
     expect(suggestRoutineIdFor(onlyArchived, week)).toBe(r.id)
+  })
+})
+
+describe('nombres de ejercicio con etiqueta de rutina', () => {
+  const labelled = (): TrainingPlan => {
+    const p = defaultPlanWithLegacy()
+    const slot = p.routines.find(r => r.id === 'dia1')!.blocks[0].slots.find(s => s.exerciseId === 'leg-curl')!
+    slot.label = 'Curl femoral acostado (renombrado)'
+    return p
+  }
+
+  it('slotExerciseName prefiere la etiqueta del slot al nombre del ejercicio', () => {
+    const p = labelled()
+    const slot = p.routines.find(r => r.id === 'dia1')!.blocks[0].slots.find(s => s.exerciseId === 'leg-curl')!
+    expect(slotExerciseName(p, slot)).toBe('Curl femoral acostado (renombrado)')
+    expect(slotExerciseName(p, { ...slot, label: undefined })).toBe('Curl femoral sentado (máquina)')
+    expect(slotExerciseName(p, { ...slot, label: undefined, exerciseId: 'no-existe' })).toBe('no-existe')
+  })
+
+  it('exerciseNameInRoutine usa la etiqueta solo en la rutina que la tiene', () => {
+    const p = labelled()
+    expect(exerciseNameInRoutine(p, 'dia1', 'leg-curl')).toBe('Curl femoral acostado (renombrado)')
+    expect(exerciseNameInRoutine(p, 'espalda-d1', 'leg-curl')).toBe('Curl femoral sentado (máquina)')
+    expect(exerciseNameInRoutine(p, 'borrada', 'leg-curl')).toBe('Curl femoral sentado (máquina)')
+    expect(exerciseNameInRoutine(p, 'dia1', 'no-existe')).toBe('no-existe')
   })
 })

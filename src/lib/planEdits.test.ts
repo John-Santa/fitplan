@@ -213,6 +213,13 @@ describe('swapExercise', () => {
     expect(after.target).toEqual(before.target)
     expect(after.restSec).toBe(before.restSec)
   })
+  it('descarta la etiqueta del slot: otro ejercicio no hereda el nombre anterior', () => {
+    const p = base()
+    const slot = blockOf(p).slots[0]
+    slot.label = 'Nombre propio'
+    const next = swapExercise(p, R, blockOf(p).id, slot.id, 'single-leg-press')
+    expect(blockOf(next).slots[0]).not.toHaveProperty('label')
+  })
   it('un ejercicio desconocido deja el plan igual', () => {
     const p = base()
     expect(swapExercise(p, R, blockOf(p).id, blockOf(p).slots[0].id, 'no-existe')).toBe(p)

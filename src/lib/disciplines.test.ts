@@ -188,6 +188,14 @@ describe('sessionDigest', () => {
     expect(digest.lines).toEqual(['Prensa de piernas (leg press): 80,0 kg × 12'])
   })
 
+  it('el nombre de un ejercicio sale de la etiqueta de la rutina de la sesion, no de otra', () => {
+    const labelled = defaultPlanWithLegacy()
+    const slot = labelled.routines.find(r => r.id === 'dia1')!.blocks[0].slots.find(x => x.exerciseId === 'leg-press')!
+    slot.label = 'Prensa 45° (mi nombre)'
+    expect(sessionDigest(strengthSession({ routineId: 'dia1' }), labelled).lines).toEqual(['Prensa 45° (mi nombre): 80,0 kg × 12'])
+    expect(sessionDigest(strengthSession({ routineId: 'espalda-d1' }), labelled).lines).toEqual(['Prensa de piernas (leg press): 80,0 kg × 12'])
+  })
+
   it('una rutina desconocida muestra "Rutina eliminada" y conserva las series registradas', () => {
     const digest = sessionDigest(strengthSession({ routineId: 'borrada' }), plan)
     expect(digest.title).toBe('Rutina eliminada')

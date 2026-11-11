@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { PlanRoutine, PlanSlot, SetLog, StrengthSession } from '../../types'
 import { lastPerformance } from '../../lib/calc'
-import { resolveExercise } from '../../lib/library'
 import { blockWeekNumber, phaseForWeek, setsForSlot } from '../../lib/phases'
-import { buildSessionSteps, findRoutine, groupLabel, weekLabel, type SessionStep } from '../../lib/planQueries'
+import { buildSessionSteps, findRoutine, groupLabel, slotExerciseName, weekLabel, type SessionStep } from '../../lib/planQueries'
 import { useStore } from '../../lib/store'
 import ExerciseSheet from '../../components/ExerciseSheet'
 import { RedFlagsSheet } from '../Guide'
@@ -76,7 +75,7 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
     if (cell instanceof HTMLElement) cell.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   }, [currentIndex])
 
-  const nameOf = (slot: PlanSlot) => resolveExercise(plan, slot.exerciseId)?.name ?? slot.exerciseId
+  const nameOf = (slot: PlanSlot) => slotExerciseName(plan, slot)
   const doneOf = (slot: PlanSlot) =>
     Math.min(session.sets.filter(s => s.exerciseId === slot.exerciseId && s.done).length, slotTarget(slot, phase))
   const stepDone = (step: SessionStep) => step.slots.reduce((a, s) => a + doneOf(s), 0)

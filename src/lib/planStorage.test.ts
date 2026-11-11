@@ -64,6 +64,20 @@ describe('normalizePlan', () => {
   })
 })
 
+describe('normalizePlan: etiqueta del slot', () => {
+  const withLabel = (label: unknown) => {
+    const plan = structuredClone(defaultPlanWithLegacy()) as unknown as { routines: { blocks: { slots: Record<string, unknown>[] }[] }[] }
+    plan.routines[0].blocks[0].slots[0].label = label
+    return normalizePlan(plan)?.routines[0].blocks[0].slots[0]
+  }
+
+  it('la etiqueta sobrevive a normalizePlan (recortada) y una vacia se omite', () => {
+    expect(withLabel('  Mi nombre ')?.label).toBe('Mi nombre')
+    expect(withLabel('   ')).not.toHaveProperty('label')
+    expect(withLabel(42)).not.toHaveProperty('label')
+  })
+})
+
 describe('planFromBackup', () => {
   it('un respaldo v3 con plan valido devuelve ese plan', () => {
     expect(planFromBackup({ app: 'fitplan', version: 3, plan: DEFAULT_PLAN })).toEqual(DEFAULT_PLAN)

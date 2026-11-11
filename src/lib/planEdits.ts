@@ -199,12 +199,18 @@ export function updateSlot(
 }
 
 /** Cambia el ejercicio y conserva series, objetivo, descanso y nota. */
+function withoutLabel(slot: PlanSlot): PlanSlot {
+  const { label: _label, ...rest } = slot
+  return rest
+}
+
 export function swapExercise(plan: TrainingPlan, routineId: string, blockId: string, slotId: string, exerciseId: string): TrainingPlan {
   if (!resolveExercise(plan, exerciseId) || routineExerciseIds(plan, routineId).has(exerciseId)) return plan
   return editBlock(plan, routineId, blockId, block => {
     const slot = block.slots.find(s => s.id === slotId)
     if (!slot || slot.exerciseId === exerciseId) return null
-    return { ...block, slots: block.slots.map(s => (s.id === slotId ? { ...s, exerciseId } : s)) }
+    // Otro ejercicio no hereda el nombre propio del anterior.
+    return { ...block, slots: block.slots.map(s => (s.id === slotId ? withoutLabel({ ...s, exerciseId }) : s)) }
   })
 }
 

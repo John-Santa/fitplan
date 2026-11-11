@@ -3,7 +3,7 @@
 // consulta por grupo de campos para mostrar cada error bajo su campo.
 import { useState } from 'react'
 import type { PlanSlot, Target, TrainingPlan } from '../../types'
-import { resolveExercise } from '../../lib/library'
+import { slotExerciseName } from '../../lib/planQueries'
 import { updateSlot, type SlotPatch } from '../../lib/planEdits'
 import { Icon } from './icons'
 import Sheet from '../../components/BottomSheet'
@@ -32,7 +32,6 @@ export default function SlotEditSheet({ plan, routineId, blockId, slot, onSave, 
   onClose: () => void
 }) {
   const t = slot.target
-  const exercise = resolveExercise(plan, slot.exerciseId)
 
   const [sets, setSets] = useState(String(slot.sets))
   const [rest, setRest] = useState(String(slot.restSec))
@@ -88,7 +87,7 @@ export default function SlotEditSheet({ plan, routineId, blockId, slot, onSave, 
 
   return (
     <Sheet className="pe-scope" title="Editar ejercicio" onClose={onClose}>
-      <p className="pe-edit-name">{exercise?.name ?? slot.exerciseId}</p>
+      <p className="pe-edit-name">{slotExerciseName(plan, slot)}</p>
       <button type="button" className="pe-gap-md" onClick={onSwap}>
         <Icon name="swap" /> Cambiar ejercicio
       </button>

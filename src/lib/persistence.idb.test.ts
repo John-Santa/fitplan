@@ -188,14 +188,52 @@ describe('persistencia sobre IndexedDB en memoria', () => {
     expect((await db.getConfig())!.routineExercises).toEqual({ dia1: [bulgara] })
   })
 
-  it('restaurar un respaldo v2 con ejercicios propios los agrega al plan sin tocar sus rutinas', async () => {
+  it('restaurar un respaldo v2 con ejercicios propios los agrega al plan sin tocar las rutinas del plan nuevo', async () => {
     const { db, boot, oldConfig } = await fresh()
     await boot()
     const before = (await db.getPlan()) as TrainingPlan
     await db.importBackup(v2Backup({ ...oldConfig, routineExercises: { dia2: [bulgara] } }), 'replace')
     const after = (await db.getPlan()) as TrainingPlan
     expect(after.customExercises.map(e => e.id)).toEqual(['custom-abc123'])
-    expect(after.routines).toEqual(before.routines)
+    expect(after.routines.filter(r => !r.archived)).toEqual(before.routines.filter(r => !r.archived))
+    // La archivada sin tocar desde la migracion toma la lista del respaldo.
+    expect(after.routines.find(r => r.id === 'dia2')!.blocks.flatMap(b => b.slots).map(s => s.exerciseId)).toEqual(['custom-abc123'])
+  })
+
+  // Restaurar sobre un dispositivo recien migrado (sin personalizaciones al
+  // actualizar): las rutinas archivadas sin tocar toman la lista del respaldo.
+  it('restaurar un respaldo v2 sobre un dispositivo recien migrado lleva las listas y etiquetas a las archivadas', async () => {
+    const { db, boot, oldConfig } = await fresh()
+    await boot()
+    const before = (await db.getPlan()) as TrainingPlan
+    const renamed = { ...bulgara, id: 'leg-curl', name: 'Curl femoral acostado (renombrado)', mwSlug: '' }
+    await db.importBackup(v2Backup({ ...oldConfig, routineExercises: { dia1: [bulgara, renamed] } }), 'replace')
+    const after = (await db.getPlan()) as TrainingPlan
+    const dia1 = after.routines.find(r => r.id === 'dia1')!
+    expect(dia1.blocks.flatMap(b => b.slots).map(s => [s.exerciseId, s.label])).toEqual([
+      ['custom-abc123', undefined], ['leg-curl', 'Curl femoral acostado (renombrado)'],
+    ])
+    expect(after.routines.filter(r => r.id !== 'dia1')).toEqual(before.routines.filter(r => r.id !== 'dia1'))
+  })
+
+  it('restaurar un respaldo v2 cuando la rutina archivada ya se edito solo agrega los ejercicios propios', async () => {
+    const { db, boot, oldConfig } = await fresh()
+    await boot()
+    const edited = structuredClone((await db.getPlan()) as TrainingPlan)
+    edited.routines.find(r => r.id === 'dia1')!.blocks[0].slots[0].sets += 2
+    await db.savePlan(edited)
+    await db.importBackup(v2Backup({ ...oldConfig, routineExercises: { dia1: [bulgara] } }), 'replace')
+    const after = (await db.getPlan()) as TrainingPlan
+    expect(after.routines).toEqual(edited.routines)
+    expect(after.customExercises.map(e => e.id)).toEqual(['custom-abc123'])
+  })
+
+  it('restaurar un respaldo v2 con el plan guardado corrupto no escribe un plan', async () => {
+    const { db, boot, oldConfig } = await fresh()
+    await boot()
+    await db.savePlan({ garbage: true } as never)
+    await db.importBackup(v2Backup({ ...oldConfig, routineExercises: { dia1: [bulgara] } }), 'replace')
+    expect(await db.getPlan()).toEqual({ garbage: true })
   })
 
   it('exportar con un plan guardado corrupto omite el plan', async () => {

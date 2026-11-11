@@ -1,7 +1,6 @@
 import type { RoutineId, Session, SessionByKind, SessionKind, StrengthSession, SwimBlock, SwimSession, SwimStroke, TrainingPlan, WeeklyRoutine } from '../types'
 import { SESSION_KIND_FOR_DAY } from './plan'
-import { findRoutine, routineTitle } from './planQueries'
-import { resolveExercise } from './library'
+import { exerciseNameInRoutine, findRoutine, routineTitle } from './planQueries'
 import { bestSet, doneSets, fmt, mmss, sessionVolume, todayISO } from './calc'
 
 /* ---------- tabla de descriptores de disciplina ---------- */
@@ -76,7 +75,7 @@ function strengthDigest(s: StrengthSession, plan: TrainingPlan): SessionDigest {
     .filter(x => x.b)
   return {
     title: routineTitle(plan, s.routineId),
-    lines: best.map(x => `${resolveExercise(plan, x.id)?.name ?? x.id}: ${fmt(x.b!.weight)} kg × ${x.b!.reps}`),
+    lines: best.map(x => `${exerciseNameInRoutine(plan, s.routineId, x.id)}: ${fmt(x.b!.weight)} kg × ${x.b!.reps}`),
     hasEntries: strengthHasLoggedEntries(s),
   }
 }

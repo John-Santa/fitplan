@@ -3,7 +3,7 @@ import { mergeConfig, normalizeSession } from './plan'
 import { normalizePlan, planFromBackup } from './planStorage'
 import { defaultPlanWithLegacy } from './defaultPlan'
 import { migrateLegacyConfig } from './legacyConfig'
-import { addLegacyCustomExercises } from './legacyRoutines'
+import { addLegacyCustomExercises, applyLegacyRoutineExercises, legacyRoutinesUntouched } from './legacyRoutines'
 
 const DB_NAME = 'fitplan'
 const DB_VERSION = 1
@@ -237,13 +237,21 @@ export async function importBackup(data: unknown, mode: 'replace' | 'merge' = 'r
       // arranque no vuelve a correr porque ya hay un plan guardado. Se
       // reescribe aqui con la semana del plan que queda activo. Un respaldo
       // v3 con plan trae una config escrita por esta version: se deja igual.
-      const active = normalizePlan(await getPlan()) ?? defaultPlanWithLegacy()
+      const stored = normalizePlan(await getPlan())
+      const active = stored ?? defaultPlanWithLegacy()
       config = migrateLegacyConfig(config, active.weekTemplate) ?? config
-      // Ejercicios propios del editor anterior (routineExercises): se agregan
-      // los que falten para que el historial restaurado los nombre. Las
-      // rutinas del plan actual no se tocan.
-      const next = addLegacyCustomExercises(active, config.routineExercises)
-      if (next !== active) withCustoms = next
+      // Listas del editor anterior (routineExercises). Solo se escribe sobre
+      // un plan guardado y legible: si falta o esta corrupto no se escribe
+      // desde aqui (el arranque lo maneja). Si las rutinas archivadas siguen
+      // como al migrar (dispositivo recien actualizado) toman las listas del
+      // respaldo; si ya se editaron, solo se agregan los ejercicios propios
+      // que falten para que el historial restaurado los nombre.
+      if (stored) {
+        const next = legacyRoutinesUntouched(stored)
+          ? applyLegacyRoutineExercises(stored, config.routineExercises)
+          : addLegacyCustomExercises(stored, config.routineExercises)
+        if (next !== stored) withCustoms = next
+      }
     }
     await saveConfig(config)
     if (withCustoms) await savePlan(withCustoms)

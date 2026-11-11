@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { PlanSlot, RoutineBlock, TrainingPlan } from '../../types'
 import { resolveExercise } from '../../lib/library'
+import { slotExerciseName } from '../../lib/planQueries'
 import { Check } from '../../components/ui'
 import { ChevronIcon, InfoIcon } from './PlanIcons'
 
@@ -44,10 +45,10 @@ export default function WarmupStep({ plan, block, ticked, onToggle, onInfo }: Pr
                   onClick={() => onToggle(slot.id)}
                 >
                   <span className="sp-tick-box"><Check on={on} /></span>
-                  <span className="sp-tick-text">{slot.note || ex?.name || slot.exerciseId}</span>
+                  <span className="sp-tick-text">{slot.note || slotExerciseName(plan, slot)}</span>
                 </button>
                 {ex && (
-                  <button type="button" className="sp-info" aria-label={`Ver ficha de ${ex.name}`} onClick={() => onInfo(slot)}>
+                  <button type="button" className="sp-info" aria-label={`Ver ficha de ${slotExerciseName(plan, slot)}`} onClick={() => onInfo(slot)}>
                     <InfoIcon />
                   </button>
                 )}

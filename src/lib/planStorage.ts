@@ -76,6 +76,7 @@ function readSlot(v: unknown): PlanSlot | null {
   const slot: PlanSlot = { id: v.id, exerciseId: v.exerciseId, sets: v.sets, target, restSec: v.restSec, note: v.note }
   if (typeof v.primary === 'boolean') slot.primary = v.primary
   if (isStr(v.group)) slot.group = v.group
+  if (isStr(v.label) && v.label.trim() !== '') slot.label = v.label.trim()
   if (v.weeks !== undefined) {
     if (!isRec(v.weeks) || !isNum(v.weeks.from) || (v.weeks.to !== undefined && !isNum(v.weeks.to))) return null
     slot.weeks = { from: v.weeks.from, ...(v.weeks.to !== undefined ? { to: v.weeks.to as number } : {}) }

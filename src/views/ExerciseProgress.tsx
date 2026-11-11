@@ -1,8 +1,7 @@
 import { useState } from 'react'
 import type { PlanSlot, RoutineId, StrengthSession } from '../types'
-import { resolveExercise } from '../lib/library'
 import { blockWeekNumber, formatTarget, phaseForWeek, setsForSlot } from '../lib/phases'
-import { findRoutine } from '../lib/planQueries'
+import { findRoutine, slotExerciseName } from '../lib/planQueries'
 import { bestSet, fmt, fmtDate, fmtSigned, shouldProgress } from '../lib/calc'
 import { useStore } from '../lib/store'
 import Chart, { type Series } from '../components/Chart'
@@ -92,7 +91,7 @@ export default function ExerciseProgress({ routineId, onBack }: { routineId: Rou
         <label htmlFor="ex">Ejercicio de {routine.name.toLowerCase()}</label>
         <select id="ex" value={slot.exerciseId} onChange={e => setExId(e.target.value)}>
           {slots.map(s => (
-            <option key={s.exerciseId} value={s.exerciseId}>{resolveExercise(plan, s.exerciseId)?.name ?? s.exerciseId}</option>
+            <option key={s.exerciseId} value={s.exerciseId}>{slotExerciseName(plan, s)}</option>
           ))}
         </select>
         <p className="hint" style={{ marginBottom: 0 }}>

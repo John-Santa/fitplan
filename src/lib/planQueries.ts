@@ -4,6 +4,7 @@
 // no se repite aca.
 import type { DayPlan, PlanRoutine, PlanSlot, RoutineId, TrainingPlan, WeeklyRoutine } from '../types'
 import { KIND_LABELS, weekdayLabel } from './plan'
+import { resolveExercise } from './library'
 import { phaseForWeek, setsForSlot, slotsForWeek } from './phases'
 
 type Routines = Pick<TrainingPlan, 'routines'>
@@ -158,4 +159,22 @@ export function groupLabel(slots: PlanSlot[], rounds: number): string {
   const lifts = slots.every(s => s.target.kind === 'reps' && s.target.holdSec === undefined)
   if (lifts) return 'Superserie'
   return `Circuito · ${rounds} ${rounds === 1 ? 'ronda' : 'rondas'}`
+}
+
+/* ---------- nombres de ejercicio ---------- */
+
+type Customs = Pick<TrainingPlan, 'customExercises'>
+
+/** Nombre visible del ejercicio de un slot: la etiqueta de la rutina si la
+ *  tiene, si no el de la biblioteca o el propio, y por ultimo el id. */
+export function slotExerciseName(plan: Customs, slot: Pick<PlanSlot, 'exerciseId' | 'label'>): string {
+  return slot.label ?? resolveExercise(plan, slot.exerciseId)?.name ?? slot.exerciseId
+}
+
+/** Nombre de un ejercicio en el contexto de una rutina (historial, resumen de
+ *  sesion): la etiqueta del slot de esa rutina si la hay, si no el nombre del
+ *  ejercicio. Otras rutinas con el mismo ejercicio no se ven afectadas. */
+export function exerciseNameInRoutine(plan: Routines & Customs, routineId: RoutineId, exerciseId: string): string {
+  const slot = findRoutine(plan, routineId)?.blocks.flatMap(b => b.slots).find(s => s.exerciseId === exerciseId && s.label)
+  return slot?.label ?? resolveExercise(plan, exerciseId)?.name ?? exerciseId
 }
