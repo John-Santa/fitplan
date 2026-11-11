@@ -18,14 +18,6 @@ import type {
 
 export const MW = 'https://musclewiki.com/es-es/exercise/'
 
-/** Guia del ejercicio. Los del catalogo traen slug de MuscleWiki y enlazan
- *  directo; los que agrega el usuario no, asi que se buscan por nombre
- *  restringiendo la busqueda a musclewiki.com. */
-export function exerciseGuideUrl(e: Pick<Exercise, 'name' | 'mwSlug'>): string {
-  if (e.mwSlug) return MW + e.mwSlug
-  return 'https://www.google.com/search?q=' + encodeURIComponent(`site:musclewiki.com ${e.name.trim()}`)
-}
-
 /* ---------- semana configurable ---------- */
 
 /** Etiqueta de cada tipo de dia. Al ser Record<DayKind, string>, agregar un
@@ -141,8 +133,10 @@ export const DONE_TODAY: Record<SessionKind, { title: string; note: string }> = 
 const GYM_NOTE = '20:30 en el gimnasio'
 const SWIM_NOTE = '20:00 a 21:00. Cierra el segundo trabajo a las 19:30 y come la fruta o el batido antes de salir. En casa a las 22:30, cena lista para calentar y a dormir a las 23:30.'
 
-/** La semana que trae la app instalada: exactamente el calendario que estaba
- *  escrito a mano en Home.tsx:56-88. title vacio = se deriva al renderizar. */
+/** La semana anterior al plan editable: 3 dias de pesas (dia1..dia3) y 2 de
+ *  natacion. Ya no es la semana de una instalacion nueva (ver
+ *  PLAN_WEEKLY_ROUTINE); se conserva porque la migracion la reconoce como la
+ *  semana "vieja" y porque sus pruebas la usan de fixture. */
 export const DEFAULT_WEEKLY_ROUTINE: WeeklyRoutine = [
   { kind: 'rest', title: '', note: 'Estiramiento y caminata liviana. Dedica dos horas a cocinar las cinco cenas de la semana: con cena a las 22:15, esta es la tarea más importante del domingo.' },
   { kind: 'training', routineId: 'dia1', title: '', note: GYM_NOTE },
@@ -153,10 +147,24 @@ export const DEFAULT_WEEKLY_ROUTINE: WeeklyRoutine = [
   { kind: 'walk', title: '', note: '60 a 75 minutos a la hora que quieras. Dormir 8 h 45.' },
 ]
 
+/** Semana de una instalacion nueva: la del plan por defecto (lunes a viernes
+ *  = dias 1 a 5). Es una copia literal de DEFAULT_PLAN.weekTemplate porque
+ *  defaultPlan.ts importa ROUTINES de este archivo y un import de vuelta
+ *  crearia un ciclo; plan.test.ts verifica que ambas sigan iguales. */
+export const PLAN_WEEKLY_ROUTINE: WeeklyRoutine = [
+  { kind: 'rest', title: '', note: 'Descanso activo: tus 10.000 pasos' },
+  { kind: 'training', routineId: 'espalda-d1', title: '', note: '60 min' },
+  { kind: 'training', routineId: 'espalda-d2', title: '', note: '60 min' },
+  { kind: 'training', routineId: 'espalda-d3', title: '', note: '45–50 min' },
+  { kind: 'training', routineId: 'espalda-d4', title: '', note: '60 min' },
+  { kind: 'training', routineId: 'espalda-d5', title: '', note: '60 min' },
+  { kind: 'rest', title: '', note: 'Descanso activo: tus 10.000 pasos' },
+]
+
 export const DEFAULT_CONFIG: Config = {
   heightCm: 173,
-  blockStart: '2026-08-04',
-  blockEnd: '2026-09-28',
+  blockStart: '2026-11-16',
+  blockEnd: '2027-02-07',
   goal: {
     weight: 76.5,
     fatPct: 22.2,
@@ -168,7 +176,7 @@ export const DEFAULT_CONFIG: Config = {
     chest: 102.5,
     neck: 40.5,
   },
-  weeklyRoutine: DEFAULT_WEEKLY_ROUTINE,
+  weeklyRoutine: PLAN_WEEKLY_ROUTINE,
   poolLengthM: 25,
   routineExercises: {},
 }
@@ -353,45 +361,6 @@ export const ROUTINES: Routine[] = [
   },
 ]
 
-/** Catalogo efectivo: la rutina por defecto con los ejercicios del usuario
- *  encima, si los hay. */
-export function resolveRoutines(overrides: RoutineOverrides): Routine[] {
-  return ROUTINES.map(r => {
-    const custom = overrides[r.id]
-    return custom ? { ...r, exercises: custom } : r
-  })
-}
-
-/** Nombre de un ejercicio para el historial: primero la rutina vigente, luego
- *  el catalogo por defecto (ejercicios quitados de la rutina), si no el id. */
-export function exerciseNameFor(routines: Routine[], id: string): string {
-  for (const r of routines) {
-    const e = r.exercises.find(x => x.id === id)
-    if (e) return e.name
-  }
-  return exerciseById(id)?.name ?? id
-}
-
-/** Ejercicio nuevo del usuario. El id es estable y unico (llave del historial). */
-export function newExercise(name: string): Exercise {
-  return {
-    id: `custom-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
-    name: name.trim(),
-    sets: 3, repsLow: 10, repsHigh: 12, restSec: 90,
-    cue: '',
-    mwSlug: '',
-  }
-}
-
-/** Mueve el elemento i una posicion (dir -1 arriba, +1 abajo). */
-export function moveItem<T>(list: T[], i: number, dir: -1 | 1): T[] {
-  const j = i + dir
-  if (j < 0 || j >= list.length) return list
-  const out = list.slice()
-  ;[out[i], out[j]] = [out[j], out[i]]
-  return out
-}
-
 export const ALL_EXERCISES = ROUTINES.flatMap(r => r.exercises)
 export const exerciseById = (id: string) => ALL_EXERCISES.find(e => e.id === id)
 export const routineById = (id: string) => ROUTINES.find(r => r.id === id)
@@ -404,11 +373,15 @@ function isDayKind(v: unknown): v is DayKind {
 
 export { isDayKind }
 
+/** Un id de rutina es cualquier texto no vacio: el plan es dato editable y el
+ *  historial puede apuntar a rutinas archivadas o ya inexistentes. Las vistas
+ *  resuelven el id contra el plan y muestran un respaldo si no lo encuentran;
+ *  aqui nunca se descarta ni se reescribe una referencia por no conocerla. */
 export function isRoutineId(v: unknown): v is RoutineId {
-  return ROUTINES.some(r => r.id === v)
+  return typeof v === 'string' && v.length > 0
 }
 
-function isDayPlan(v: unknown): v is DayPlan {
+export function isDayPlan(v: unknown): v is DayPlan {
   if (typeof v !== 'object' || v === null) return false
   const d = v as { kind?: unknown; title?: unknown; note?: unknown; routineId?: unknown }
   if (typeof d.title !== 'string' || typeof d.note !== 'string') return false
@@ -424,7 +397,7 @@ function mergeWeeklyRoutine(stored: unknown): WeeklyRoutine {
   const arr: readonly unknown[] = Array.isArray(stored) ? stored : []
   const at = (i: number): DayPlan => {
     const v = arr[i]
-    return isDayPlan(v) ? v : DEFAULT_WEEKLY_ROUTINE[i]
+    return isDayPlan(v) ? v : PLAN_WEEKLY_ROUTINE[i]
   }
   return [at(0), at(1), at(2), at(3), at(4), at(5), at(6)]
 }
@@ -519,16 +492,40 @@ function isSessionKind(v: unknown): v is SessionKind {
   return v === 'strength' || v === 'swim'
 }
 
-function isSetLog(v: unknown): v is SetLog {
-  if (typeof v !== 'object' || v === null) return false
+/** Valida las series de una sesion de fuerza. Los campos obligatorios
+ *  invalidos descartan la serie; durationSec / distanceM son opcionales
+ *  (ausentes en sesiones anteriores): un numero finito o null se conserva y
+ *  cualquier otra cosa se omite, sin perder la serie por eso. */
+function normalizeSetLog(v: unknown): SetLog | null {
+  if (typeof v !== 'object' || v === null) return null
   const s = v as Record<string, unknown>
-  return (
-    typeof s.exerciseId === 'string' &&
-    typeof s.setIndex === 'number' &&
-    (s.weight === null || typeof s.weight === 'number') &&
-    (s.reps === null || typeof s.reps === 'number') &&
-    typeof s.done === 'boolean'
-  )
+  if (
+    typeof s.exerciseId !== 'string' ||
+    typeof s.setIndex !== 'number' ||
+    !(s.weight === null || typeof s.weight === 'number') ||
+    !(s.reps === null || typeof s.reps === 'number') ||
+    typeof s.done !== 'boolean'
+  ) {
+    return null
+  }
+  const out: SetLog = { exerciseId: s.exerciseId, setIndex: s.setIndex, weight: s.weight, reps: s.reps, done: s.done }
+  for (const key of ['durationSec', 'distanceM'] as const) {
+    const m = s[key]
+    if (m === null || (typeof m === 'number' && Number.isFinite(m))) out[key] = m
+  }
+  return out
+}
+
+/** Dolor 0-10 por ejercicio: conserva las entradas numericas finitas
+ *  acotadas a 0..10 y descarta el resto. Un valor que no es objeto da
+ *  undefined (la sesion se conserva, sin dolor). */
+function normalizePain(v: unknown): Record<string, number> | undefined {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return undefined
+  const out: Record<string, number> = {}
+  for (const [k, n] of Object.entries(v)) {
+    if (typeof n === 'number' && Number.isFinite(n)) out[k] = Math.min(10, Math.max(0, n))
+  }
+  return out
 }
 
 function isSwimStroke(v: unknown): v is SwimStroke {
@@ -547,10 +544,11 @@ function isSwimBlock(v: unknown): v is SwimBlock {
   )
 }
 
-/** routineId invalido descarta la sesion entera: es la llave de toda la
- *  vista de progresion (ver lastPerformance en calc.ts), asi que una sesion
- *  de fuerza sin una rutina resoluble no sirve de nada. id/date/startedAt
- *  faltantes tambien descartan: son la identidad minima de una sesion. sets
+/** Un routineId que no es texto (o es vacio) descarta la sesion entera. Un id
+ *  de texto que no esta en el plan (rutina archivada o borrada) NO descarta:
+ *  el historial nunca se pierde por editar el plan (S4); las vistas muestran
+ *  un respaldo para la rutina desconocida. id/date/startedAt faltantes
+ *  tambien descartan: son la identidad minima de una sesion. sets
  *  invalidos dentro del arreglo se filtran uno por uno en vez de descartar
  *  toda la sesion — perder una serie corrupta es mejor que perder el
  *  entrenamiento completo. */
@@ -560,6 +558,7 @@ function normalizeStrengthSession(r: Record<string, unknown>): StrengthSession |
   if (typeof r.date !== 'string') return null
   if (typeof r.startedAt !== 'number') return null
   if (!Array.isArray(r.sets)) return null
+  const pain = normalizePain(r.pain)
   return {
     kind: 'strength',
     id: r.id,
@@ -567,8 +566,9 @@ function normalizeStrengthSession(r: Record<string, unknown>): StrengthSession |
     date: r.date,
     startedAt: r.startedAt,
     finishedAt: typeof r.finishedAt === 'number' ? r.finishedAt : null,
-    sets: r.sets.filter(isSetLog),
+    sets: r.sets.flatMap(x => normalizeSetLog(x) ?? []),
     notes: typeof r.notes === 'string' ? r.notes : '',
+    ...(pain ? { pain } : {}),
   }
 }
 

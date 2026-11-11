@@ -1,45 +1,86 @@
-import { useEffect, useRef, useState } from 'react'
-import type { Exercise, SetLog, StrengthSession } from '../../types'
-import { exerciseGuideUrl } from '../../lib/plan'
-import { fmtDate, formatLastPerformance, lastPerformance, progressLine, shouldProgress } from '../../lib/calc'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { PlanRoutine, PlanSlot, SetLog, StrengthSession } from '../../types'
+import { lastPerformance } from '../../lib/calc'
+import { blockWeekNumber, phaseForWeek, setsForSlot } from '../../lib/phases'
+import { buildSessionSteps, findRoutine, groupLabel, slotExerciseName, weekLabel, type SessionStep } from '../../lib/planQueries'
 import { useStore } from '../../lib/store'
-import { Check } from '../../components/ui'
+import ExerciseSheet from '../../components/ExerciseSheet'
+import { RedFlagsSheet } from '../Guide'
 import SessionShell from './SessionShell'
+import SlotCard from './SlotCard'
+import WarmupStep from './WarmupStep'
+import { AlertIcon } from './PlanIcons'
+import './session-plan.css'
 
 interface Props {
   session: StrengthSession
-  setsDelta: number
   onChange: (s: StrengthSession) => void
   onFinish: () => void
   onDiscard: () => void
 }
 
 type RailState = 'current' | 'done' | 'partial' | 'pending'
-type SetRowState = 'done' | 'current' | 'pending'
 
-export default function StrengthBody({ session, setsDelta, onChange, onFinish, onDiscard }: Props) {
-  const { sessions, meta, saveMeta, routines } = useStore()
+/** Un paso del riel: el calentamiento fijo o un paso de trabajo. */
+type Item = { kind: 'warmup' } | { kind: 'work'; step: SessionStep }
+
+/** Series de un slot en la semana; un item de solo nota cuenta como una marca. */
+const slotTarget = (slot: PlanSlot, phase: ReturnType<typeof phaseForWeek>): number =>
+  slot.target.kind === 'note' ? 1 : setsForSlot(slot, phase)
+
+/** La rutina de la sesion siempre deberia estar en el plan (archivar no
+ *  borra), pero una sesion con una rutina desconocida no debe romper la app. */
+export default function StrengthBody(props: Props) {
+  const { plan } = useStore()
+  const routine = findRoutine(plan, props.session.routineId)
+  if (!routine) {
+    return (
+      <div className="card">
+        <h2>Rutina no disponible</h2>
+        <p>Esta rutina ya no está en el plan, así que no se puede continuar la sesión.</p>
+        <button className="danger" onClick={props.onDiscard}>Descartar</button>
+      </div>
+    )
+  }
+  return <StrengthSessionView {...props} routine={routine} />
+}
+
+function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }: Props & { routine: PlanRoutine }) {
+  const { sessions, meta, saveMeta, plan, config } = useStore()
   // lastPerformance solo mira fuerza (calc.ts la tipa a StrengthSession[]):
   // una sesion de natacion no tiene .sets.
   const strengthSessions = sessions.filter((s): s is StrengthSession => s.kind === 'strength')
-  const routine = routines.find(r => r.id === session.routineId)!
+  const week = blockWeekNumber(new Date(session.startedAt), config.blockStart)
+  const phase = phaseForWeek(plan, week)
+  const steps = useMemo(() => buildSessionSteps(routine, week), [routine, week])
+  const hasWarmup = routine.warmup && plan.warmup.slots.length > 0
+  const items: Item[] = useMemo(
+    () => [...(hasWarmup ? [{ kind: 'warmup' } as const] : []), ...steps.map(step => ({ kind: 'work', step }) as const)],
+    [hasWarmup, steps],
+  )
+
   const [currentIndex, setCurrentIndex] = useState(0)
   const [cueOpen, setCueOpen] = useState<Record<string, boolean>>({})
+  const [warmupTicked, setWarmupTicked] = useState<Record<string, boolean>>({})
+  const [sheetSlot, setSheetSlot] = useState<PlanSlot | null>(null)
+  const [flagsOpen, setFlagsOpen] = useState(false)
   const railRef = useRef<HTMLDivElement>(null)
 
-  // The rail can scroll horizontally when 44px cells don't all fit (7
-  // exercises at 320px). On exercise change, bring the current cell into
-  // view with the minimum movement: 'nearest' on both axes is a no-op if
-  // it's already visible and never scrolls the page. Depends only on
-  // currentIndex, so it never fires while typing weight or reps.
+  // El riel puede desplazarse en horizontal cuando las celdas de 44px no
+  // caben. Al cambiar de paso se trae la celda actual a la vista con el minimo
+  // movimiento ('nearest' no hace nada si ya se ve ni mueve la pagina). Solo
+  // depende de currentIndex, asi que no se dispara al teclear peso o reps.
   useEffect(() => {
     const cell = railRef.current?.children.item(currentIndex)
     if (cell instanceof HTMLElement) cell.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   }, [currentIndex])
 
-  const targetSets = (e: Exercise) => Math.max(1, e.sets + setsDelta)
-
-  const setsFor = (id: string) => session.sets.filter(s => s.exerciseId === id).sort((a, b) => a.setIndex - b.setIndex)
+  const nameOf = (slot: PlanSlot) => slotExerciseName(plan, slot)
+  const doneOf = (slot: PlanSlot) =>
+    Math.min(session.sets.filter(s => s.exerciseId === slot.exerciseId && s.done).length, slotTarget(slot, phase))
+  const stepDone = (step: SessionStep) => step.slots.reduce((a, s) => a + doneOf(s), 0)
+  const stepTarget = (step: SessionStep) => step.slots.reduce((a, s) => a + slotTarget(s, phase), 0)
+  const itemName = (it: Item) => (it.kind === 'warmup' ? 'Calentamiento' : it.step.slots.map(nameOf).join(' + '))
 
   const update = (exerciseId: string, setIndex: number, patch: Partial<SetLog>) => {
     const idx = session.sets.findIndex(s => s.exerciseId === exerciseId && s.setIndex === setIndex)
@@ -49,37 +90,37 @@ export default function StrengthBody({ session, setsDelta, onChange, onFinish, o
     onChange({ ...session, sets: next })
   }
 
-  const totalDone = session.sets.filter(s => s.done).length
-  const totalTarget = routine.exercises.reduce((a, e) => a + targetSets(e), 0)
+  const setPain = (exerciseId: string, value: number | null) => {
+    const { [exerciseId]: _removed, ...rest } = session.pain ?? {}
+    onChange({ ...session, pain: value === null ? rest : { ...rest, [exerciseId]: value } })
+  }
 
-  const ex = routine.exercises[currentIndex]
-  const n = targetSets(ex)
-  const mine = setsFor(ex.id)
-  const prev = lastPerformance(strengthSessions, ex.id, session.id)
-  const progress = prev != null && shouldProgress(prev.sets, n, ex.repsHigh)
-  const seat = meta[ex.id]?.seat ?? ''
-  const isCueOpen = cueOpen[ex.id] ?? prev === null
+  const totalDone = steps.reduce((a, st) => a + stepDone(st), 0)
+  const totalTarget = steps.reduce((a, st) => a + stepTarget(st), 0)
 
-  // Selector presentacional puro: nunca filtra ni bloquea filas, solo decide
-  // cual fila recibe el bloque destacado (AC-SETS-01 — todas las filas se
-  // materializan siempre, en orden, sin importar este valor).
-  const currentSetIndex = Array.from({ length: n }, (_, i) => i).find(i => !mine.find(x => x.setIndex === i)?.done) ?? null
+  const safeIndex = Math.min(currentIndex, Math.max(items.length - 1, 0))
+  const item = items[safeIndex]
+  const multiBlock = routine.blocks.length > 1
 
-  const rail = routine.exercises.map((e, i) => {
-    const t = targetSets(e)
-    const d = session.sets.filter(s => s.exerciseId === e.id && s.done).length
-    const state: RailState = i === currentIndex ? 'current' : d >= t ? 'done' : d > 0 ? 'partial' : 'pending'
-    return { id: e.id, i, label: String(i + 1).padStart(2, '0'), name: e.name, done: d, target: t, state }
+  const rail = items.map((it, i) => {
+    let state: RailState
+    let label: string
+    let done: number
+    let target: number
+    if (it.kind === 'warmup') {
+      done = plan.warmup.slots.filter(s => warmupTicked[s.id]).length
+      target = plan.warmup.slots.length
+      label = 'Cal'
+    } else {
+      done = stepDone(it.step)
+      target = stepTarget(it.step)
+      label = String(i - (hasWarmup ? 1 : 0) + 1).padStart(2, '0')
+    }
+    state = i === safeIndex ? 'current' : done >= target ? 'done' : done > 0 ? 'partial' : 'pending'
+    return { i, label, name: itemName(it), done, target, state }
   })
 
-  const setRows = Array.from({ length: n }, (_, i) => {
-    const s = mine.find(x => x.setIndex === i)
-    const state: SetRowState = s?.done ? 'done' : i === currentSetIndex ? 'current' : 'pending'
-    const ref = prev?.sets[i] ?? prev?.sets[prev.sets.length - 1]
-    return { i, s, ref, state }
-  })
-
-  const toggleCue = () => setCueOpen(c => ({ ...c, [ex.id]: !isCueOpen }))
+  const phaseText = [phase?.intensity, phase?.loadNote].filter(Boolean).join(' · ')
 
   return (
     <SessionShell
@@ -93,167 +134,111 @@ export default function StrengthBody({ session, setsDelta, onChange, onFinish, o
       onNotesChange={notes => onChange({ ...session, notes })}
       onDiscard={onDiscard}
       headerExtra={
-        <div className="rail" ref={railRef}>
-          {rail.map(r => (
-            <button
-              key={r.id}
-              className={r.state === 'pending' ? undefined : r.state}
-              onClick={() => setCurrentIndex(r.i)}
-              aria-label={`${r.i + 1}. ${r.name} — ${r.done} de ${r.target} series`}
-            >
-              {r.label}
+        <>
+          <div className="sp-phase">
+            <p className="sp-phase-text">
+              <strong>{weekLabel(plan.weeks, week)}</strong>
+              {phaseText && <> · {phaseText}</>}
+            </p>
+            <button type="button" className="sp-alarm" onClick={() => setFlagsOpen(true)}>
+              <AlertIcon /> <span className="sp-alarm-label">Señales de alarma</span>
             </button>
-          ))}
-        </div>
+          </div>
+          <div className="rail" ref={railRef}>
+            {rail.map(r => (
+              <button
+                key={r.i}
+                className={r.state === 'pending' ? undefined : r.state}
+                onClick={() => setCurrentIndex(r.i)}
+                aria-label={`${r.label === 'Cal' ? '' : `${Number(r.label)}. `}${r.name} — ${r.done} de ${r.target} ${r.label === 'Cal' ? 'items' : 'series'}`}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+        </>
       }
     >
       {startRest => {
-        // Handler unico para las tres filas (hecha, actual, pendiente): sin
-        // disabled y sin guardia sobre la fila anterior — cualquier serie
-        // se marca en cualquier orden (AC-SETS-01).
-        const toggleSet = (i: number, s: SetLog | undefined, ref: SetLog | undefined) => {
-          const next = !s?.done
-          const w = s?.weight ?? ref?.weight ?? null
-          const r = s?.reps ?? ex.repsHigh
-          update(ex.id, i, { done: next, weight: s?.weight ?? w, reps: s?.reps ?? r })
-          if (next) startRest(ex.restSec)
+        if (!item) {
+          return (
+            <div className="ex-panel">
+              <p className="hint">Esta rutina no tiene ejercicios en esta semana. Agrégalos desde el plan.</p>
+            </div>
+          )
         }
 
+        const renderSlot = (slot: PlanSlot, isLastOfStep: boolean, nested: boolean) => (
+          <SlotCard
+            key={slot.id}
+            slot={slot}
+            name={nameOf(slot)}
+            sets={slotTarget(slot, phase)}
+            logs={session.sets.filter(s => s.exerciseId === slot.exerciseId)}
+            prev={lastPerformance(strengthSessions, slot.exerciseId, session.id)}
+            seat={meta[slot.exerciseId]?.seat ?? ''}
+            pain={session.pain?.[slot.exerciseId]}
+            cueOpen={cueOpen[slot.id]}
+            startsRest={isLastOfStep}
+            nested={nested}
+            onUpdate={(i, patch) => update(slot.exerciseId, i, patch)}
+            onRest={startRest}
+            onPain={v => setPain(slot.exerciseId, v)}
+            onInfo={() => setSheetSlot(slot)}
+            onToggleCue={() =>
+              setCueOpen(c => ({ ...c, [slot.id]: !(c[slot.id] ?? lastPerformance(strengthSessions, slot.exerciseId, session.id) === null) }))
+            }
+            onSeat={v => saveMeta({ exerciseId: slot.exerciseId, seat: v, note: meta[slot.exerciseId]?.note ?? '' })}
+          />
+        )
+
+        const next = items[safeIndex + 1]
+        const prevItem = items[safeIndex - 1]
+
         return (
-          <div className="ex-panel">
-            <h2>
-              {ex.name} {ex.main && <span className="pill">principal</span>}
-            </h2>
-            <div className="metabar">
-              <span>{n} × {ex.repsLow}–{ex.repsHigh}</span>
-              <span>Descanso {ex.restSec}s</span>
-              {seat && <span>Asiento {seat}</span>}
-            </div>
-
-            {progress && prev && (
-              <div className="tag-skew-wrap">
-                <div className="tag-skew">
-                  <span>Sube peso</span>
-                </div>
-                <p>{progressLine(prev.sets.length, Math.min(...prev.sets.map(s => s.reps ?? ex.repsHigh)))}</p>
-              </div>
-            )}
-
-            {prev ? (
-              <div className="last-perf">
-                <div className="label">La vez pasada · {fmtDate(prev.session.date)}</div>
-                <div className="value num">{formatLastPerformance(prev.sets)}</div>
-              </div>
+          <>
+            {item.kind === 'warmup' ? (
+              <WarmupStep
+                plan={plan}
+                block={plan.warmup}
+                ticked={warmupTicked}
+                onToggle={id => setWarmupTicked(t => ({ ...t, [id]: !t[id] }))}
+                onInfo={setSheetSlot}
+              />
             ) : (
-              <p className="hint">Primera vez con este ejercicio. Empieza liviano: la primera serie es de reconocimiento.</p>
-            )}
-
-            {setRows.map(row =>
-              row.state === 'current' ? (
-                <div className="setnow" key={row.i}>
-                  <div className="setnow-head">
-                    <span className="lbl-current">
-                      Serie {row.i + 1} de {n}
-                    </span>
-                    {row.i + 1 === n && <span className="lbl-last">La última</span>}
+              <div className="ex-panel">
+                {multiBlock && item.step.firstInBlock && (
+                  <div className="sp-block">
+                    <div className="eyebrow">{item.step.blockTitle}</div>
+                    {item.step.blockNote !== '' && <p className="hint">{item.step.blockNote}</p>}
                   </div>
-                  <div className="setnow-grid">
-                    <div>
-                      <div className="micro">kg</div>
-                      <input
-                        type="number" inputMode="decimal" step="0.5"
-                        className={`num${row.s?.weight != null ? ' filled' : ''}`}
-                        placeholder={row.ref?.weight != null ? String(row.ref.weight) : '—'}
-                        value={row.s?.weight ?? ''}
-                        onChange={e => update(ex.id, row.i, { weight: e.target.value === '' ? null : Number(e.target.value) })}
-                        aria-label={`Peso serie ${row.i + 1}`}
-                      />
+                )}
+                {item.step.group ? (
+                  <section className="sp-group" aria-label={groupLabel(item.step.slots, slotTarget(item.step.slots[0], phase))}>
+                    <div className="sp-group-head">
+                      <span className="pill good">{groupLabel(item.step.slots, slotTarget(item.step.slots[0], phase))}</span>
+                      <span className="hint">Una serie de cada ejercicio y luego descansa.</span>
                     </div>
-                    <div>
-                      <div className="micro">reps</div>
-                      <input
-                        type="number" inputMode="numeric"
-                        className={`num${row.s?.reps != null ? ' filled' : ''}`}
-                        placeholder={String(ex.repsHigh)}
-                        value={row.s?.reps ?? ''}
-                        onChange={e => update(ex.id, row.i, { reps: e.target.value === '' ? null : Number(e.target.value) })}
-                        aria-label={`Repeticiones serie ${row.i + 1}`}
-                      />
-                    </div>
-                    <button
-                      className="check"
-                      aria-label={row.s?.done ? 'Deshacer serie' : 'Marcar serie'}
-                      onClick={() => toggleSet(row.i, row.s, row.ref)}
-                    >
-                      <Check on={!!row.s?.done} />
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className={`setrow ${row.state}`} key={row.i}>
-                  <div className="idx num">{row.i + 1}</div>
-                  <input
-                    type="number" inputMode="decimal" step="0.5" className="num"
-                    placeholder={row.ref?.weight != null ? String(row.ref.weight) : '—'}
-                    value={row.s?.weight ?? ''}
-                    onChange={e => update(ex.id, row.i, { weight: e.target.value === '' ? null : Number(e.target.value) })}
-                    aria-label={`Peso serie ${row.i + 1}`}
-                  />
-                  <input
-                    type="number" inputMode="numeric" className="num"
-                    placeholder={String(ex.repsHigh)}
-                    value={row.s?.reps ?? ''}
-                    onChange={e => update(ex.id, row.i, { reps: e.target.value === '' ? null : Number(e.target.value) })}
-                    aria-label={`Repeticiones serie ${row.i + 1}`}
-                  />
-                  <button
-                    className={`check${row.s?.done ? ' on' : ''}`}
-                    aria-label={row.s?.done ? 'Deshacer serie' : 'Marcar serie'}
-                    onClick={() => toggleSet(row.i, row.s, row.ref)}
-                  >
-                    <Check on={!!row.s?.done} />
-                  </button>
-                </div>
-              ),
-            )}
-
-            <button className="disclosure-toggle" onClick={toggleCue}>
-              <span className="lbl">Cómo se ajusta</span>
-              <span className="glyph">{isCueOpen ? '−' : '+'}</span>
-            </button>
-            {isCueOpen && (
-              <div className="disclosure-body">
-                {ex.cue && <p className="hint" style={{ marginBottom: 12 }}>{ex.cue}</p>}
-                <div className="btnrow" style={{ marginBottom: 16 }}>
-                  <a href={exerciseGuideUrl(ex)} target="_blank" rel="noopener noreferrer" className="btn primary">
-                    Ver en MuscleWiki
-                  </a>
-                </div>
-                <label htmlFor={`seat-${ex.id}`}>Número de asiento o ajuste</label>
-                <input
-                  id={`seat-${ex.id}`}
-                  key={ex.id}
-                  type="text"
-                  defaultValue={seat}
-                  placeholder="p. ej. asiento 4, pin 3"
-                  onBlur={e => saveMeta({ exerciseId: ex.id, seat: e.target.value, note: meta[ex.id]?.note ?? '' })}
-                />
-                <p className="hint">Se guarda solo y aparece aquí la próxima sesión.</p>
+                    {item.step.slots.map((slot, idx) => renderSlot(slot, idx === item.step.slots.length - 1, true))}
+                  </section>
+                ) : (
+                  renderSlot(item.step.slots[0], true, false)
+                )}
               </div>
             )}
 
             <div className="navrow">
               <button
                 className="back"
-                disabled={currentIndex === 0}
-                onClick={() => setCurrentIndex(i => i - 1)}
-                aria-label={currentIndex > 0 ? `Anterior: ${routine.exercises[currentIndex - 1].name}` : 'Anterior'}
+                disabled={safeIndex === 0}
+                onClick={() => setCurrentIndex(safeIndex - 1)}
+                aria-label={prevItem ? `Anterior: ${itemName(prevItem)}` : 'Anterior'}
               >
                 ←
               </button>
-              {currentIndex < routine.exercises.length - 1 ? (
-                <button className="fwd" onClick={() => setCurrentIndex(i => i + 1)}>
-                  Siguiente · {routine.exercises[currentIndex + 1].name}
+              {next ? (
+                <button className="fwd" onClick={() => setCurrentIndex(safeIndex + 1)}>
+                  Siguiente · {itemName(next)}
                 </button>
               ) : (
                 <button className="fwd primary" onClick={onFinish} disabled={totalDone === 0}>
@@ -261,7 +246,10 @@ export default function StrengthBody({ session, setsDelta, onChange, onFinish, o
                 </button>
               )}
             </div>
-          </div>
+
+            {sheetSlot && <ExerciseSheet exerciseId={sheetSlot.exerciseId} slot={sheetSlot} onClose={() => setSheetSlot(null)} />}
+            {flagsOpen && <RedFlagsSheet onClose={() => setFlagsOpen(false)} />}
+          </>
         )
       }}
     </SessionShell>

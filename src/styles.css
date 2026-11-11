@@ -197,7 +197,8 @@ a:hover { color: var(--accent-ink); }
 .tabbar {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 30;
   background: var(--nav); border-top: 1px solid var(--ring);
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  /* Una columna por pestaña, sin fijar cuántas: agregar una no rompe la barra. */
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
   padding-bottom: var(--safe-b);
 }
 .tabbar button {
@@ -526,7 +527,8 @@ figcaption {
 /* Paso 2 — Inicio: barra de semanas del bloque. */
 .weekbar {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
+  /* --weeks lo fija la vista con la duracion del plan; 8 era el bloque original. */
+  grid-template-columns: repeat(var(--weeks, 8), 1fr);
   gap: 3px;
 }
 .weekbar i {
@@ -678,6 +680,9 @@ figcaption {
   background: var(--surface-1); color: var(--ink-3);
 }
 /* The rail clips at its own edge: draw the focus ring inward, not over it. */
+/* Anillo de foco global. --accent-ink contrasta en ambos temas (amarillo sobre
+   negro, 5,9:1 en claro); --ring es un filete de 1px y casi no se ve como foco. */
+:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
 .rail button:focus-visible { outline-offset: -2px; }
 .rail button.current { background: var(--accent); color: var(--on-accent); }
 .rail button.done { background: var(--accent-dim); color: var(--accent-ink); }
@@ -898,6 +903,7 @@ figcaption {
   .tabbar {
     top: 0; right: auto;
     width: calc(var(--rail-w) + var(--safe-l));
+    grid-auto-flow: row;
     grid-template-columns: 1fr;
     grid-auto-rows: min-content;
     align-content: start;

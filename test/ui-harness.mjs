@@ -1,9 +1,10 @@
-// Responsive/UI harness for fitplan — HARNESS-01: forces every routine and
-// worst-case strings across a matrix of viewports.
+// Responsive/UI harness for fitplan — HARNESS-01: forces every routine of the
+// active plan and worst-case strings across a matrix of viewports, plus the
+// editable-plan scenarios (MIG, PLAN, SHEET, GUIDE, PAIN, LAYOUT).
 // Usage:  BASE=http://localhost:5173/ pnpm check:ui
 // See test/README.md for what this checks and how to add a check.
 import { chromium } from 'playwright-core'
-import { createChecklist, resolveChromiumPath, seedConfig, seedMeasurements, seedSessions } from './lib.mjs'
+import { createChecklist, readStoreValue, resolveChromiumPath, seedAll, seedConfig, seedMeasurements, seedSessions } from './lib.mjs'
 
 const BASE = process.env.BASE || 'https://john-santa.github.io/fitplan/'
 const OUT = process.env.OUT
@@ -16,13 +17,22 @@ const todayISO = (d = new Date()) => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }
 
-// Same order as ROUTINES in src/lib/plan.ts (dia1 Pierna, dia2 Empuje, dia3
-// Tracción) — mirrored, not imported, same reasoning as todayISO() above.
-// ROUT_IDS drives the testid-bound clicks below (start-${id}) instead of
-// ordinal button.primary.nth(i), which would silently repoint the moment a
-// fourth start button (e.g. "Nadar") appears on the page.
-const ROUTS = ['Pierna', 'Empuje', 'Tracción']
-const ROUT_IDS = ['dia1', 'dia2', 'dia3']
+// The active plan's routines, in the order of DEFAULT_PLAN.routines in
+// src/lib/defaultPlan.ts (Dia 1..5 of the "espalda protegida" plan) — mirrored,
+// not imported, same reasoning as todayISO() above. The legacy routines
+// dia1..dia3 are ARCHIVED by the migration: they have no start button and are
+// only exercised by the LEGACY-*/MIG-* scenarios. `id` drives the testid-bound
+// clicks (start-${id}) instead of an ordinal button.primary.nth(i), which would
+// silently repoint the moment another start button (e.g. "Nadar") moves.
+const PLAN_ROUTINES = [
+  { id: 'espalda-d1', label: 'Día 1', name: 'Día 1 – Tren inferior A', short: 'Tren inferior A' },
+  { id: 'espalda-d2', label: 'Día 2', name: 'Día 2 – Tren superior A', short: 'Tren superior A' },
+  { id: 'espalda-d3', label: 'Día 3', name: 'Día 3 – Core, movilidad y cardio', short: 'Core, movilidad y cardio' },
+  { id: 'espalda-d4', label: 'Día 4', name: 'Día 4 – Tren inferior B', short: 'Tren inferior B' },
+  { id: 'espalda-d5', label: 'Día 5', name: 'Día 5 – Tren superior B', short: 'Tren superior B' },
+]
+// App tabs, in tab-bar order (src/App.tsx). Guia is not a tab: it opens from Plan.
+const TABS = ['Inicio', 'Entrenar', 'Plan', 'Medidas', 'Ajustes']
 
 // Seeded into every viewport context below (F1-6) so SwimProgress's charts
 // have real multi-point data instead of the "Sin datos todavia" empty
@@ -194,7 +204,7 @@ for (const v of VIEWPORTS) {
   await p.waitForTimeout(300)
 
   // ---- nav tabs ----
-  for (const tab of ['Inicio', 'Entrenar', 'Medidas', 'Ajustes']) {
+  for (const tab of TABS) {
     const b = p.locator('.tabbar button', { hasText: tab })
     if (await b.count()) {
       await b.first().click()
@@ -207,8 +217,8 @@ for (const v of VIEWPORTS) {
     console.log(`  [${tab.padEnd(8)}] overflowX ${String(g.overflowX).padStart(3)}px ${s1} | taps<44: ${String(g.tapsChicos.length).padStart(2)} ${s2} | h1 ${g.h1s} ${s3}`)
 
     const desk = v.w >= 1200
-    check(g.navs === 1 && g.navButtons === 4, `${v.n}/${tab}/NAV-02`,
-      `navs=${g.navs} botones=${g.navButtons}, deben ser 1 y 4 (una sola nav en el DOM)`)
+    check(g.navs === 1 && g.navButtons === TABS.length, `${v.n}/${tab}/NAV-02`,
+      `navs=${g.navs} botones=${g.navButtons}, deben ser 1 y ${TABS.length} (una sola nav en el DOM)`)
     check(g.ariaCurrent === 1, `${v.n}/${tab}/NAV-03`,
       `hay ${g.ariaCurrent} elementos con aria-current="page", debe haber 1`)
     check(
@@ -228,8 +238,9 @@ for (const v of VIEWPORTS) {
     check(g.util > 0, `${v.n}/${tab}/CHROME-01`, `altura util ${g.util}px <= 0 (chrome ${g.chrome}px)`)
   }
 
-  // ---- HARNESS-01: force all three routines ----
-  for (let i = 0; i < ROUTS.length; i++) {
+  // ---- HARNESS-01: force every routine of the active plan ----
+  for (let i = 0; i < PLAN_ROUTINES.length; i++) {
+    const R = PLAN_ROUTINES[i]
     await p.locator('.tabbar button', { hasText: 'Entrenar' }).click()
     await p.waitForTimeout(400)
     const danger = p.locator('button.danger')
@@ -241,40 +252,49 @@ for (const v of VIEWPORTS) {
       await p.waitForTimeout(400)
     }
     if (i === 0) {
-      // ORD-01: the number of start buttons must equal the routine count
-      // PLUS the swim card (F1-5's "Nadar" card, `[data-testid="start-swim"]`,
-      // is deliberately `button.primary` too, for visual consistency with
-      // the three routine cards). This literal (ROUT_IDS.length + 1) is the
-      // ONE pre-existing assertion this unit updates on purpose — it is the
-      // exact reshuffle test/README.md documented ORD-01 as built to catch
-      // ("a future reshuffle... fails loudly here instead of silently
-      // exercising the wrong routine"), not a silent behavior change: the
-      // testid-bound clicks below are unaffected by the swim card's
-      // position, so ORD-01 going from 3->4 here is the intended outcome of
-      // adding a fourth start button, not a regression.
+      // ORD-01: the number of start buttons must equal the active routine
+      // count PLUS the swim card (F1-5's "Nadar" card, `[data-testid="start-swim"]`,
+      // is deliberately `button.primary` too, for visual consistency with the
+      // routine cards). Archived routines (legacy dia1..dia3, and any the
+      // person archives) have NO start button, so they must not count here —
+      // this is what keeps ORD-01 meaningful now that the routine list comes
+      // from the persisted plan instead of a hardcoded constant: it fails
+      // loudly if an archived routine leaks a start button or an active one
+      // loses its own, instead of silently exercising the wrong routine.
       const primCount = await p.locator('button.primary').count()
-      check(primCount === ROUT_IDS.length + 1, `${v.n}/ORD-01`,
-        `hay ${primCount} botones button.primary en Entrenar, se esperaban ${ROUT_IDS.length + 1} (uno por rutina + Nadar)`)
+      check(primCount === PLAN_ROUTINES.length + 1, `${v.n}/ORD-01`,
+        `hay ${primCount} botones button.primary en Entrenar, se esperaban ${PLAN_ROUTINES.length + 1} (uno por rutina activa + Nadar)`)
+      for (const legacyId of ['dia1', 'dia2', 'dia3']) {
+        const n = await p.locator(`[data-testid="start-${legacyId}"]`).count()
+        check(n === 0, `${v.n}/ORD-01`, `la rutina archivada ${legacyId} tiene ${n} boton(es) de inicio, deberia tener 0`)
+      }
     }
-    const startBtn = p.locator(`[data-testid="start-${ROUT_IDS[i]}"]`)
+    const startBtn = p.locator(`[data-testid="start-${R.id}"]`)
     if ((await startBtn.count()) === 0) {
-      console.log(`  [${ROUTS[i]}] no disponible`)
+      check(false, `${v.n}/${R.label}`, `no hay boton start-${R.id} en Entrenar`)
+      console.log(`  [${R.label}] no disponible`)
       continue
     }
     await startBtn.click()
     await p.waitForTimeout(800)
     const g = await p.evaluate(geometry)
     if (!g.rail) {
-      console.log(`  [${ROUTS[i]}] sin rail`)
+      check(false, `${v.n}/${R.label}`, 'la sesion no muestra el riel de ejercicios (.rail)')
+      console.log(`  [${R.label}] sin rail`)
       continue
     }
-    const s1 = check(g.rail.anchoMin >= TAP_MIN, `${v.n}/${ROUTS[i]}`, `rail celda ancho ${g.rail.anchoMin}px < ${TAP_MIN}`)
-    check(g.rail.alto >= TAP_MIN, `${v.n}/${ROUTS[i]}/RAIL-03`, `rail celda ALTO ${g.rail.alto}px < ${TAP_MIN}`)
-    const s2 = check(g.overflowX === 0, `${v.n}/${ROUTS[i]}`, `overflowX=${g.overflowX}px`)
+    // WARMUP-01: every routine of the default plan has `warmup: true`, so the
+    // rail must start with the "Cal" step (the fixed warm-up) — which also
+    // shifts every exercise index by one (the "01" cell is the 2nd button).
+    const firstCell = ((await p.locator('.rail button').first().textContent()) ?? '').trim()
+    check(firstCell === 'Cal', `${v.n}/${R.label}/WARMUP-01`, `la primera celda del riel dice "${firstCell}", se esperaba "Cal" (calentamiento)`)
+    const s1 = check(g.rail.anchoMin >= TAP_MIN, `${v.n}/${R.label}`, `rail celda ancho ${g.rail.anchoMin}px < ${TAP_MIN}`)
+    check(g.rail.alto >= TAP_MIN, `${v.n}/${R.label}/RAIL-03`, `rail celda ALTO ${g.rail.alto}px < ${TAP_MIN}`)
+    const s2 = check(g.overflowX === 0, `${v.n}/${R.label}`, `overflowX=${g.overflowX}px`)
     const fitsSetnow = g.setnowAlto === null || g.util >= g.setnowAlto
-    const s3 = check(fitsSetnow, `${v.n}/${ROUTS[i]}`, `setnow ${g.setnowAlto}px no entra en ${g.util}px utiles`)
+    const s3 = check(fitsSetnow, `${v.n}/${R.label}`, `setnow ${g.setnowAlto}px no entra en ${g.util}px utiles`)
     console.log(
-      `  [${ROUTS[i].padEnd(8)}] ${g.rail.n} ej | celda ${String(g.rail.anchoMin).padStart(5)}px ${s1} | scroll:${g.rail.scrollea ? 'si' : 'no'} | chrome ${g.chrome}px (${g.pct}%) util ${g.util}px | setnow ${g.setnowAlto}px ${s3} | ovf ${g.overflowX} ${s2}`,
+      `  [${R.label.padEnd(8)}] ${g.rail.n} pasos | celda ${String(g.rail.anchoMin).padStart(5)}px ${s1} | scroll:${g.rail.scrollea ? 'si' : 'no'} | chrome ${g.chrome}px (${g.pct}%) util ${g.util}px | setnow ${g.setnowAlto}px ${s3} | ovf ${g.overflowX} ${s2}`,
     )
 
     // scrollIntoView must not scroll the document vertically (block:'nearest')
@@ -297,13 +317,17 @@ for (const v of VIEWPORTS) {
       // correct clamping, not scrollIntoView moving the page. Only assert
       // the no-op when the page still had room to stay at `before`.
       if (after.maxScroll >= before - 2) {
-        check(Math.abs(after.y - before) < 3, `${v.n}/${ROUTS[i]}/SCROLL`, `scrollIntoView movio el documento ${before}->${after.y}`)
+        check(Math.abs(after.y - before) < 3, `${v.n}/${R.label}/SCROLL`, `scrollIntoView movio el documento ${before}->${after.y}`)
       }
       await p.locator('.rail button').nth(0).click()
       await p.waitForTimeout(400)
     }
 
     // ---- worst real case: mark a set so the rest timer starts (fixed, ~91px) ----
+    // The first rail step is the warm-up (no sets), so jump to the first
+    // exercise ("01") before looking for "Marcar serie".
+    await p.locator('.rail button', { hasText: /^01$/ }).click()
+    await p.waitForTimeout(300)
     const chk = p.getByRole('button', { name: /Marcar serie/ })
     if (await chk.count()) {
       await chk.first().click()
@@ -312,9 +336,9 @@ for (const v of VIEWPORTS) {
       const timerOn = (await p.locator('.timer').count()) > 0
       if (timerOn) {
         const fits = t.setnowAlto === null || t.util >= t.setnowAlto
-        const st = check(fits, `${v.n}/${ROUTS[i]}/CON-TIMER`, `setnow ${t.setnowAlto}px no entra en ${t.util}px utiles (chrome ${t.chrome}px = ${t.pct}%)`)
-        const so = check(t.overflowX === 0, `${v.n}/${ROUTS[i]}/CON-TIMER`, `overflowX=${t.overflowX}px`)
-        console.log(`  [${(ROUTS[i] + ' +timer').padEnd(14)}] chrome ${t.chrome}px (${t.pct}%) util ${t.util}px | setnow ${t.setnowAlto}px ${st} | ovf ${t.overflowX} ${so}`)
+        const st = check(fits, `${v.n}/${R.label}/CON-TIMER`, `setnow ${t.setnowAlto}px no entra en ${t.util}px utiles (chrome ${t.chrome}px = ${t.pct}%)`)
+        const so = check(t.overflowX === 0, `${v.n}/${R.label}/CON-TIMER`, `overflowX=${t.overflowX}px`)
+        console.log(`  [${(R.label + ' +timer').padEnd(14)}] chrome ${t.chrome}px (${t.pct}%) util ${t.util}px | setnow ${t.setnowAlto}px ${st} | ovf ${t.overflowX} ${so}`)
       }
     }
   }
@@ -354,11 +378,23 @@ for (const v of VIEWPORTS) {
   // ---- worst-case hero string ----
   await p.locator('.tabbar button', { hasText: 'Inicio' }).click()
   await p.waitForTimeout(500)
-  const hero = await p.evaluate(() => {
-    const slab = document.querySelector('.hero .slab') || document.querySelector('.hero')
-    if (!slab) return null
+  const hero = await p.evaluate(names => {
+    const h = document.querySelector('.hero')
+    if (!h) return null
+    // The .slab only renders on a training day (Mon-Fri with the default
+    // plan). On weekends, inject one so the worst-case strings are still
+    // measured instead of the check passing vacuously.
+    let slab = h.querySelector('.slab')
+    const injected = []
+    if (!slab) {
+      const br = document.createElement('br')
+      slab = document.createElement('span')
+      slab.className = 'slab'
+      h.append(br, slab)
+      injected.push(br, slab)
+    }
     const out = []
-    for (const nm of ['Empuje', 'Pierna', 'Tracción']) {
+    for (const nm of names) {
       const o = slab.textContent
       slab.textContent = nm
       out.push({
@@ -368,12 +404,13 @@ for (const v of VIEWPORTS) {
       })
       slab.textContent = o
     }
+    injected.forEach(n => n.remove())
     return out
-  })
+  }, PLAN_ROUTINES.map(r => r.short))
   if (hero) {
     for (const c of hero) {
       const s = check(!c.caja && !c.pagina, `${v.n}/hero"${c.nm}"`, `desborda caja:${c.caja} pagina:${c.pagina}`)
-      console.log(`  [hero ${c.nm.padEnd(8)}] desborda caja:${String(c.caja).padStart(5)} pagina:${String(c.pagina).padStart(5)} ${s}`)
+      console.log(`  [hero ${c.nm.slice(0, 12).padEnd(12)}] desborda caja:${String(c.caja).padStart(5)} pagina:${String(c.pagina).padStart(5)} ${s}`)
     }
   }
   if (errs.length) {
@@ -462,9 +499,12 @@ for (const v of VIEWPORTS) {
   }
 }
 
-// ---- LEGACY-01: the exact pre-change byte shape (no `kind`) must still
-// normalize and render — this is the migration proof. Covers
-// db.ts:getSessions -> store.tsx:reload -> Train.tsx history end to end. ----
+// ---- LEGACY-01: the exact pre-change byte shape (no `kind`, routineId
+// 'dia1') must still normalize and render — this is the migration proof. Covers
+// db.ts:getSessions -> store.tsx:reload -> Train.tsx history end to end. Since
+// the editable plan, 'dia1' is an ARCHIVED routine: this also proves the
+// migration kept it (name in the history, exercise names in the detail, and an
+// "archivada" card in Entrenar), instead of the session being dropped. ----
 {
   const ctx = await br.newContext({ viewport: { width: 390, height: 844 } })
   const p = await ctx.newPage()
@@ -485,8 +525,17 @@ for (const v of VIEWPORTS) {
   const text = await p.evaluate(() => document.querySelector('.tablewrap')?.textContent ?? '')
   const s1 = check(text.includes('Día 1 — Pierna'), 'LEGACY-01/Entrenar', `el historial no muestra "Día 1 — Pierna": "${text.slice(0, 200)}"`)
   const s2 = check(text.includes('960'), 'LEGACY-01/Entrenar', `el historial no muestra el volumen 960 kg: "${text.slice(0, 200)}"`)
+  const trainText = await p.evaluate(() => document.querySelector('.col-a')?.textContent ?? '')
+  const s4 = check(trainText.includes('Día 1 — Pierna') && trainText.includes('archivada'), 'LEGACY-01/archivada',
+    `Entrenar no muestra la rutina heredada como "archivada": "${trainText.slice(-200)}"`)
+  // Detail: exercise names resolve through the library, not raw ids.
+  await p.locator('.tablewrap .list-item').first().click()
+  await p.waitForTimeout(400)
+  const detail = await p.evaluate(() => document.querySelector('.main')?.textContent ?? '')
+  const s5 = check(detail.includes('Día 1 — Pierna') && detail.includes('Prensa de piernas') && !detail.includes('leg-press'), 'LEGACY-01/detalle',
+    `el detalle no muestra "Día 1 — Pierna" + "Prensa de piernas" (sin id crudo): "${detail.slice(0, 240)}"`)
   const s3 = check(errs.length === 0, 'LEGACY-01/pageerror', `errores de pagina: ${errs.join('; ')}`)
-  console.log(`\n===== LEGACY-01 (sesion heredada sin \`kind\`) =====\n  titulo "Día 1 — Pierna" ${s1} | volumen 960 kg ${s2} | sin pageerror ${s3}`)
+  console.log(`\n===== LEGACY-01 (sesion heredada sin \`kind\`) =====\n  titulo "Día 1 — Pierna" ${s1} | volumen 960 kg ${s2} | tarjeta archivada ${s4} | detalle con nombres ${s5} | sin pageerror ${s3}`)
   await ctx.close()
 }
 
@@ -518,6 +567,34 @@ for (const v of VIEWPORTS) {
   await ctx.close()
 }
 
+// ---- LEGACY-03 (S4): a session whose routine is unknown to the plan (never
+// existed, or was hard-deleted by an older build) is KEPT and still listed —
+// before the editable plan, normalizeStrengthSession dropped it silently. ----
+{
+  const ctx = await br.newContext({ viewport: { width: 390, height: 844 } })
+  const p = await ctx.newPage()
+  const errs = []
+  p.on('pageerror', e => errs.push(e.message))
+  const orphan = {
+    kind: 'strength',
+    id: 'huerfana-legacy03',
+    routineId: 'rutina-que-ya-no-existe',
+    date: todayISO(),
+    startedAt: Date.now() - 600000,
+    finishedAt: Date.now(),
+    sets: [{ exerciseId: 'leg-press', setIndex: 0, weight: 50, reps: 10, done: true }],
+    notes: '',
+  }
+  await seedSessions(p, [orphan], BASE)
+  await p.locator('.tabbar button', { hasText: 'Entrenar' }).click()
+  await p.waitForTimeout(500)
+  const rowCount = await p.locator('.tablewrap .list-item').count()
+  const s1 = check(rowCount === 1, 'LEGACY-03/Entrenar', `hay ${rowCount} filas de historial, se esperaba 1 (una sesion de rutina desconocida no se descarta)`)
+  const s2 = check(errs.length === 0, 'LEGACY-03/pageerror', `errores de pagina: ${errs.join('; ')}`)
+  console.log(`\n===== LEGACY-03 (rutina desconocida) =====\n  1 fila de historial ${s1} | sin pageerror ${s2}`)
+  await ctx.close()
+}
+
 // ---- MIX-01: one finished strength session + one finished swim session,
 // same day. The "Volumen" tile must equal the strength volume exactly — not
 // a sum with swim, not NaN — and the strength count must stay 1, not 2. This
@@ -528,8 +605,8 @@ for (const v of VIEWPORTS) {
   const p = await ctx.newPage()
   const strengthRow = {
     kind: 'strength',
-    id: 'dia1-mix01',
-    routineId: 'dia1',
+    id: 'espalda-d1-mix01',
+    routineId: 'espalda-d1',
     date: todayISO(),
     startedAt: Date.now() - 1800000,
     finishedAt: Date.now(),
@@ -648,6 +725,475 @@ for (const v of VIEWPORTS) {
   )
   await ctx.close()
 }
+
+// =====================================================================
+// Editable-plan scenarios (MIG-01, PLAN-01/02, SHEET-01, GUIDE-01, PAIN-01,
+// LAYOUT-01). Each one gets its own fresh browser context (= empty
+// IndexedDB), so none depends on another's state.
+// =====================================================================
+
+const goTab = async (p, name) => {
+  await p.locator('.tabbar button', { hasText: name }).click()
+  await p.waitForTimeout(400)
+}
+
+// Contexts opened by the running scenario, so a thrown error (a missing
+// element, a timeout) closes them and is reported as a failed check instead of
+// aborting the whole harness run and hiding every scenario after it.
+const openCtxs = []
+async function scenario(name, fn) {
+  try {
+    await fn()
+  } catch (e) {
+    const msg = String(e?.message ?? e).split('\n')[0]
+    check(false, `${name}/excepcion`, msg)
+    console.log(`\n===== ${name} =====\n  \x1b[31mEXCEPCION\x1b[0m ${msg}`)
+  } finally {
+    for (const c of openCtxs.splice(0)) await c.close().catch(() => {})
+  }
+}
+
+// Opens a fresh context on BASE with a pageerror collector. `seed` (optional)
+// runs INSTEAD of the plain navigation, for scenarios that need data on disk
+// before the app's first boot.
+async function openScenario(vp, seed) {
+  const ctx = await br.newContext({
+    viewport: { width: vp.w, height: vp.h },
+    deviceScaleFactor: 2,
+    isMobile: !!vp.mob,
+    hasTouch: !!vp.mob,
+    colorScheme: vp.colorScheme ?? 'light',
+  })
+  openCtxs.push(ctx)
+  const p = await ctx.newPage()
+  p.setDefaultTimeout(10000)
+  const errs = []
+  p.on('pageerror', e => errs.push(e.message))
+  if (seed) await seed(p)
+  else await p.goto(BASE, { waitUntil: 'networkidle' })
+  await p.waitForTimeout(900)
+  return { ctx, p, errs }
+}
+
+// Entrenar -> start the routine's session, ready on its first exercise ("01").
+async function startSession(p, routineId) {
+  await goTab(p, 'Entrenar')
+  await p.locator(`[data-testid="start-${routineId}"]`).click()
+  await p.waitForTimeout(700)
+}
+const railStep = (p, label) => p.locator('.rail button', { hasText: new RegExp(`^${label}$`) })
+async function gotoStep(p, label) {
+  await railStep(p, label).click()
+  await p.waitForTimeout(300)
+}
+
+const MOBILE = { w: 390, h: 844, mob: true }
+
+// ---- MIG-01: the first boot of this version, on a device that holds the OLD
+// shipped config (legacy week Mon/Wed/Fri = dia1..dia3, Tue/Thu swim, Sat walk,
+// Sun rest, block 2026-08-04..2026-09-28), legacy dia1 sessions and NO plan
+// record. After boot: the plan record exists (legacy routines archived, the 5
+// new ones active), the week is Mon-Fri = Dias 1-5, the block is
+// 2026-11-16..2027-02-07, and the legacy sessions still show in Entrenar. ----
+await scenario('MIG-01', async () => {
+  const LEGACY_SWIM_NOTE = '20:00 a 21:00. Cierra el segundo trabajo a las 19:30 y come la fruta o el batido antes de salir. En casa a las 22:30, cena lista para calentar y a dormir a las 23:30.'
+  // `git show 4d0c2c0:src/lib/plan.ts` -> DEFAULT_CONFIG, the last shipped
+  // config before the editable plan. Inlined on purpose (a fixture, not a
+  // mirror of src/): it must not change when the app's default does.
+  const OLD_SHIPPED_CONFIG = {
+    heightCm: 173,
+    blockStart: '2026-08-04',
+    blockEnd: '2026-09-28',
+    goal: { weight: 76.5, fatPct: 22.2, fatMass: 17.0, muscle: 32.2, water: 43.6, waist: 96.5, hip: 97.5, chest: 102.5, neck: 40.5 },
+    weeklyRoutine: [
+      { kind: 'rest', title: '', note: 'Estiramiento y caminata liviana. Dedica dos horas a cocinar las cinco cenas de la semana: con cena a las 22:15, esta es la tarea más importante del domingo.' },
+      { kind: 'training', routineId: 'dia1', title: '', note: '20:30 en el gimnasio' },
+      { kind: 'swim', title: '', note: LEGACY_SWIM_NOTE },
+      { kind: 'training', routineId: 'dia2', title: '', note: '20:30 en el gimnasio' },
+      { kind: 'swim', title: '', note: LEGACY_SWIM_NOTE },
+      { kind: 'training', routineId: 'dia3', title: '', note: '20:30 en el gimnasio' },
+      { kind: 'walk', title: '', note: '60 a 75 minutos a la hora que quieras. Dormir 8 h 45.' },
+    ],
+    poolLengthM: 25,
+  }
+  const legacySessions = [
+    {
+      id: 'dia1-mig01-a', routineId: 'dia1', date: '2026-08-10',
+      startedAt: Date.parse('2026-08-10T20:30:00'), finishedAt: Date.parse('2026-08-10T21:30:00'),
+      sets: [{ exerciseId: 'leg-press', setIndex: 0, weight: 80, reps: 12, done: true }], notes: '',
+    },
+    {
+      kind: 'strength', id: 'dia1-mig01-b', routineId: 'dia1', date: '2026-08-17',
+      startedAt: Date.parse('2026-08-17T20:30:00'), finishedAt: Date.parse('2026-08-17T21:30:00'),
+      sets: [{ exerciseId: 'leg-press', setIndex: 0, weight: 85, reps: 12, done: true }], notes: '',
+    },
+  ]
+
+  const { ctx, p, errs } = await openScenario(MOBILE, pg => seedAll(pg, { config: OLD_SHIPPED_CONFIG, sessions: legacySessions }, BASE))
+  const plan = await readStoreValue(p, 'plan')
+  const cfg = await readStoreValue(p, 'config')
+  const ids = new Map((plan?.routines ?? []).map(r => [r.id, r]))
+  const s1 = check(!!plan && Array.isArray(plan.routines), 'MIG-01/plan', 'no hay registro "plan" en IndexedDB tras el arranque')
+  const newOk = PLAN_ROUTINES.every(r => ids.has(r.id) && !ids.get(r.id).archived)
+  const legacyOk = ['dia1', 'dia2', 'dia3'].every(id => ids.get(id)?.archived === true)
+  const s2 = check(newOk && legacyOk, 'MIG-01/rutinas',
+    `espalda-d1..5 activas: ${newOk}; dia1..3 archivadas: ${legacyOk} (ids: ${[...ids.keys()].join(',')})`)
+  const wk = cfg?.weeklyRoutine ?? []
+  const wkOk = PLAN_ROUTINES.every((r, i) => wk[i + 1]?.kind === 'training' && wk[i + 1]?.routineId === r.id) &&
+    wk[0]?.kind === 'rest' && wk[6]?.kind === 'rest' && !wk.some(d => d.kind === 'swim' || d.kind === 'walk')
+  const s3 = check(wkOk, 'MIG-01/semana', `la semana guardada no es Lun-Vie = Dias 1-5 + fin de semana de descanso: ${JSON.stringify(wk.map(d => d.kind === 'training' ? d.routineId : d.kind))}`)
+  const s4 = check(cfg?.blockStart === '2026-11-16' && cfg?.blockEnd === '2027-02-07', 'MIG-01/bloque',
+    `bloque guardado ${cfg?.blockStart}..${cfg?.blockEnd}, esperado 2026-11-16..2027-02-07`)
+
+  // UI: Ajustes shows Mon-Fri = Dias 1-5 and the new block dates.
+  await goTab(p, 'Ajustes')
+  const rows = await p.evaluate(() => Array.from(document.querySelectorAll('summary.list-item')).map(e => (e.textContent ?? '').replace(/\s+/g, ' ').trim()))
+  const dayRows = [['Lunes', 'Día 1'], ['Martes', 'Día 2'], ['Miércoles', 'Día 3'], ['Jueves', 'Día 4'], ['Viernes', 'Día 5']]
+  const rowsOk = dayRows.every(([day, title]) => rows.some(r => r.startsWith(day) && r.includes(title)))
+  const s5 = check(rowsOk, 'MIG-01/Ajustes-semana', `Ajustes no muestra Lun-Vie = Días 1-5: ${JSON.stringify(rows)}`)
+  const dates = p.locator('input[type="date"]')
+  const gotStart = await dates.nth(0).inputValue()
+  const gotEnd = await dates.nth(1).inputValue()
+  const s6 = check(gotStart === '2026-11-16' && gotEnd === '2027-02-07', 'MIG-01/Ajustes-bloque',
+    `Ajustes muestra el bloque ${gotStart}..${gotEnd}, esperado 2026-11-16..2027-02-07`)
+
+  // UI: legacy sessions still listed in Entrenar's history.
+  await goTab(p, 'Entrenar')
+  const rowCount = await p.locator('.tablewrap .list-item').count()
+  const histText = await p.evaluate(() => document.querySelector('.tablewrap')?.textContent ?? '')
+  const s7 = check(rowCount === 2 && histText.includes('Día 1 — Pierna'), 'MIG-01/historial',
+    `el historial muestra ${rowCount} filas (esperadas 2) y "${histText.slice(0, 120)}"`)
+
+  // Idempotent: a second boot rewrites nothing (the plan record is the marker).
+  await p.reload({ waitUntil: 'networkidle' })
+  await p.waitForTimeout(700)
+  const plan2 = await readStoreValue(p, 'plan')
+  const cfg2 = await readStoreValue(p, 'config')
+  const s8 = check(JSON.stringify(plan2) === JSON.stringify(plan) && JSON.stringify(cfg2) === JSON.stringify(cfg), 'MIG-01/idempotente',
+    'el plan o la config cambiaron en el segundo arranque')
+  const s9 = check(errs.length === 0, 'MIG-01/pageerror', `errores de pagina: ${errs.join('; ')}`)
+  console.log(
+    `\n===== MIG-01 (config vieja + sesiones heredadas, sin plan) =====\n` +
+      `  plan guardado ${s1} | rutinas (5 activas, 3 archivadas) ${s2} | semana guardada ${s3} | bloque guardado ${s4}\n` +
+      `  Ajustes Lun-Vie = Días 1-5 ${s5} | Ajustes bloque ${gotStart}..${gotEnd} ${s6} | historial heredado ${s7} | 2º arranque idempotente ${s8} | sin pageerror ${s9}`,
+  )
+  await ctx.close()
+})
+
+// ---- PLAN-01 (S4/S11): Plan tab -> open "Día 1 – Tren inferior A" -> add an
+// exercise from the picker -> reload -> it is still there (persisted in
+// IndexedDB, not component state). Also: an exercise already in the routine
+// shows disabled with "En la rutina" in the picker. ----
+await scenario('PLAN-01', async () => {
+  const { ctx, p, errs } = await openScenario(MOBILE)
+  await goTab(p, 'Plan')
+  await p.locator('.pe-routine', { hasText: 'Día 1 – Tren inferior A' }).click()
+  await p.waitForTimeout(400)
+  const before = await p.locator('.pe-slot').count()
+  await p.getByRole('button', { name: 'Agregar ejercicio', exact: true }).click()
+  await p.waitForTimeout(400)
+  const picker = p.getByRole('dialog', { name: 'Agregar ejercicio' })
+  const s0 = check((await picker.count()) === 1, 'PLAN-01/picker', 'no se abrio el selector "Agregar ejercicio" (role=dialog)')
+
+  // Already in the routine -> disabled + "En la rutina".
+  await picker.getByLabel('Buscar').fill('Prensa de piernas')
+  await p.waitForTimeout(250)
+  const taken = picker.locator('.pe-pick', { hasText: 'Prensa de piernas' }).first()
+  const takenDisabled = (await taken.count()) > 0 && (await taken.isDisabled())
+  const takenText = (await taken.count()) > 0 ? (await taken.textContent()) ?? '' : ''
+  const s1 = check(takenDisabled && takenText.includes('En la rutina'), 'PLAN-01/en-la-rutina',
+    `"Prensa de piernas" (ya en el Día 1) deberia estar deshabilitado con "En la rutina": disabled=${takenDisabled}, texto="${takenText.slice(0, 80)}"`)
+
+  // Not in the routine -> pick it.
+  await picker.getByLabel('Buscar').fill('Dead bug')
+  await p.waitForTimeout(250)
+  const fresh = picker.locator('.pe-pick', { hasText: 'Dead bug' }).first()
+  const freshEnabled = (await fresh.count()) > 0 && (await fresh.isEnabled())
+  const s2 = check(freshEnabled, 'PLAN-01/disponible', '"Dead bug" no esta disponible (habilitado) en el selector')
+  if (freshEnabled) await fresh.click()
+  await p.waitForTimeout(600)
+  const after = await p.locator('.pe-slot').count()
+  const s3 = check(after === before + 1, 'PLAN-01/agregado', `la rutina tenia ${before} ejercicios y ahora ${after}, se esperaba ${before + 1}`)
+  const s3b = check((await p.getByRole('dialog').count()) === 0, 'PLAN-01/cierra', 'el selector sigue abierto tras elegir el ejercicio')
+
+  // Reload: persisted.
+  await p.reload({ waitUntil: 'networkidle' })
+  await p.waitForTimeout(700)
+  await goTab(p, 'Plan')
+  await p.locator('.pe-routine', { hasText: 'Día 1 – Tren inferior A' }).click()
+  await p.waitForTimeout(400)
+  const reloaded = await p.locator('.pe-slot').count()
+  const hasDeadBug = (await p.locator('.pe-slot', { hasText: 'Dead bug' }).count()) === 1
+  const s4 = check(reloaded === before + 1 && hasDeadBug, 'PLAN-01/persistido',
+    `tras recargar hay ${reloaded} ejercicios (esperados ${before + 1}), "Dead bug" presente: ${hasDeadBug}`)
+  const plan = await readStoreValue(p, 'plan')
+  const d1 = plan?.routines?.find(r => r.id === 'espalda-d1')
+  const inStore = !!d1?.blocks?.some(b => b.slots.some(sl => sl.exerciseId === 'dead-bug'))
+  const s5 = check(inStore, 'PLAN-01/indexeddb', 'el registro "plan" en IndexedDB no contiene el slot dead-bug en espalda-d1')
+  const s6 = check(errs.length === 0, 'PLAN-01/pageerror', `errores de pagina: ${errs.join('; ')}`)
+  console.log(
+    `\n===== PLAN-01 (agregar ejercicio y persistir) =====\n` +
+      `  selector ${s0} | "En la rutina" deshabilitado ${s1} | disponible ${s2} | agregado ${before}->${after} ${s3} | cierra ${s3b} | persiste tras recargar ${s4} | en IndexedDB ${s5} | sin pageerror ${s6}`,
+  )
+  await ctx.close()
+})
+
+// ---- PLAN-02 (S4/S11): archive a routine -> confirm -> it moves to
+// "Archivadas" (not deleted) -> "Deshacer" restores it. ----
+await scenario('PLAN-02', async () => {
+  const { ctx, p, errs } = await openScenario(MOBILE)
+  await goTab(p, 'Plan')
+  const target = 'Día 5 – Tren superior B'
+  const activeHas = () => p.locator('.pe-list .pe-routine', { hasText: target }).count()
+  const archivedSummary = async () => ((await p.locator('details.pe-archived summary').textContent()) ?? '').trim()
+  const startSummary = await archivedSummary() // legacy dia1..3 are already archived
+  const startN = Number(/\((\d+)\)/.exec(startSummary)?.[1] ?? NaN)
+
+  await p.locator('.pe-routine', { hasText: target }).click()
+  await p.waitForTimeout(400)
+  await p.getByRole('button', { name: 'Archivar rutina', exact: true }).click()
+  await p.waitForTimeout(400)
+  const confirm = p.getByRole('dialog', { name: /¿Archivar/ })
+  const s0 = check((await confirm.count()) === 1, 'PLAN-02/confirmar', 'archivar no pide confirmacion (role=dialog "¿Archivar …?")')
+  await confirm.getByRole('button', { name: 'Archivar rutina', exact: true }).click()
+  await p.waitForTimeout(700)
+
+  const s1 = check((await activeHas()) === 0, 'PLAN-02/sale-de-activas', `"${target}" sigue entre las rutinas activas tras archivarla`)
+  const midSummary = await archivedSummary()
+  const s2 = check(midSummary === `Archivadas (${startN + 1})`, 'PLAN-02/archivadas', `resumen "${midSummary}", esperado "Archivadas (${startN + 1})"`)
+  await p.locator('details.pe-archived summary').click()
+  await p.waitForTimeout(200)
+  const inArchived = (await p.locator('details.pe-archived .pe-slot', { hasText: target }).count()) === 1
+  const s3 = check(inArchived, 'PLAN-02/en-archivadas', `"${target}" no aparece dentro de "Archivadas"`)
+  const stored = (await readStoreValue(p, 'plan'))?.routines?.find(r => r.id === 'espalda-d5')
+  const s4 = check(stored?.archived === true, 'PLAN-02/no-se-borra', 'la rutina archivada no esta en el plan guardado con archived=true (se borro?)')
+
+  await p.getByRole('button', { name: 'Deshacer', exact: true }).click()
+  await p.waitForTimeout(700)
+  const s5 = check((await activeHas()) === 1, 'PLAN-02/deshacer', `"${target}" no volvio a las rutinas activas tras "Deshacer"`)
+  const endSummary = await archivedSummary()
+  const s6 = check(endSummary === `Archivadas (${startN})`, 'PLAN-02/deshacer-contador', `resumen "${endSummary}", esperado "Archivadas (${startN})"`)
+  const restored = (await readStoreValue(p, 'plan'))?.routines?.find(r => r.id === 'espalda-d5')
+  const s7 = check(restored && !restored.archived, 'PLAN-02/deshacer-guardado', 'tras "Deshacer" el plan guardado sigue con la rutina archivada')
+  const s8 = check(errs.length === 0, 'PLAN-02/pageerror', `errores de pagina: ${errs.join('; ')}`)
+  console.log(
+    `\n===== PLAN-02 (archivar y deshacer) =====\n` +
+      `  confirma ${s0} | sale de activas ${s1} | "Archivadas (${startN + 1})" ${s2} | dentro de Archivadas ${s3} | guardada, no borrada ${s4} | Deshacer restaura ${s5} | contador ${s6} | guardado ${s7} | sin pageerror ${s8}`,
+  )
+  await ctx.close()
+})
+
+// ---- SHEET-01 (S9/S12): the exercise sheet from a session — a real modal
+// (role=dialog), a MuscleWiki link that opens a new tab safely with the
+// verified slug, Escape closes it, focus returns to the opener. ----
+await scenario('SHEET-01', async () => {
+  const { ctx, p, errs } = await openScenario(MOBILE)
+  await startSession(p, 'espalda-d1')
+  await gotoStep(p, '01') // Prensa de piernas (leg press)
+  const opener = p.getByRole('button', { name: /Ver ficha de Prensa de piernas/ }).first()
+  await opener.click()
+  await p.waitForTimeout(400)
+  const dialog = p.getByRole('dialog')
+  const s1 = check((await dialog.count()) === 1 && (await dialog.isVisible()), 'SHEET-01/dialogo', 'la ficha no abre un role=dialog visible')
+  const modal = await dialog.getAttribute('aria-modal')
+  const s1b = check(modal === 'true', 'SHEET-01/aria-modal', `aria-modal="${modal}", esperado "true"`)
+  const link = dialog.getByRole('link', { name: /MuscleWiki/ })
+  const attrs = (await link.count()) === 1
+    ? { target: await link.getAttribute('target'), rel: (await link.getAttribute('rel')) ?? '', href: await link.getAttribute('href') }
+    : null
+  const s2 = check(attrs?.target === '_blank', 'SHEET-01/target', `target="${attrs?.target}", esperado "_blank"`)
+  const s3 = check(/\bnoopener\b/.test(attrs?.rel ?? ''), 'SHEET-01/rel', `rel="${attrs?.rel}" no contiene "noopener"`)
+  const s4 = check(attrs?.href === 'https://musclewiki.com/es-es/exercise/machine-leg-press', 'SHEET-01/href',
+    `href="${attrs?.href}", esperado "https://musclewiki.com/es-es/exercise/machine-leg-press"`)
+  const attribution = ((await dialog.locator('.sheet-attribution').textContent().catch(() => '')) ?? '')
+  const s5 = check(attribution.includes('MuscleWiki'), 'SHEET-01/atribucion', `la ficha no muestra la linea de atribucion a MuscleWiki ("${attribution}")`)
+  const closeBox = await dialog.getByRole('button', { name: 'Cerrar' }).boundingBox()
+  const s6 = check(!!closeBox && closeBox.width >= TAP_MIN && closeBox.height >= TAP_MIN, 'SHEET-01/cerrar-44px',
+    `el boton "Cerrar" mide ${closeBox ? `${closeBox.width}x${closeBox.height}` : 'n/a'}, minimo ${TAP_MIN}x${TAP_MIN}`)
+
+  await p.keyboard.press('Escape')
+  await p.waitForTimeout(400)
+  const s7 = check((await p.getByRole('dialog').count()) === 0, 'SHEET-01/escape', 'Escape no cierra la ficha')
+  const focusBack = await opener.evaluate(el => el === document.activeElement)
+  const s8 = check(focusBack, 'SHEET-01/foco', 'tras cerrar con Escape el foco no volvio al boton que abrio la ficha')
+
+  // The close button works too.
+  await opener.click()
+  await p.waitForTimeout(300)
+  await p.getByRole('dialog').getByRole('button', { name: 'Cerrar' }).click()
+  await p.waitForTimeout(300)
+  const s9 = check((await p.getByRole('dialog').count()) === 0, 'SHEET-01/boton-cerrar', 'el boton "Cerrar" no cierra la ficha')
+  const s10 = check(errs.length === 0, 'SHEET-01/pageerror', `errores de pagina: ${errs.join('; ')}`)
+  console.log(
+    `\n===== SHEET-01 (ficha del ejercicio desde la sesion) =====\n` +
+      `  role=dialog ${s1} | aria-modal ${s1b} | target=_blank ${s2} | rel noopener ${s3} | href leg press ${s4} | atribucion ${s5} | cerrar>=44px ${s6}\n` +
+      `  Escape cierra ${s7} | foco vuelve al opener ${s8} | boton Cerrar ${s9} | sin pageerror ${s10}`,
+  )
+  await ctx.close()
+})
+
+// ---- GUIDE-01 (S10): Plan -> "Guía": the urgent red-flag line is visible, the
+// "evitar" table has the 8 rows of L1, "Volver" returns to Plan; and from a
+// session the red-flags sheet opens in ONE tap. ----
+await scenario('GUIDE-01', async () => {
+  const URGENT = 'Pérdida de control de orina o esfínteres, o adormecimiento en la zona genital: esto es urgencia, ve a la clínica ese mismo día.'
+  const { ctx, p, errs } = await openScenario(MOBILE)
+  await goTab(p, 'Plan')
+  await p.getByRole('button', { name: /Guía/ }).click()
+  await p.waitForTimeout(500)
+  const h1 = ((await p.locator('h1').first().textContent()) ?? '').trim()
+  const s0 = check(h1 === 'Guía', 'GUIDE-01/titulo', `el h1 es "${h1}", esperado "Guía"`)
+  const urgent = p.locator('.guide-red-flags li.is-urgent')
+  const urgentText = (await urgent.count()) === 1 ? ((await urgent.textContent()) ?? '') : ''
+  const s1 = check((await urgent.count()) === 1 && (await urgent.isVisible()) && urgentText.includes(URGENT), 'GUIDE-01/urgente',
+    `la linea urgente de L1 no esta visible/completa: "${urgentText.slice(0, 120)}"`)
+  const avoidRows = await p.locator('section[aria-labelledby="guide-avoid"] tbody tr').count()
+  const s2 = check(avoidRows === 8, 'GUIDE-01/evitar', `la tabla "Ejercicios a evitar" tiene ${avoidRows} filas, esperadas 8`)
+  const ov = await p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+  const s2b = check(ov === 0, 'GUIDE-01/overflow', `overflowX=${ov}px en la Guia a ${MOBILE.w}px`)
+  await p.getByRole('button', { name: /Volver/ }).click()
+  await p.waitForTimeout(400)
+  const backH1 = ((await p.locator('h1').first().textContent()) ?? '').trim()
+  const s3 = check(backH1 === 'Tu plan', 'GUIDE-01/volver', `tras "Volver" el h1 es "${backH1}", esperado "Tu plan"`)
+
+  // In-session: ONE tap on "Señales de alarma" opens the red-flags sheet.
+  await startSession(p, 'espalda-d1')
+  await p.getByRole('button', { name: /Señales de alarma/ }).click() // the single tap
+  await p.waitForTimeout(400)
+  const sheet = p.getByRole('dialog')
+  const sheetText = (await sheet.count()) === 1 ? ((await sheet.textContent()) ?? '') : ''
+  const s4 = check(sheetText.includes(URGENT), 'GUIDE-01/senales-1-toque', `un toque en "Señales de alarma" no muestra la hoja con la linea urgente ("${sheetText.slice(0, 100)}")`)
+  await p.keyboard.press('Escape')
+  await p.waitForTimeout(300)
+  const s5 = check(errs.length === 0, 'GUIDE-01/pageerror', `errores de pagina: ${errs.join('; ')}`)
+  console.log(
+    `\n===== GUIDE-01 (Guía y señales de alarma) =====\n` +
+      `  h1 "Guía" ${s0} | linea urgente visible ${s1} | tabla evitar ${avoidRows} filas ${s2} | sin overflow ${s2b} | Volver -> Plan ${s3} | señales en 1 toque ${s4} | sin pageerror ${s5}`,
+  )
+  await ctx.close()
+})
+
+// ---- PAIN-01 (S7): pain 0-10 per exercise with the traffic-light verdict as
+// TEXT. 4/10 -> "Baja peso o rango"; saved with the session and shown under
+// "Dolor registrado" in the detail. ----
+await scenario('PAIN-01', async () => {
+  const { ctx, p, errs } = await openScenario(MOBILE)
+  await startSession(p, 'espalda-d1')
+  await gotoStep(p, '01') // Prensa de piernas (leg press)
+  const pain = p.getByLabel('Dolor de este ejercicio (0–10)').first()
+  const verdictText = async () => ((await p.locator('.sp-verdict').first().textContent().catch(() => '')) ?? '').trim()
+  const cases = [['1', /bien/i], ['4', /baja peso o rango/i], ['7', /cambia el ejercicio/i]]
+  const caseResults = []
+  for (const [value, re] of cases) {
+    await pain.selectOption(value)
+    await p.waitForTimeout(200)
+    const t = await verdictText()
+    caseResults.push(check(re.test(t) && (await p.locator('.sp-verdict').first().isVisible()), `PAIN-01/veredicto-${value}`, `con dolor ${value} el veredicto dice "${t}", esperado ${re}`))
+  }
+  await pain.selectOption('4')
+  await p.waitForTimeout(200)
+  await p.getByRole('button', { name: /Marcar serie/ }).first().click()
+  await p.waitForTimeout(400)
+  await p.locator('.session-head button.primary', { hasText: 'Terminar' }).click()
+  await p.waitForTimeout(800)
+  await p.locator('.tablewrap .list-item').first().click()
+  await p.waitForTimeout(400)
+  const main = await p.evaluate(() => document.querySelector('.main')?.textContent ?? '')
+  const s1 = check(main.includes('Dolor registrado') && main.includes('4/10') && /baja peso o rango/i.test(main), 'PAIN-01/detalle',
+    `el detalle no muestra "Dolor registrado" con 4/10 y "Baja peso o rango": "${main.slice(0, 260)}"`)
+  const s2 = check(errs.length === 0, 'PAIN-01/pageerror', `errores de pagina: ${errs.join('; ')}`)
+  console.log(
+    `\n===== PAIN-01 (dolor 0–10 con semáforo) =====\n` +
+      `  veredicto 1/4/7 ${caseResults.join('/')} | "Dolor registrado" en el detalle ${s1} | sin pageerror ${s2}`,
+  )
+  await ctx.close()
+})
+
+// ---- LAYOUT-01 (S12): at 375x812, light AND dark: no horizontal scroll and no
+// visible interactive element under 44x44 on Home, Entrenar, Plan, the routine
+// editor, the picker sheet, the Guide, and a Day 3 session (time hold + carry).
+// Inline text links inside paragraphs are exempt. Offenders are reported with
+// selector + size. ----
+await scenario('LAYOUT-01', async () => {
+  // Runs inside the page (page.evaluate ships only its own source). When a
+  // dialog is open the audit is scoped to it: what sits behind a modal sheet
+  // is not reachable.
+  const layoutAudit = () => {
+    const de = document.documentElement
+    const dialog = document.querySelector('[role="dialog"]')
+    const root = dialog ?? document
+    const shown = e => {
+      const r = e.getBoundingClientRect()
+      if (r.width <= 0 || r.height <= 0) return false
+      const cs = getComputedStyle(e)
+      return cs.visibility !== 'hidden' && cs.display !== 'none'
+    }
+    const exempt = e => e.tagName === 'A' && getComputedStyle(e).display === 'inline' && !!e.closest('p')
+    const label = e => {
+      const cls = (e.className?.toString() ?? '').trim().split(/\s+/).filter(Boolean).slice(0, 2).join('.')
+      const txt = (e.getAttribute('aria-label') ?? e.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 28)
+      return `${e.tagName.toLowerCase()}${e.id ? `#${e.id}` : ''}${cls ? `.${cls}` : ''} "${txt}"`
+    }
+    const small = Array.from(root.querySelectorAll('button,a[href],input:not([type="hidden"]),select,textarea,summary,[role="button"],[role="checkbox"]'))
+      .filter(e => shown(e) && !exempt(e))
+      .map(e => ({ s: label(e), w: +e.getBoundingClientRect().width.toFixed(1), h: +e.getBoundingClientRect().height.toFixed(1) }))
+      .filter(x => x.w < 44 || x.h < 44)
+    return {
+      overflow: de.scrollWidth - de.clientWidth,
+      dialogOverflow: dialog ? dialog.scrollWidth - dialog.clientWidth : 0,
+      small,
+    }
+  }
+
+  for (const scheme of ['light', 'dark']) {
+    const { ctx, p, errs } = await openScenario({ w: 375, h: 812, mob: true, colorScheme: scheme })
+    const audit = async surface => {
+      await p.waitForTimeout(250)
+      const r = await p.evaluate(layoutAudit)
+      const ok1 = check(r.overflow === 0 && r.dialogOverflow <= 0, `LAYOUT-01/${scheme}/${surface}`, `scroll horizontal: documento ${r.overflow}px, hoja ${r.dialogOverflow}px`)
+      const ok2 = check(r.small.length === 0, `LAYOUT-01/${scheme}/${surface}`,
+        `${r.small.length} elementos interactivos < ${TAP_MIN}x${TAP_MIN}: ${r.small.slice(0, 6).map(x => `${x.s} ${x.w}x${x.h}`).join(' | ')}`)
+      console.log(`  [${scheme.padEnd(5)} ${surface.padEnd(18)}] overflowX ${String(r.overflow).padStart(3)}px ${ok1} | <44px: ${String(r.small.length).padStart(2)} ${ok2}`)
+    }
+    console.log(`\n===== LAYOUT-01 (375x812, ${scheme}) =====`)
+
+    await goTab(p, 'Inicio')
+    await audit('Inicio')
+    await goTab(p, 'Entrenar')
+    await audit('Entrenar')
+    await goTab(p, 'Plan')
+    await audit('Plan')
+    await p.locator('.pe-routine', { hasText: 'Día 1 – Tren inferior A' }).click()
+    await p.waitForTimeout(300)
+    await audit('Editor de rutina')
+    await p.getByRole('button', { name: 'Agregar ejercicio', exact: true }).click()
+    await p.waitForTimeout(300)
+    await audit('Selector (hoja)')
+    await p.keyboard.press('Escape')
+    await p.waitForTimeout(300)
+    await p.locator('.pe-back').click()
+    await p.waitForTimeout(300)
+    await p.getByRole('button', { name: /Guía/ }).click()
+    await p.waitForTimeout(400)
+    await audit('Guía')
+    // Leave through the Guide's own back button: while the Guide overflows
+    // horizontally the fixed tab bar can sit off-screen, and a hanging tab click
+    // would hide every audit that follows.
+    await p.getByRole('button', { name: /Volver/ }).click()
+    await p.waitForTimeout(300)
+
+    await startSession(p, 'espalda-d3')
+    await audit('Día 3 · calentam.')
+    await gotoStep(p, '02') // Plancha lateral: timed hold per side
+    await audit('Día 3 · plancha')
+    await gotoStep(p, '05') // Caminata de maleta: distance per side
+    await audit('Día 3 · maleta')
+    await gotoStep(p, '06') // Cardio zona 2: 20-25 min timed block
+    await audit('Día 3 · cardio')
+    if (errs.length) check(false, `LAYOUT-01/${scheme}/pageerror`, `errores de pagina: ${errs.join('; ')}`)
+    await ctx.close()
+  }
+})
 
 await br.close()
 const ok = report('RESUMEN')

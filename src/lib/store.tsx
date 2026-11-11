@@ -1,8 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import type { Config, ExerciseMeta, Measurement, Routine, Session } from '../types'
+import type { Config, ExerciseMeta, Measurement, Session, TrainingPlan } from '../types'
 import * as db from './db'
-import { BASELINE, DEFAULT_CONFIG, mergeConfig, resolveRoutines } from './plan'
+import { BASELINE, DEFAULT_CONFIG, mergeConfig } from './plan'
 import { derive } from './calc'
+import { defaultPlanWithLegacy } from './defaultPlan'
+import { applyPlanMigration } from './migration'
+import { normalizePlan } from './planStorage'
 
 interface Store {
   ready: boolean
@@ -21,8 +24,6 @@ interface Store {
   measurements: Measurement[]
   meta: Record<string, ExerciseMeta>
   config: Config
-  /** Rutinas con los ejercicios personalizados ya aplicados. */
-  routines: Routine[]
   reload: () => Promise<void>
   saveSession: (s: Session) => Promise<void>
   deleteSession: (id: string) => Promise<void>
@@ -30,6 +31,11 @@ interface Store {
   deleteMeasurement: (date: string) => Promise<void>
   saveMeta: (m: ExerciseMeta) => Promise<void>
   saveConfig: (c: Config) => Promise<void>
+  /** Plan de entrenamiento activo, editable. Incluye las rutinas archivadas:
+   *  quien muestre opciones para elegir filtra `archived`. */
+  plan: TrainingPlan
+  /** Reemplaza el plan completo y lo persiste. */
+  savePlan: (p: TrainingPlan) => Promise<void>
 }
 
 const Ctx = createContext<Store | null>(null)
@@ -42,25 +48,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [measurements, setMeasurements] = useState<Measurement[]>([])
   const [metaList, setMetaList] = useState<ExerciseMeta[]>([])
   const [config, setConfig] = useState<Config>(DEFAULT_CONFIG)
+  // Lo guardado bajo la llave 'plan'; si falta o es ilegible, el plan por
+  // defecto (en memoria hasta que la persona lo edite).
+  const [plan, setPlan] = useState<TrainingPlan>(defaultPlanWithLegacy)
 
   const reload = useCallback(async () => {
-    const [sessionsResult, m, em, c] = await Promise.all([
+    const [sessionsResult, m, em, c, p] = await Promise.all([
       db.getSessions(),
       db.getMeasurements(),
       db.getExerciseMeta(),
       db.getConfig(),
+      db.getPlan(),
     ])
     setSessions(sessionsResult.sessions)
     setDroppedSessionCount(sessionsResult.droppedCount)
     setMeasurements(m)
     setMetaList(em)
     setConfig(mergeConfig(c))
+    setPlan(normalizePlan(p) ?? defaultPlanWithLegacy())
   }, [])
 
   useEffect(() => {
     ;(async () => {
       try {
         const stored = await db.getConfig()
+        let current = DEFAULT_CONFIG
         if (!stored) {
           // Primera apertura: sembramos la configuracion y la linea base.
           await db.saveConfig(DEFAULT_CONFIG)
@@ -70,9 +82,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           // reescribimos una sola vez. La comparacion por JSON es un chequeo de
           // idempotencia barato, no un contrato de igualdad profunda: si el orden
           // de claves difiere se reescribe una vez y a partir de ahi coincide.
-          const merged = mergeConfig(stored)
-          if (JSON.stringify(stored) !== JSON.stringify(merged)) await db.saveConfig(merged)
+          current = mergeConfig(stored)
+          if (JSON.stringify(stored) !== JSON.stringify(current)) await db.saveConfig(current)
         }
+        // Migracion unica al plan editable (S5): solo escribe el registro del
+        // plan y, si la semana o el bloque son los de antes, la config.
+        await applyPlanMigration(current)
         await reload()
         setReady(true)
       } catch (e) {
@@ -93,7 +108,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       measurements,
       meta: Object.fromEntries(metaList.map(m => [m.exerciseId, m])),
       config,
-      routines: resolveRoutines(config.routineExercises),
       reload,
       saveSession: async s => { await db.saveSession(s); await reload() },
       deleteSession: async id => { await db.deleteSession(id); await reload() },
@@ -101,8 +115,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       deleteMeasurement: async d => { await db.deleteMeasurement(d); await reload() },
       saveMeta: async m => { await db.saveExerciseMeta(m); await reload() },
       saveConfig: async c => { await db.saveConfig(c); await reload() },
+      plan,
+      savePlan: async p => { await db.savePlan(p); setPlan(p) },
     }),
-    [ready, dbError, sessions, droppedSessionCount, measurements, metaList, config, reload],
+    [ready, dbError, sessions, droppedSessionCount, measurements, metaList, config, reload, plan],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

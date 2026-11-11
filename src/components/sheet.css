@@ -1,0 +1,128 @@
+/* Hoja inferior compartida (BottomSheet). Solo tokens de styles.css. */
+
+.sheet-root {
+  position: fixed; inset: 0; z-index: 70; /* sobre el toast (60) y las pestañas (30) */
+  display: flex; align-items: flex-end; justify-content: center;
+}
+
+.sheet-scrim {
+  position: absolute; inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  animation: sheet-fade var(--dur-2) ease-out;
+}
+
+.sheet {
+  position: relative;
+  width: 100%; max-width: 640px; max-height: 88vh;
+  display: flex; flex-direction: column;
+  background: var(--surface-1); color: var(--ink-1);
+  border-top: 1px solid var(--ring);
+  border-radius: var(--r-1) var(--r-1) 0 0;
+  padding-bottom: calc(var(--sp-4) + var(--safe-b));
+  animation: sheet-up var(--dur-2) ease-out;
+  outline: none;
+}
+
+.sheet-head {
+  display: flex; align-items: flex-start; gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-4) var(--sp-3);
+  border-bottom: 1px solid var(--ring);
+}
+
+.sheet-title {
+  flex: 1; margin: 0; padding-top: 10px;
+  font-size: var(--t-title); line-height: 1.3; color: var(--ink-1);
+}
+
+.sheet-close {
+  flex: 0 0 44px; width: 44px; height: 44px;
+  display: grid; place-items: center;
+  background: var(--surface-2); color: var(--ink-1);
+  border: 1px solid var(--ring); border-radius: var(--r-1);
+  cursor: pointer;
+}
+
+.sheet-close svg,
+.sheet-cta svg {
+  width: 20px; height: 20px;
+  fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+
+.sheet-body {
+  overflow-y: auto;
+  display: grid; gap: var(--sp-4);
+  padding: var(--sp-4);
+  font-size: 16px; line-height: 1.5; color: var(--ink-2);
+}
+
+.sheet-body p { margin: 0; max-width: 65ch; }
+
+.sheet-meta { font-size: var(--t-meta); color: var(--ink-3); }
+
+.sheet-rx {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-2) var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+}
+
+.sheet-rx-sets {
+  font-size: var(--t-data-m); font-weight: 700; color: var(--ink-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.sheet-section { display: grid; gap: var(--sp-2); }
+
+.sheet-section h3 {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--t-label); font-weight: 800; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--ink-1);
+}
+
+.sheet-pills {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-wrap: wrap; gap: var(--sp-2);
+}
+
+.sheet-steps,
+.sheet-cues {
+  margin: 0; padding-left: var(--sp-5);
+  display: grid; gap: var(--sp-2);
+}
+
+.sheet-cta {
+  min-height: 44px;
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--accent); color: var(--on-accent);
+  border: 1px solid var(--accent); border-radius: var(--r-1);
+  font-size: 16px; font-weight: 700; text-decoration: none;
+}
+
+.sheet-cta:hover { filter: brightness(1.08); }
+
+.sheet-attribution {
+  font-size: var(--t-meta); color: var(--ink-3); text-align: center;
+}
+
+.sheet-sr {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+/* El anillo de foco es global (styles.css, :focus-visible). */
+
+@keyframes sheet-up {
+  from { transform: translateY(100%); }
+  to { transform: none; }
+}
+
+@keyframes sheet-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet-scrim,
+  .sheet { animation: none; }
+  .sheet-cta { transition: none; }
+}

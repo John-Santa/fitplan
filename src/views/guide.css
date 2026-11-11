@@ -1,0 +1,176 @@
+/* Pantalla "Guía" y la lista de señales de alarma. Solo tokens de styles.css. */
+
+.guide {
+  min-height: 100vh; min-height: 100dvh;
+  background: var(--plane); color: var(--ink-1);
+  padding: var(--sp-4) 16px calc(var(--sp-7) + var(--safe-b));
+  padding-left: max(16px, var(--safe-l));
+  padding-right: max(16px, var(--safe-r));
+}
+
+.guide-head {
+  display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-3);
+  margin-bottom: var(--sp-5);
+}
+
+.guide-back {
+  min-height: 44px;
+  display: inline-flex; align-items: center; gap: var(--sp-2);
+  padding: 0 var(--sp-4);
+  background: var(--surface-1); color: var(--ink-1);
+  border: 1px solid var(--ring); border-radius: var(--r-1);
+  font: inherit; font-size: 16px; font-weight: 600; cursor: pointer;
+}
+
+.guide-back svg,
+.guide-icon {
+  width: 20px; height: 20px; flex: 0 0 auto;
+  fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+
+.guide-title { margin: 0; font-size: var(--t-display); line-height: 1.1; }
+
+.guide-body {
+  max-width: 720px; margin: 0 auto;
+  display: grid; gap: var(--sp-6);
+  font-size: 16px; line-height: 1.5; color: var(--ink-2);
+}
+
+.guide-section { display: grid; gap: var(--sp-3); }
+.guide-section > .section-title { margin: 0; }
+
+.guide-body p,
+.guide-body li { max-width: 65ch; }
+
+.guide-lead { color: var(--ink-1); }
+
+.guide-callout {
+  display: grid; grid-template-columns: 24px 1fr; gap: var(--sp-3);
+  padding: var(--sp-4);
+  background: var(--surface-1);
+  border: 1px solid var(--ring); border-left: 3px solid var(--accent);
+  border-radius: var(--r-1);
+}
+
+.guide-callout svg { color: var(--accent-ink); }
+.guide-callout p { margin: 0; }
+
+.guide-red-flags {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; gap: var(--sp-2);
+}
+
+.guide-red-flags li {
+  display: grid; grid-template-columns: 24px 1fr; gap: var(--sp-3); align-items: start;
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--surface-1);
+  border: 1px solid var(--ring); border-radius: var(--r-1);
+}
+
+.guide-bullet {
+  width: 8px; height: 8px; margin: 9px auto 0;
+  border-radius: var(--r-pill); background: var(--ink-3);
+}
+
+.guide-red-flags li.is-urgent {
+  border-color: var(--critical); border-left: 4px solid var(--critical);
+  background: var(--surface-2); color: var(--ink-1);
+}
+
+.guide-red-flags li.is-urgent .guide-icon { color: var(--critical); }
+.guide-red-flags li.is-urgent strong { font-weight: 700; color: var(--ink-1); }
+
+.guide-rules,
+.guide-steps,
+.guide-list {
+  margin: 0; padding-left: var(--sp-5);
+  display: grid; gap: var(--sp-2);
+}
+
+.guide-table { font-size: 16px; font-weight: 400; }
+
+.guide-table caption { caption-side: top; text-align: left; }
+
+.guide-now { margin-left: var(--sp-2); }
+
+.guide-sr {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+/* Narrow screens: each row becomes a stacked card, with labels from data-label. */
+.guide-table thead {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+.guide-table,
+.guide-table tbody,
+.guide-table tr,
+.guide-table th,
+.guide-table td {
+  display: block; width: 100%;
+}
+
+.guide-table tr {
+  margin-bottom: var(--sp-3); padding: var(--sp-3) var(--sp-4);
+  background: var(--surface-1);
+  border: 1px solid var(--ring); border-radius: var(--r-1);
+}
+
+.guide-table tr.is-current { border-left: 4px solid var(--accent); }
+
+.guide-table th[scope="row"] {
+  padding: 0 0 var(--sp-2);
+  font-weight: 700; color: var(--ink-1); text-align: left;
+}
+
+.guide-table td { padding: var(--sp-1) 0; }
+
+/* styles.css pone nowrap en th/td para las tablas de datos; esta es de texto
+   y debe partir lineas, o la pagina se ensancha y la barra de pestañas se va
+   fuera de pantalla en el telefono. */
+.guide-table th,
+.guide-table td { white-space: normal; }
+
+.guide-table td::before {
+  content: attr(data-label);
+  display: block; margin-bottom: 2px;
+  font-size: var(--t-label); font-weight: 800; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--ink-3);
+}
+
+/* Wide screens: a real table. */
+@media (min-width: 640px) {
+  .guide-table { display: table; }
+  .guide-table thead {
+    position: static; width: auto; height: auto; overflow: visible;
+    clip: auto; white-space: normal;
+  }
+  .guide-table thead,
+  .guide-table tbody { display: table-header-group; }
+  .guide-table tbody { display: table-row-group; }
+  .guide-table tr {
+    display: table-row;
+    margin: 0; padding: 0;
+    background: none; border: 0; border-radius: 0;
+  }
+  .guide-table th,
+  .guide-table td {
+    display: table-cell; width: auto;
+    padding: var(--sp-3) var(--sp-3) var(--sp-3) 0;
+    border-bottom: 1px solid var(--grid);
+    text-align: left; vertical-align: top;
+  }
+  .guide-table thead th {
+    font-size: var(--t-label); font-weight: 800; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--ink-3);
+  }
+  .guide-table td::before { content: none; display: none; }
+  .guide-table tr.is-current { background: var(--accent-dim); border: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .guide-back { transition: none; }
+}

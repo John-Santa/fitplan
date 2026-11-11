@@ -1,0 +1,189 @@
+/* ============================================================================
+   Plan editor. Solo tokens de styles.css; prefijo pe- para no chocar con el
+   resto. Objetivos tactiles >= 44 px con >= 8 px de separacion.
+   ========================================================================= */
+
+.pe-sr {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap;
+}
+
+/* ---------- cabecera ---------- */
+
+.pe-head {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: var(--sp-3); flex-wrap: wrap;
+}
+.pe-head h1 { margin-top: var(--sp-2); }
+.pe-plan-name { margin: var(--sp-2) 0 0; }
+
+.pe-back { margin: 0 0 var(--sp-2); padding-left: 0; }
+.pe-scope .eyebrow { margin-bottom: var(--sp-2); }
+.pe-scope button svg {
+  width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor;
+  stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+}
+/* botones con icono + texto */
+.pe-scope button:has(> svg):not(.pe-icon) {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2);
+}
+
+/* ---------- espaciado ---------- */
+
+.pe-gap-md { margin-top: var(--sp-4); }
+.pe-gap-lg { margin-top: var(--sp-6); }
+.pe-field { margin-top: var(--sp-4); }
+.pe-field:first-child { margin-top: 0; }
+.pe-card-form { margin-top: var(--sp-4); }
+.pe-stack { display: flex; flex-direction: column; gap: var(--sp-2); }
+.pe-stack .pe-gap-lg { margin-top: var(--sp-5); }
+
+/* ---------- listas ---------- */
+
+.pe-list { list-style: none; margin: 0; padding: 0; }
+
+.pe-name {
+  display: block; font-weight: 800; font-size: var(--t-body); color: var(--ink-1);
+  text-transform: uppercase; letter-spacing: -0.015em; overflow-wrap: anywhere;
+}
+.pe-sub {
+  display: block; margin-top: 3px; font-size: var(--t-meta); color: var(--ink-3);
+  overflow-wrap: anywhere;
+}
+
+/* tarjeta de rutina (toda es un boton) */
+.pe-routine {
+  display: flex; align-items: center; gap: var(--sp-3); width: 100%;
+  min-height: 64px; padding: var(--sp-4);
+  margin-bottom: 2px;
+  border: none; border-radius: var(--r-0); background: var(--surface-1);
+  color: var(--ink-1); text-align: left; text-transform: none; letter-spacing: normal;
+  font-size: var(--t-body);
+}
+.pe-routine:hover { background: var(--surface-2); }
+.pe-routine-text { flex: 1; min-width: 0; }
+.pe-meta { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-2); }
+.pe-chev { color: var(--ink-3); display: grid; place-items: center; }
+
+/* fila de ejercicio: texto arriba, acciones debajo */
+.pe-slot {
+  display: flex; flex-direction: column; align-items: stretch; gap: var(--sp-3);
+  padding: var(--sp-4) 0; border-bottom: 1px solid var(--ring);
+}
+.pe-slot:last-child { border-bottom: none; }
+.pe-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+
+/* filas de rutinas archivadas: texto a la izquierda, boton a la derecha */
+.pe-archived .pe-slot { flex-direction: row; align-items: center; justify-content: space-between; }
+.pe-archived .pe-slot-text { flex: 1; min-width: 0; }
+.pe-archived summary {
+  display: flex; align-items: center; min-height: 46px; cursor: pointer;
+  font-size: var(--t-label); font-weight: 800; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--ink-1);
+  border-bottom: 2px solid var(--ring);
+  margin-top: var(--sp-6);
+}
+.pe-archived[open] summary { border-bottom-color: var(--ink-1); }
+
+.pe-danger-title { color: var(--alert); border-bottom-color: var(--alert); }
+
+/* ---------- botones de icono ---------- */
+
+.pe-icon {
+  display: grid; place-items: center;
+  width: 46px; min-width: 46px; height: 46px; min-height: 46px; padding: 0;
+}
+.pe-icon-danger { color: var(--alert); border-color: var(--alert); }
+.pe-icon-danger:hover { background: var(--alert); color: var(--plane); }
+
+/* ---------- estados vacios y mensajes ---------- */
+
+.pe-empty { padding: var(--sp-5) 0; color: var(--ink-3); }
+.pe-empty h3 { font-size: var(--t-title); color: var(--ink-1); margin-bottom: var(--sp-2); }
+.pe-error {
+  margin: var(--sp-2) 0 0; color: var(--alert);
+  font-size: var(--t-meta); font-weight: 700;
+}
+.pe-error::before { content: 'Revisa: '; }
+.pe-warn { color: var(--ink-1); border-left: 3px solid var(--alert); padding-left: var(--sp-3); }
+.pe-count { margin: var(--sp-4) 0 0; }
+
+/* ---------- hoja modal (el contenedor es components/BottomSheet) ---------- */
+
+.pe-confirm-body { margin-bottom: var(--sp-5); }
+.sheet.pe-scope form { margin-top: var(--sp-4); }
+.pe-edit-name { color: var(--ink-1); font-weight: 800; margin: 0; overflow-wrap: anywhere; }
+
+@keyframes pe-rise { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* ---------- selector de ejercicios ---------- */
+
+.pe-chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-3); }
+.pe-chip { min-height: 44px; padding: 0 var(--sp-4); }
+.pe-chip[aria-pressed='true'] {
+  background: var(--accent); border-color: var(--accent); color: var(--on-accent);
+}
+.pe-pick {
+  display: flex; align-items: center; gap: var(--sp-3); width: 100%;
+  min-height: 58px; padding: var(--sp-3) 0;
+  border: none; border-bottom: 1px solid var(--ring); border-radius: var(--r-0);
+  background: none; color: var(--ink-1); text-align: left;
+  text-transform: none; letter-spacing: normal;
+}
+.pe-pick:hover { background: var(--surface-2); }
+/* Ya esta en la rutina: visible pero no elegible (regla de un ejercicio por rutina). */
+.pe-pick:disabled { opacity: 0.45; cursor: not-allowed; }
+.pe-pick:disabled:hover { background: none; }
+.pe-pick-text { flex: 1; min-width: 0; }
+
+/* ---------- formularios ---------- */
+
+.pe-fieldset { border: none; margin: 0; padding: 0; min-width: 0; }
+.pe-fieldset legend {
+  padding: 0; margin-bottom: var(--sp-2);
+  font-size: 10px; font-weight: 700; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--ink-3);
+}
+.pe-pair { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); }
+.pe-fieldset .pe-field, .pe-fieldset .pe-toggle { margin-top: var(--sp-3); }
+.pe-fieldset .pe-pair + .pe-toggle { margin-top: var(--sp-4); }
+.pe-fieldset .pe-field:first-child { margin-top: 0; }
+
+.pe-stepper { display: grid; grid-template-columns: 46px minmax(0, 1fr) 46px; gap: var(--sp-2); align-items: center; }
+.pe-stepper input { text-align: center; }
+
+.pe-toggle {
+  display: inline-flex; align-items: center; gap: var(--sp-3);
+  text-transform: none; letter-spacing: normal; font-size: var(--t-body); font-weight: 700;
+  color: var(--ink-1);
+}
+.pe-toggle-box {
+  display: grid; place-items: center; width: 24px; height: 24px; flex: none;
+  border: 2px solid var(--ink-3); border-radius: var(--r-1);
+}
+.pe-toggle[aria-checked='true'] .pe-toggle-box {
+  background: var(--accent); border-color: var(--accent); color: var(--on-accent);
+}
+.pe-toggle-box svg { width: 16px; height: 16px; stroke-width: 3; }
+
+/* ---------- aviso de deshacer ---------- */
+
+.pe-undo {
+  position: fixed; left: max(18px, var(--safe-l)); right: max(18px, var(--safe-r));
+  bottom: calc(78px + var(--safe-b)); z-index: 60;
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3);
+  background: var(--surface-2); color: var(--ink-1);
+  border-top: 3px solid var(--accent);
+  padding: var(--sp-2) var(--sp-4);
+  font-size: var(--t-meta); font-weight: 700;
+  animation: pe-rise var(--dur-2) ease-out;
+}
+.pe-undo button { flex: none; color: var(--accent-ink); border-color: var(--accent-ink); }
+
+@media (max-width: 420px) {
+  .pe-pair { gap: var(--sp-2); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pe-undo { animation: none; }
+}

@@ -1,4 +1,6 @@
-export type RoutineId = 'dia1' | 'dia2' | 'dia3'
+/** Identificador de rutina. Ya no es una union cerrada: el plan es dato
+ *  editable (ids como 'espalda-d1' o 'dia1' archivada), no codigo. */
+export type RoutineId = string
 
 export interface Exercise {
   /** Identificador estable. No cambiarlo nunca: es la llave del historial. */
@@ -26,12 +28,125 @@ export interface Routine {
   exercises: Exercise[]
 }
 
+/* ---------- plan de entrenamiento editable ---------- */
+
+export type ExerciseCategory = 'strength' | 'core' | 'mobility' | 'cardio'
+
+/** Ejercicio de la biblioteca. Una sola fila por movimiento: los slots del
+ *  plan lo referencian por id, y el historial se agrupa por ese id. */
+export interface LibraryExercise {
+  /** Estable. Nunca se cambia: es la llave del historial. */
+  id: string
+  name: string
+  category: ExerciseCategory
+  equipment: string
+  primaryMuscles: string[]
+  secondaryMuscles: string[]
+  /** Pasos de ejecucion, redactados para esta app. */
+  steps: string[]
+  /** Claves de seguridad para la espalda. */
+  cues: string[]
+  alternativeId?: string
+  alternativeText?: string
+  /** slug en MuscleWiki (null = abrir una busqueda). id queda reservado para
+   *  la API oficial; hoy siempre es null. */
+  musclewiki: { slug: string | null; id: number | null }
+  /** Ejercicio creado por la persona usuaria. */
+  custom?: boolean
+}
+
+/** Que se prescribe en un slot: repeticiones, tiempo, distancia, o solo una
+ *  indicacion (nota) sin series que registrar. */
+export type Target =
+  | { kind: 'reps'; low: number; high: number; perSide?: boolean; holdSec?: number; sideUnit?: 'pierna' }
+  | { kind: 'time'; lowSec: number; highSec: number; perSide?: boolean }
+  | { kind: 'distance'; meters: number; perSide?: boolean }
+  | { kind: 'note' }
+
+export interface PlanSlot {
+  id: string
+  exerciseId: string
+  /** Series base (semanas 3 a 6). Las fases ajustan desde aca. */
+  sets: number
+  target: Target
+  restSec: number
+  /** "Claves tecnicas" del plan. */
+  note: string
+  /** Ejercicios #1 y #2 de cada dia de fuerza: suben a 4 series en 8-11. */
+  primary?: boolean
+  /** Une superseries y circuitos. */
+  group?: string
+  /** Restringe el slot a un rango de semanas del bloque. */
+  weeks?: { from: number; to?: number }
+  /** Nombre visible del ejercicio solo en esta rutina; reemplaza al nombre del
+   *  ejercicio. Lo usa la migracion para conservar nombres que el editor
+   *  anterior permitia cambiar. */
+  label?: string
+}
+
+export interface RoutineBlock {
+  id: string
+  title: string
+  note: string
+  slots: PlanSlot[]
+}
+
+export interface PlanRoutine {
+  id: RoutineId
+  name: string
+  focus: string
+  intro: string
+  duration: string
+  warmup: boolean
+  blocks: RoutineBlock[]
+  /** Archivar no borra: el historial conserva nombre y ejercicios. */
+  archived?: boolean
+}
+
+/** Como una fase ajusta las series de un slot. */
+export type SetsRule =
+  | { kind: 'cap'; sets: number }
+  | { kind: 'base' }
+  | { kind: 'primaryBoost'; sets: number }
+  | { kind: 'half' }
+
+export interface Phase {
+  fromWeek: number
+  toWeek: number
+  /** Celdas de la tabla de progresion del plan, tal cual. */
+  sets: string
+  intensity: string
+  goal: string
+  rule: SetsRule
+  loadNote: string
+}
+
+export interface TrainingPlan {
+  id: string
+  name: string
+  schemaVersion: 1
+  weeks: number
+  warmup: RoutineBlock
+  routines: PlanRoutine[]
+  phases: Phase[]
+  weekTemplate: WeeklyRoutine
+  tips: string[]
+  /** Ejercicios creados por la persona usuaria; viven dentro del plan. */
+  customExercises: LibraryExercise[]
+}
+
 export interface SetLog {
   exerciseId: string
   setIndex: number
   weight: number | null
   reps: number | null
   done: boolean
+  /** Segundos sostenidos, para items con objetivo de tiempo. Opcional: las
+   *  sesiones guardadas antes de este campo siguen siendo validas. */
+  durationSec?: number | null
+  /** Metros recorridos, para items con objetivo de distancia. Opcional por lo
+   *  mismo. */
+  distanceM?: number | null
 }
 
 export type SessionKind = 'strength' | 'swim'
@@ -55,6 +170,9 @@ export interface StrengthSession extends SessionBase {
   kind: 'strength'
   routineId: RoutineId
   sets: SetLog[]
+  /** Dolor 0-10 por ejercicio (llave = exerciseId). Opcional: las sesiones
+   *  guardadas antes de este campo siguen siendo validas. */
+  pain?: Record<string, number>
 }
 
 /** Estilo de un bloque de natacion. Todavia no hay forma de elegirlo desde la
@@ -171,13 +289,15 @@ export interface Config {
  *  sesion. version 2 = union discriminada con normalizeSession aplicado al
  *  leer. Union literal a proposito, no `number`: un `number` desnudo pierde
  *  la compuerta de compilacion que obliga a decidir que hacer con cada
- *  version nueva. */
+ *  version nueva. version 3 = incluye el plan editable. */
 export interface Backup {
   app: 'fitplan'
-  version: 1 | 2
+  version: 1 | 2 | 3
   exportedAt: string
   sessions: Session[]
   measurements: Measurement[]
   exerciseMeta: ExerciseMeta[]
   config: Config | null
+  /** Plan de entrenamiento (desde la version 3). Ausente en v1/v2. */
+  plan?: TrainingPlan
 }

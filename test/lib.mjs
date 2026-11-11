@@ -114,23 +114,26 @@ export const STORE_MEASUREMENTS = 'measurements'
 export const STORE_EXERCISE_META = 'exerciseMeta'
 export const STORE_CONFIG = 'config'
 export const CONFIG_KEY = 'config'
+// The editable plan is persisted under this key of the same config store.
+export const PLAN_KEY = 'plan'
 
 const DEFAULT_BASE = 'https://john-santa.github.io/fitplan/'
 
-// Mirrors the *shape* of src/lib/plan.ts's DEFAULT_CONFIG (not necessarily
-// its values) so seedConfig() can always write a structurally complete
-// Config even when the caller only overrides one or two fields. If Config
-// grows new required fields, add matching baseline fields here — this one
-// (`weeklyRoutine`) was itself missing for a while and nothing caught it,
-// because mergeConfig() silently repairs an absent field with the app's own
-// default. That repair is exactly why: without a `weeklyRoutine` here, no
-// check could ever seed a non-default weekly schedule (e.g. "today is a
-// swim day"), since seedConfig() would always hand the app back its own
-// default regardless of what the test asked for.
+// Mirrors src/lib/plan.ts's DEFAULT_CONFIG (the editable-plan default: block
+// 2026-11-16..2027-02-07 and the Mon-Fri = Dias 1-5 week) so seedConfig() always
+// writes a structurally complete Config even when the caller only overrides one
+// or two fields. It deliberately does NOT use the pre-plan values (block
+// 2026-08-04, legacy dia1..dia3 week): the boot migration rewrites those, so a
+// baseline carrying them would silently turn every seedConfig() check into a
+// migration check. Scenarios that need the pre-plan config (MIG-01) pass it
+// explicitly as their own fixture. If Config grows new required fields, add
+// matching baseline fields here — mergeConfig() silently repairs an absent
+// field with the app's own default, which would hide the gap.
+const REST_NOTE = 'Descanso activo: tus 10.000 pasos'
 const BASELINE_CONFIG = {
   heightCm: 173,
-  blockStart: '2026-08-04',
-  blockEnd: '2026-09-28',
+  blockStart: '2026-11-16',
+  blockEnd: '2027-02-07',
   goal: {
     weight: 76.5,
     fatPct: 22.2,
@@ -142,17 +145,15 @@ const BASELINE_CONFIG = {
     chest: 102.5,
     neck: 40.5,
   },
-  // Mirrors src/lib/plan.ts's DEFAULT_WEEKLY_ROUTINE values exactly (not
-  // just its shape) — this is what a check gets unless it overrides
-  // `weeklyRoutine` wholesale in partialConfig.
+  // Index 0 = Sunday .. 6 = Saturday (same as Date#getDay()).
   weeklyRoutine: [
-    { kind: 'rest', title: '', note: 'Estiramiento y caminata liviana. Dedica dos horas a cocinar las cinco cenas de la semana: con cena a las 22:15, esta es la tarea más importante del domingo.' },
-    { kind: 'training', routineId: 'dia1', title: '', note: '20:30 en el gimnasio' },
-    { kind: 'swim', title: '', note: '20:00 a 21:00. Cierra el segundo trabajo a las 19:30 y come la fruta o el batido antes de salir. En casa a las 22:30, cena lista para calentar y a dormir a las 23:30.' },
-    { kind: 'training', routineId: 'dia2', title: '', note: '20:30 en el gimnasio' },
-    { kind: 'swim', title: '', note: '20:00 a 21:00. Cierra el segundo trabajo a las 19:30 y come la fruta o el batido antes de salir. En casa a las 22:30, cena lista para calentar y a dormir a las 23:30.' },
-    { kind: 'training', routineId: 'dia3', title: '', note: '20:30 en el gimnasio' },
-    { kind: 'walk', title: '', note: '60 a 75 minutos a la hora que quieras. Dormir 8 h 45.' },
+    { kind: 'rest', title: '', note: REST_NOTE },
+    { kind: 'training', routineId: 'espalda-d1', title: '', note: '60 min' },
+    { kind: 'training', routineId: 'espalda-d2', title: '', note: '60 min' },
+    { kind: 'training', routineId: 'espalda-d3', title: '', note: '45–50 min' },
+    { kind: 'training', routineId: 'espalda-d4', title: '', note: '60 min' },
+    { kind: 'training', routineId: 'espalda-d5', title: '', note: '60 min' },
+    { kind: 'rest', title: '', note: REST_NOTE },
   ],
   poolLengthM: 25,
 }
@@ -258,6 +259,33 @@ async function seedStore(page, storeName, value, key) {
   await page.evaluate(seedStoreInPage, { dbName: DB_NAME, dbVersion: DB_VERSION, storeName, value, key })
 }
 
+// Reads one value by key from a store, from inside the page. Used to assert on
+// what the app persisted (e.g. the `plan` record under the config store).
+function readStoreInPage({ dbName, dbVersion, storeName, key }) {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(dbName, dbVersion)
+    req.onsuccess = () => {
+      const db = req.result
+      const get = db.transaction(storeName, 'readonly').objectStore(storeName).get(key)
+      get.onsuccess = () => {
+        db.close()
+        resolve(get.result === undefined ? null : get.result)
+      }
+      get.onerror = () => reject(get.error)
+    }
+    req.onerror = () => reject(req.error)
+  })
+}
+
+/**
+ * Reads a persisted value straight from IndexedDB (null when the key is
+ * absent). `storeName` defaults to the config store, where both the `config`
+ * and `plan` records live (out-of-line keys, so no DB_VERSION bump).
+ */
+export async function readStoreValue(page, key, storeName = STORE_CONFIG) {
+  return page.evaluate(readStoreInPage, { dbName: DB_NAME, dbVersion: DB_VERSION, storeName, key })
+}
+
 /**
  * Write `partialConfig` (shallow-merged over a baseline Config, with `goal`
  * merged one level deep) into IndexedDB before the app has a chance to read
@@ -270,17 +298,44 @@ async function seedStore(page, storeName, value, key) {
  */
 export async function seedConfig(page, partialConfig = {}, base) {
   const target = base || process.env.BASE || DEFAULT_BASE
-  const config = {
-    ...BASELINE_CONFIG,
-    ...partialConfig,
-    goal: { ...BASELINE_CONFIG.goal, ...(partialConfig.goal ?? {}) },
-  }
+  const config = buildConfig(partialConfig)
 
   await openSeedDb(page, target)
   await seedStore(page, STORE_CONFIG, config, CONFIG_KEY)
   await page.goto(target, { waitUntil: 'networkidle' })
 
   return config
+}
+
+// Shallow-merge over the baseline, `goal` one level deep (see seedConfig()).
+function buildConfig(partialConfig = {}) {
+  return {
+    ...BASELINE_CONFIG,
+    ...partialConfig,
+    goal: { ...BASELINE_CONFIG.goal, ...(partialConfig.goal ?? {}) },
+  }
+}
+
+/**
+ * Seeds several stores in one go, then boots the app once. seedConfig() and
+ * seedSessions() each end with the real navigation, so calling both in a row
+ * would boot the app after the first one — fatal for migration scenarios,
+ * where the config AND the sessions must already be on disk (and no `plan`
+ * record yet) at the app's first boot.
+ *
+ * `{ config, sessions, measurements }` — each optional. `config` is a partial
+ * merged exactly like seedConfig() does; pass a complete Config (e.g. the
+ * pre-plan one) to seed it verbatim. Nothing is ever written under the `plan`
+ * key: whether the app finds a plan record is the scenario's business.
+ */
+export async function seedAll(page, { config, sessions, measurements } = {}, base) {
+  const target = base || process.env.BASE || DEFAULT_BASE
+
+  await openSeedDb(page, target)
+  if (config) await seedStore(page, STORE_CONFIG, buildConfig(config), CONFIG_KEY)
+  if (sessions) await seedStore(page, STORE_SESSIONS, sessions)
+  if (measurements) await seedStore(page, STORE_MEASUREMENTS, measurements)
+  await page.goto(target, { waitUntil: 'networkidle' })
 }
 
 /**
