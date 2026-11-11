@@ -10,6 +10,9 @@ interface BottomSheetProps {
   children: ReactNode
   /** Clase extra para estilos propios de una vista (p. ej. `pe-scope` del editor). */
   className?: string
+  /** Oculta el titular visible de la cabecera (sigue siendo el nombre accesible).
+   *  Para hojas que pintan su propio titular dentro del contenido. */
+  titleHidden?: boolean
 }
 
 /** Hoja inferior compartida: scrim, cierre con Escape o toque en el scrim,
@@ -17,7 +20,7 @@ interface BottomSheetProps {
 /** Unica hoja modal de la app (ficha, señales de alarma, editor del plan).
  *  Se monta en un portal sobre el body para quedar por encima del toast y de
  *  la barra de pestañas sin depender del contexto de apilamiento de la vista. */
-export default function BottomSheet({ title, onClose, children, className }: BottomSheetProps) {
+export default function BottomSheet({ title, onClose, children, className, titleHidden = false }: BottomSheetProps) {
   const titleId = useId()
   const sheetRef = useRef<HTMLDivElement>(null)
   const onCloseRef = useRef(onClose)
@@ -67,12 +70,14 @@ export default function BottomSheet({ title, onClose, children, className }: Bot
       <div className="sheet-scrim" aria-hidden="true" onClick={onClose} />
       <div className={className ? `sheet ${className}` : 'sheet'} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} ref={sheetRef}>
         <header className="sheet-head">
-          <h2 id={titleId} className="sheet-title">{title}</h2>
+          <span className="sheet-spacer" aria-hidden="true" />
+          <div className="sheet-grab" aria-hidden="true" />
           <button type="button" className="sheet-close" aria-label="Cerrar" onClick={onClose}>
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M6 6l12 12M18 6 6 18" />
             </svg>
           </button>
+          <h2 id={titleId} className={titleHidden ? 'sheet-sr' : 'sheet-title'}>{title}</h2>
         </header>
         <div className="sheet-body">{children}</div>
       </div>

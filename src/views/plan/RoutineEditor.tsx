@@ -111,7 +111,7 @@ export default function RoutineEditor({ plan, routine, onBack, onCommit, onArchi
   return (
     <>
       <button type="button" className="ghost pe-back" onClick={onBack}>
-        <Icon name="back" /> Rutinas
+        <Icon name="back" /> Plan
       </button>
       <div className="eyebrow">Rutina · {exerciseCount === 1 ? '1 ejercicio' : `${exerciseCount} ejercicios`}</div>
       <h1>{routine.name}</h1>

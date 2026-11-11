@@ -29,7 +29,7 @@ export default function HoldTimer({ label, onStop }: { label: string; onStop: (s
   return (
     <button
       type="button"
-      className={running ? 'sp-hold running' : 'sp-hold'}
+      className={running ? 'ses-hold running' : 'ses-hold'}
       onClick={toggle}
       aria-label={`${label}: ${running ? 'detener' : 'iniciar'} cronómetro`}
     >

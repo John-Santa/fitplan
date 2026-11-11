@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { PlanRoutine, PlanSlot, SetLog, StrengthSession } from '../../types'
 import { lastPerformance } from '../../lib/calc'
 import { blockWeekNumber, phaseForWeek, setsForSlot } from '../../lib/phases'
@@ -9,8 +9,8 @@ import { RedFlagsSheet } from '../Guide'
 import SessionShell from './SessionShell'
 import SlotCard from './SlotCard'
 import WarmupStep from './WarmupStep'
-import { AlertIcon } from './PlanIcons'
-import './session-plan.css'
+import { ArrowRightIcon, CheckCircle } from './PlanIcons'
+import { completionPatch, refFor } from './SlotCard'
 
 interface Props {
   session: StrengthSession
@@ -18,8 +18,6 @@ interface Props {
   onFinish: () => void
   onDiscard: () => void
 }
-
-type RailState = 'current' | 'done' | 'partial' | 'pending'
 
 /** Un paso del riel: el calentamiento fijo o un paso de trabajo. */
 type Item = { kind: 'warmup' } | { kind: 'work'; step: SessionStep }
@@ -60,20 +58,11 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
   )
 
   const [currentIndex, setCurrentIndex] = useState(0)
-  const [cueOpen, setCueOpen] = useState<Record<string, boolean>>({})
   const [warmupTicked, setWarmupTicked] = useState<Record<string, boolean>>({})
+  /** Series saltadas ("slotId:indice"). Solo pantalla: no se guardan. */
+  const [skipped, setSkipped] = useState<Set<string>>(() => new Set())
   const [sheetSlot, setSheetSlot] = useState<PlanSlot | null>(null)
   const [flagsOpen, setFlagsOpen] = useState(false)
-  const railRef = useRef<HTMLDivElement>(null)
-
-  // El riel puede desplazarse en horizontal cuando las celdas de 44px no
-  // caben. Al cambiar de paso se trae la celda actual a la vista con el minimo
-  // movimiento ('nearest' no hace nada si ya se ve ni mueve la pagina). Solo
-  // depende de currentIndex, asi que no se dispara al teclear peso o reps.
-  useEffect(() => {
-    const cell = railRef.current?.children.item(currentIndex)
-    if (cell instanceof HTMLElement) cell.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-  }, [currentIndex])
 
   const nameOf = (slot: PlanSlot) => slotExerciseName(plan, slot)
   const doneOf = (slot: PlanSlot) =>
@@ -81,6 +70,17 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
   const stepDone = (step: SessionStep) => step.slots.reduce((a, s) => a + doneOf(s), 0)
   const stepTarget = (step: SessionStep) => step.slots.reduce((a, s) => a + slotTarget(s, phase), 0)
   const itemName = (it: Item) => (it.kind === 'warmup' ? 'Calentamiento' : it.step.slots.map(nameOf).join(' + '))
+  const logsOf = (slot: PlanSlot) => session.sets.filter(s => s.exerciseId === slot.exerciseId)
+  const isSkipped = (slot: PlanSlot, i: number) => skipped.has(`${slot.id}:${i}`)
+  /** Primera serie sin hacer ni saltar (null = el slot ya termino). */
+  const currentOf = (slot: PlanSlot): number | null => {
+    const logs = logsOf(slot)
+    const n = slotTarget(slot, phase)
+    for (let i = 0; i < n; i++) {
+      if (!logs.some(l => l.setIndex === i && l.done) && !isSkipped(slot, i)) return i
+    }
+    return null
+  }
 
   const update = (exerciseId: string, setIndex: number, patch: Partial<SetLog>) => {
     const idx = session.sets.findIndex(s => s.exerciseId === exerciseId && s.setIndex === setIndex)
@@ -101,152 +101,200 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
   const safeIndex = Math.min(currentIndex, Math.max(items.length - 1, 0))
   const item = items[safeIndex]
   const multiBlock = routine.blocks.length > 1
+  const isLastItem = safeIndex === items.length - 1
+  const next = items[safeIndex + 1]
 
-  const rail = items.map((it, i) => {
-    let state: RailState
-    let label: string
-    let done: number
-    let target: number
-    if (it.kind === 'warmup') {
-      done = plan.warmup.slots.filter(s => warmupTicked[s.id]).length
-      target = plan.warmup.slots.length
-      label = 'Cal'
-    } else {
-      done = stepDone(it.step)
-      target = stepTarget(it.step)
-      label = String(i - (hasWarmup ? 1 : 0) + 1).padStart(2, '0')
-    }
-    state = i === safeIndex ? 'current' : done >= target ? 'done' : done > 0 ? 'partial' : 'pending'
-    return { i, label, name: itemName(it), done, target, state }
+  const segs = items.map((it, i) => {
+    const done = it.kind === 'warmup' ? plan.warmup.slots.filter(s => warmupTicked[s.id]).length : stepDone(it.step)
+    const target = it.kind === 'warmup' ? plan.warmup.slots.length : stepTarget(it.step)
+    const state = i === safeIndex ? 'current' : done >= target ? 'done' : done > 0 ? 'partial' : 'pending'
+    return { i, name: itemName(it), done, target, state, warm: it.kind === 'warmup' }
   })
+  const workPos = safeIndex - (hasWarmup ? 1 : 0) + 1
+  const workCount = steps.length
+  const pct = totalTarget > 0 ? Math.round((totalDone / totalTarget) * 100) : 0
+  const phaseText = [weekLabel(plan.weeks, week), phase?.intensity, phase?.loadNote].filter(Boolean).join(' · ')
 
-  const phaseText = [phase?.intensity, phase?.loadNote].filter(Boolean).join(' · ')
+  const progress = (
+    <div className="ses-prog">
+      <div className="ses-prog-meta">
+        <span>{item?.kind === 'warmup' ? 'Calentamiento' : `Ejercicio ${workPos} de ${workCount}`}</span>
+        <span className="good">{pct}% completado</span>
+      </div>
+      <div className="ses-segs">
+        {segs.map(sg => (
+          <button
+            key={sg.i}
+            type="button"
+            className={`ses-seg ${sg.state}`}
+            onClick={() => setCurrentIndex(sg.i)}
+            aria-current={sg.state === 'current' ? 'step' : undefined}
+            aria-label={`${sg.warm ? '' : `${sg.i - (hasWarmup ? 1 : 0) + 1}. `}${sg.name} — ${sg.done} de ${sg.target} ${sg.warm ? 'items' : 'series'}`}
+          >
+            <i />
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+
+  /* ---- que hace el boton principal ---- */
+  const step = item?.kind === 'work' ? item.step : null
+  const group = step?.group ?? false
+  // Slot en foco: el de la serie mas atrasada (en superserie, rota A, B, A, B).
+  let focus: { slot: PlanSlot; index: number; isLast: boolean } | null = null
+  if (step) {
+    let best: number | null = null
+    step.slots.forEach((slot, idx) => {
+      const c = currentOf(slot)
+      if (c !== null && (best === null || c < (currentOf(step.slots[best]) as number))) best = idx
+    })
+    if (best !== null) {
+      const b: number = best
+      focus = { slot: step.slots[b], index: currentOf(step.slots[b]) as number, isLast: b === step.slots.length - 1 }
+    }
+  }
+
+  const goNext = () => next && setCurrentIndex(safeIndex + 1)
 
   return (
     <SessionShell
       eyebrow={routine.name}
+      startedAt={session.startedAt}
       doneCount={totalDone}
       totalCount={totalTarget}
-      unitLabel="series"
       onFinish={onFinish}
       finishDisabled={totalDone === 0}
       notes={session.notes}
       onNotesChange={notes => onChange({ ...session, notes })}
       onDiscard={onDiscard}
-      headerExtra={
-        <>
-          <div className="sp-phase">
-            <p className="sp-phase-text">
-              <strong>{weekLabel(plan.weeks, week)}</strong>
-              {phaseText && <> · {phaseText}</>}
-            </p>
-            <button type="button" className="sp-alarm" onClick={() => setFlagsOpen(true)}>
-              <AlertIcon /> <span className="sp-alarm-label">Señales de alarma</span>
-            </button>
-          </div>
-          <div className="rail" ref={railRef}>
-            {rail.map(r => (
-              <button
-                key={r.i}
-                className={r.state === 'pending' ? undefined : r.state}
-                onClick={() => setCurrentIndex(r.i)}
-                aria-label={`${r.label === 'Cal' ? '' : `${Number(r.label)}. `}${r.name} — ${r.done} de ${r.target} ${r.label === 'Cal' ? 'items' : 'series'}`}
-              >
-                {r.label}
-              </button>
-            ))}
-          </div>
-        </>
-      }
-    >
-      {startRest => {
-        if (!item) {
-          return (
-            <div className="ex-panel">
-              <p className="hint">Esta rutina no tiene ejercicios en esta semana. Agrégalos desde el plan.</p>
-            </div>
-          )
+      onAlarm={() => setFlagsOpen(true)}
+      progress={progress}
+      showEnd={isLastItem}
+      footer={startRest => {
+        const complete = () => {
+          if (!focus) return
+          const { slot, index, isLast } = focus
+          const s = logsOf(slot).find(l => l.setIndex === index)
+          update(slot.exerciseId, index, completionPatch(slot, s, refFor(lastPerformance(strengthSessions, slot.exerciseId, session.id), index)))
+          if (isLast && slot.restSec > 0) startRest(slot.restSec)
+        }
+        const skip = () => {
+          if (!focus) return
+          setSkipped(prev => new Set(prev).add(`${focus.slot.id}:${focus.index}`))
         }
 
-        const renderSlot = (slot: PlanSlot, isLastOfStep: boolean, nested: boolean) => (
+        let primary: { label: string; icon: 'check' | 'arrow'; onClick: () => void; disabled?: boolean }
+        if (!item) primary = { label: 'Terminar entrenamiento', icon: 'check', onClick: onFinish, disabled: totalDone === 0 }
+        else if (item.kind === 'warmup') primary = { label: 'Empezar entrenamiento', icon: 'arrow', onClick: goNext, disabled: !next }
+        else if (focus) primary = { label: 'Completar serie', icon: 'check', onClick: complete }
+        else if (next) primary = { label: 'Siguiente ejercicio', icon: 'arrow', onClick: goNext }
+        else primary = { label: 'Terminar entrenamiento', icon: 'check', onClick: onFinish, disabled: totalDone === 0 }
+
+        return (
+          <>
+            <div className="ses-sub">
+              {item?.kind === 'work' ? (
+                <button type="button" className="ses-textbtn" onClick={skip} disabled={!focus}>Saltar</button>
+              ) : (
+                <span />
+              )}
+              {item && next ? (
+                <button type="button" className="ses-textbtn" onClick={goNext}>
+                  Siguiente ejercicio <ArrowRightIcon />
+                </button>
+              ) : item && isLastItem ? (
+                <button type="button" className="ses-textbtn" onClick={onFinish} disabled={totalDone === 0}>
+                  Terminar ahora
+                </button>
+              ) : null}
+            </div>
+            <button type="button" className="ses-primary" onClick={primary.onClick} disabled={primary.disabled}>
+              {primary.icon === 'check' ? <CheckCircle /> : null}
+              {primary.label}
+              {primary.icon === 'arrow' ? <ArrowRightIcon /> : null}
+            </button>
+          </>
+        )
+      }}
+    >
+      {() => {
+        if (!item) {
+          return <p className="ses-hint">Esta rutina no tiene ejercicios en esta semana. Agrégalos desde el plan.</p>
+        }
+
+        const renderSlot = (slot: PlanSlot, label?: string) => (
           <SlotCard
             key={slot.id}
             slot={slot}
             name={nameOf(slot)}
             sets={slotTarget(slot, phase)}
-            logs={session.sets.filter(s => s.exerciseId === slot.exerciseId)}
+            logs={logsOf(slot)}
             prev={lastPerformance(strengthSessions, slot.exerciseId, session.id)}
             seat={meta[slot.exerciseId]?.seat ?? ''}
             pain={session.pain?.[slot.exerciseId]}
-            cueOpen={cueOpen[slot.id]}
-            startsRest={isLastOfStep}
-            nested={nested}
+            current={currentOf(slot)}
+            skipped={new Set(Array.from({ length: slotTarget(slot, phase) }, (_, i) => i).filter(i => isSkipped(slot, i)))}
+            groupLabel={label}
             onUpdate={(i, patch) => update(slot.exerciseId, i, patch)}
-            onRest={startRest}
             onPain={v => setPain(slot.exerciseId, v)}
             onInfo={() => setSheetSlot(slot)}
-            onToggleCue={() =>
-              setCueOpen(c => ({ ...c, [slot.id]: !(c[slot.id] ?? lastPerformance(strengthSessions, slot.exerciseId, session.id) === null) }))
-            }
             onSeat={v => saveMeta({ exerciseId: slot.exerciseId, seat: v, note: meta[slot.exerciseId]?.note ?? '' })}
           />
         )
 
-        const next = items[safeIndex + 1]
-        const prevItem = items[safeIndex - 1]
+        let body
+        if (item.kind === 'warmup') {
+          body = (
+            <WarmupStep
+              plan={plan}
+              block={plan.warmup}
+              ticked={warmupTicked}
+              onToggle={id => setWarmupTicked(t => ({ ...t, [id]: !t[id] }))}
+              onInfo={setSheetSlot}
+            />
+          )
+        } else {
+          const st = item.step
+          const gLabel = group ? groupLabel(st.slots, slotTarget(st.slots[0], phase)) : undefined
+          body = (
+            <>
+              {multiBlock && st.firstInBlock && (
+                <div className="ses-block">
+                  <div className="ses-eyebrow">{st.blockTitle}</div>
+                  {st.blockNote !== '' && <p className="ses-hint">{st.blockNote}</p>}
+                </div>
+              )}
+              {group ? (
+                <section aria-label={gLabel}>
+                  {focus ? (
+                    <>
+                      {renderSlot(focus.slot, gLabel)}
+                      <p className="ses-hint">Una serie de cada ejercicio y luego descansa.</p>
+                      <ul className="ses-peers">
+                        {st.slots.map(sl => (
+                          <li key={sl.id} className={sl.id === focus.slot.id ? 'on' : undefined}>
+                            <span>{nameOf(sl)}</span>
+                            <span className="ses-peer-n">{doneOf(sl)} / {slotTarget(sl, phase)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  ) : (
+                    st.slots.map(sl => renderSlot(sl, gLabel))
+                  )}
+                </section>
+              ) : (
+                renderSlot(st.slots[0])
+              )}
+            </>
+          )
+        }
 
         return (
           <>
-            {item.kind === 'warmup' ? (
-              <WarmupStep
-                plan={plan}
-                block={plan.warmup}
-                ticked={warmupTicked}
-                onToggle={id => setWarmupTicked(t => ({ ...t, [id]: !t[id] }))}
-                onInfo={setSheetSlot}
-              />
-            ) : (
-              <div className="ex-panel">
-                {multiBlock && item.step.firstInBlock && (
-                  <div className="sp-block">
-                    <div className="eyebrow">{item.step.blockTitle}</div>
-                    {item.step.blockNote !== '' && <p className="hint">{item.step.blockNote}</p>}
-                  </div>
-                )}
-                {item.step.group ? (
-                  <section className="sp-group" aria-label={groupLabel(item.step.slots, slotTarget(item.step.slots[0], phase))}>
-                    <div className="sp-group-head">
-                      <span className="pill good">{groupLabel(item.step.slots, slotTarget(item.step.slots[0], phase))}</span>
-                      <span className="hint">Una serie de cada ejercicio y luego descansa.</span>
-                    </div>
-                    {item.step.slots.map((slot, idx) => renderSlot(slot, idx === item.step.slots.length - 1, true))}
-                  </section>
-                ) : (
-                  renderSlot(item.step.slots[0], true, false)
-                )}
-              </div>
-            )}
-
-            <div className="navrow">
-              <button
-                className="back"
-                disabled={safeIndex === 0}
-                onClick={() => setCurrentIndex(safeIndex - 1)}
-                aria-label={prevItem ? `Anterior: ${itemName(prevItem)}` : 'Anterior'}
-              >
-                ←
-              </button>
-              {next ? (
-                <button className="fwd" onClick={() => setCurrentIndex(safeIndex + 1)}>
-                  Siguiente · {itemName(next)}
-                </button>
-              ) : (
-                <button className="fwd primary" onClick={onFinish} disabled={totalDone === 0}>
-                  Terminar sesión
-                </button>
-              )}
-            </div>
-
+            {phaseText !== '' && <p className="ses-phase">{phaseText}</p>}
+            {body}
             {sheetSlot && <ExerciseSheet exerciseId={sheetSlot.exerciseId} slot={sheetSlot} onClose={() => setSheetSlot(null)} />}
             {flagsOpen && <RedFlagsSheet onClose={() => setFlagsOpen(false)} />}
           </>

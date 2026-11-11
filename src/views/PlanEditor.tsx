@@ -5,9 +5,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PlanRoutine, TrainingPlan } from '../types'
 import { useStore } from '../lib/store'
 import { useToast } from '../components/ui'
-import { addRoutine, archiveRoutine, resetToTemplate, restoreRoutine } from '../lib/planEdits'
+import { addCustomExercise, addRoutine, archiveRoutine, resetToTemplate, restoreRoutine } from '../lib/planEdits'
+import { blockWeekNumber, phaseForWeek } from '../lib/phases'
+import ExerciseSheet from '../components/ExerciseSheet'
 import ConfirmSheet from './plan/ConfirmSheet'
 import { Icon } from './plan/icons'
+import ExercisePicker from './plan/ExercisePicker'
 import RoutineEditor from './plan/RoutineEditor'
 import Sheet from '../components/BottomSheet'
 import './plan/plan-editor.css'
@@ -17,6 +20,14 @@ const UNDO_MS = 6000
 const countExercises = (r: PlanRoutine) => r.blocks.reduce((n, b) => n + b.slots.length, 0)
 const exercisesLabel = (n: number) => (n === 1 ? '1 ejercicio' : `${n} ejercicios`)
 
+const NO_TAKEN: ReadonlySet<string> = new Set()
+/** Lunes primero; los indices son Date.getDay() (0 = domingo). */
+const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0]
+const DAY_ABBR = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+const DAY_NAME = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
+const weeksLabel = (from: number, to: number, short = false) =>
+  `${short ? 'Sem' : from === to ? 'semana' : 'semanas'} ${from === to ? from : `${from}–${to}`}`
+
 type Dialog = { kind: 'new' } | { kind: 'archive'; routineId: string } | { kind: 'reset' } | null
 
 export default function PlanEditor({ onOpenGuide }: { onOpenGuide: () => void }) {
@@ -24,6 +35,9 @@ export default function PlanEditor({ onOpenGuide }: { onOpenGuide: () => void })
   const toast = useToast()
   const [openId, setOpenId] = useState<string | null>(null)
   const [dialog, setDialog] = useState<Dialog>(null)
+  const [editing, setEditing] = useState(false)
+  const [library, setLibrary] = useState(false)
+  const [infoId, setInfoId] = useState<string | null>(null)
   const [undo, setUndo] = useState<{ message: string; previous: TrainingPlan } | null>(null)
   const undoTimer = useRef<number | undefined>(undefined)
   const toastRef = useRef(toast)
@@ -143,73 +157,208 @@ export default function PlanEditor({ onOpenGuide }: { onOpenGuide: () => void })
     )
   }
 
+  const week = blockWeekNumber(new Date(), config.blockStart)
+  const phase = phaseForWeek(plan, week)
+  const total = plan.weeks
+  const todayIdx = new Date().getDay()
+  const trainingDays = config.weeklyRoutine.filter(d => d.kind === 'training').length
+  const markerPct = Math.min(Math.max((week - 0.5) / total, 0), 1) * 100
+
+  const renderDay = (idx: number) => {
+    const day = config.weeklyRoutine[idx]
+    const abbr = DAY_ABBR[idx]
+    const isToday = idx === todayIdx
+    if (day.kind === 'training') {
+      const routine = plan.routines.find(r => r.id === day.routineId)
+      const usable = routine && !routine.archived ? routine : undefined
+      const title = usable?.name ?? (day.title || 'Rutina no disponible')
+      const sub = usable
+        ? [usable.focus, exercisesLabel(countExercises(usable))].filter(Boolean).join(' · ')
+        : 'Elige otra rutina para este día en Ajustes'
+      const body = (
+        <>
+          <span className="pe-day-badge" aria-hidden="true">{abbr}</span>
+          <span className="pe-day-text">
+            <span className="pe-day-title">
+              <span>{title}</span>
+              {isToday && <span className="pe-today-pill">Hoy</span>}
+            </span>
+            <span className="pe-day-sub">{sub}</span>
+          </span>
+          {usable && <span className="pe-chev" aria-hidden="true"><Icon name="next" /></span>}
+        </>
+      )
+      return usable ? (
+        <button type="button" className="pe-day" data-today={isToday} onClick={() => setOpenId(usable.id)} aria-label={`${DAY_NAME[idx]}: ${title}`}>
+          {body}
+        </button>
+      ) : <div className="pe-day" data-today={isToday}>{body}</div>
+    }
+    const title = day.title || (day.kind === 'swim' ? 'Natación' : day.kind === 'walk' ? 'Caminata' : day.kind === 'rest' ? 'Descanso' : 'Libre')
+    const swim = day.kind === 'swim'
+    return (
+      <div className="pe-day" data-today={isToday} data-muted={!swim}>
+        <span className="pe-day-badge" aria-hidden="true">{abbr}</span>
+        <span className="pe-day-text">
+          <span className="pe-day-title">
+            <span>{title}</span>
+            {isToday && <span className="pe-today-pill">Hoy</span>}
+          </span>
+          {(day.note || !swim) && (
+            <span className="pe-day-sub">
+              <Icon name={swim ? 'swim' : 'steps'} />
+              {day.note || (swim ? 'Natación' : 'Descanso')}
+            </span>
+          )}
+        </span>
+      </div>
+    )
+  }
+
   return (
     <div className="pe-scope">
       <div className="pe-head">
         <div>
-          <div className="eyebrow">Plan</div>
           <h1>Tu plan</h1>
+          <p className="pe-plan-name">{plan.name} · {total} semanas</p>
         </div>
-        <button type="button" onClick={onOpenGuide}>
-          <Icon name="book" /> Guía
+        <button type="button" className="pe-edit-btn" aria-pressed={editing} onClick={() => setEditing(e => !e)}>
+          <Icon name="edit" /> {editing ? 'Listo' : 'Editar'}
         </button>
       </div>
-      <p className="muted pe-plan-name">{plan.name}</p>
 
-      <div className="section-title">Rutinas activas</div>
-      {active.length === 0 ? (
-        <div className="pe-empty">
-          <h3>No tienes rutinas activas</h3>
-          <p className="muted">Crea una rutina nueva o restaura una archivada.</p>
+      <section className="pe-phase" aria-label="Fase actual">
+        <div className="pe-phase-top">
+          <div>
+            <span className="pe-phase-kicker">Fase actual</span>
+            <h2 className="pe-phase-title">
+              {phase ? `${phase.goal} (${weeksLabel(phase.fromWeek, phase.toWeek)})` : 'Fuera del plan'}
+            </h2>
+          </div>
+          {phase && <span className="pe-phase-pill">{phase.sets} · {phase.intensity}</span>}
         </div>
-      ) : (
-        <ul className="pe-list">
-          {active.map(r => (
-            <li key={r.id}>
-              <button type="button" className="pe-routine" onClick={() => setOpenId(r.id)}>
-                <span className="pe-routine-text">
-                  <span className="pe-name">{r.name}</span>
-                  {r.focus && <span className="pe-sub">{r.focus}</span>}
-                  <span className="pe-meta">
-                    {r.duration && <span className="pill">{r.duration}</span>}
-                    <span className="pill">{exercisesLabel(countExercises(r))}</span>
-                  </span>
-                </span>
-                <span className="pe-chev" aria-hidden="true"><Icon name="next" /></span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      <button type="button" className="primary block pe-gap-md" onClick={() => setDialog({ kind: 'new' })}>
-        Agregar rutina
-      </button>
-
-      {archived.length > 0 && (
-        <details className="pe-archived">
-          <summary>Archivadas ({archived.length})</summary>
-          <p className="hint">Se conservan con su historial. Restaurarlas las vuelve a poner en tu plan.</p>
-          <ul className="pe-list">
-            {archived.map(r => (
-              <li key={r.id} className="pe-slot">
-                <div className="pe-slot-text">
-                  <div className="pe-name">{r.name}</div>
-                  <div className="pe-sub">{exercisesLabel(countExercises(r))}</div>
-                </div>
-                <button type="button" onClick={() => commit(restoreRoutine(plan, r.id), 'Rutina restaurada')} aria-label={`Restaurar ${r.name}`}>
-                  Restaurar
-                </button>
-              </li>
+        <div className="pe-timeline">
+          <div className="pe-bar" role="img" aria-label={`Semana ${week} de ${total}`}>
+            {plan.phases.map((p, i) => (
+              <span
+                key={i}
+                className={`pe-seg pe-seg-${i % 5}`}
+                data-current={phase === p}
+                style={{ flex: p.toWeek - p.fromWeek + 1 }}
+              />
             ))}
-          </ul>
-        </details>
+          </div>
+          {phase && <span className="pe-marker" style={{ left: `${markerPct}%` }} />}
+        </div>
+        <div className="pe-weekline">
+          <strong>Semana {Math.min(week, total)} de {total}</strong>
+          {phase?.loadNote && <span>· {phase.loadNote}</span>}
+        </div>
+        <div className="pe-legend">
+          {plan.phases.map((p, i) => (
+            <div key={i} className="pe-legend-item" data-current={phase === p} style={{ flex: p.toWeek - p.fromWeek + 1 }}>
+              <span className="pe-legend-name">{p.goal}</span>
+              <span className="pe-legend-range">{weeksLabel(p.fromWeek, p.toWeek, true)}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <div className="pe-week-head">
+        <h2>Semana</h2>
+        <span>{trainingDays === 1 ? '1 entrenamiento' : `${trainingDays} entrenamientos`}</span>
+      </div>
+      <ul className="pe-list">
+        {WEEK_ORDER.map(idx => <li key={idx}>{renderDay(idx)}</li>)}
+      </ul>
+
+      <div className="pe-links">
+        <button type="button" className="pe-link" onClick={onOpenGuide}>
+          <span className="pe-link-icon"><Icon name="shield" /></span>
+          <span>
+            <span className="pe-link-title">Guía de seguridad</span>
+            <span className="pe-link-sub">Señales de alarma</span>
+          </span>
+        </button>
+        <button type="button" className="pe-link" onClick={() => setLibrary(true)}>
+          <span className="pe-link-icon"><Icon name="book" /></span>
+          <span>
+            <span className="pe-link-title">Biblioteca de ejercicios</span>
+            <span className="pe-link-sub">Busca y consulta</span>
+          </span>
+        </button>
+      </div>
+
+      {editing && (
+        <section className="pe-manage" aria-label="Gestionar plan">
+          <h2>Rutinas activas</h2>
+          {active.length === 0 ? (
+            <div className="pe-empty">
+              <h3>No tienes rutinas activas</h3>
+              <p className="muted">Crea una rutina nueva o restaura una archivada.</p>
+            </div>
+          ) : (
+            <ul className="pe-list">
+              {active.map(r => (
+                <li key={r.id}>
+                  <button type="button" className="pe-routine" onClick={() => setOpenId(r.id)}>
+                    <span className="pe-routine-text">
+                      <span className="pe-name">{r.name}</span>
+                      {r.focus && <span className="pe-sub">{r.focus}</span>}
+                      <span className="pe-meta">
+                        {r.duration && <span className="pill">{r.duration}</span>}
+                        <span className="pill">{exercisesLabel(countExercises(r))}</span>
+                      </span>
+                    </span>
+                    <span className="pe-chev" aria-hidden="true"><Icon name="next" /></span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <button type="button" className="primary block pe-gap-md" onClick={() => setDialog({ kind: 'new' })}>
+            <Icon name="plus" /> Agregar rutina
+          </button>
+
+          {archived.length > 0 && (
+            <details className="pe-archived">
+              <summary>Archivadas ({archived.length})</summary>
+              <p className="hint">Se conservan con su historial. Restaurarlas las vuelve a poner en tu plan.</p>
+              <ul className="pe-list">
+                {archived.map(r => (
+                  <li key={r.id} className="pe-slot">
+                    <div className="pe-slot-text">
+                      <div className="pe-name">{r.name}</div>
+                      <div className="pe-sub">{exercisesLabel(countExercises(r))}</div>
+                    </div>
+                    <button type="button" onClick={() => commit(restoreRoutine(plan, r.id), 'Rutina restaurada')} aria-label={`Restaurar ${r.name}`}>
+                      Restaurar
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+
+          <h2 className="pe-gap-lg pe-danger-title">Restablecer</h2>
+          <p className="hint">Vuelve a poner las rutinas del plan original. Tu historial y tus rutinas propias se conservan.</p>
+          <button type="button" className="danger block pe-gap-md" onClick={() => setDialog({ kind: 'reset' })}>
+            Restablecer plan original
+          </button>
+        </section>
       )}
 
-      <div className="section-title pe-danger-title">Restablecer</div>
-      <p className="hint">Vuelve a poner las rutinas del plan original. Tu historial y tus rutinas propias se conservan.</p>
-      <button type="button" className="danger block pe-gap-md" onClick={() => setDialog({ kind: 'reset' })}>
-        Restablecer plan original
-      </button>
+      {library && (
+        <ExercisePicker
+          plan={plan}
+          mode="browse"
+          taken={NO_TAKEN}
+          onPick={id => { setLibrary(false); setInfoId(id) }}
+          onCreate={input => { setLibrary(false); commit(addCustomExercise(plan, input), 'Ejercicio creado') }}
+          onClose={() => setLibrary(false)}
+        />
+      )}
+      {infoId && <ExerciseSheet exerciseId={infoId} onClose={() => setInfoId(null)} />}
 
       {dialogs}
       {live}

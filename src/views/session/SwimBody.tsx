@@ -93,7 +93,7 @@ export default function SwimBody({ session, onChange, onFinish, onDiscard }: Pro
       eyebrow={DISCIPLINES.swim.label}
       doneCount={totalDone}
       totalCount={totalCount}
-      unitLabel="bloques"
+      startedAt={session.startedAt}
       onFinish={onFinish}
       finishDisabled={!canFinish}
       notes={session.notes}

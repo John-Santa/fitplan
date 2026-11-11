@@ -10,65 +10,64 @@
    ========================================================================= */
 
 /* ---------- 1. TIPOGRAFÍA ----------
-   Una sola familia, servida local para que funcione sin conexión.
-   Descarga Archivo (variable, wght 100–900 + wdth 62–125) de
-   fonts.google.com/specimen/Archivo y deja los .woff2 en public/fonts/.
-   Si el archivo no está, cae a la fuente del sistema sin romper nada.        */
-
-@font-face {
-  font-family: 'Archivo';
-  src: url('./assets/fonts/Archivo-Variable.woff2') format('woff2-variations');
-  font-weight: 100 900;
-  font-stretch: 62% 125%;
-  font-style: normal;
-  font-display: swap;
-}
+   Inter (Google Fonts, link en index.html) con fallback de sistema.          */
 
 /* ---------- 2. TOKENS ---------- */
 
 :root {
   color-scheme: dark;
 
-  /* superficies */
-  --plane: #0b0b0b;          /* fondo de la app */
-  --surface-1: #161616;      /* bloque de datos */
-  --surface-2: #202020;      /* bloque sobre bloque */
-  --field: #1b1b1b;          /* campos de formulario */
-  --nav: #0b0b0b;
+  /* ---- FitPlan Athletic Dark (Stitch) ---- */
+  --fp-bg: #0E1014;
+  --fp-s1: #171A20;
+  --fp-s2: #20242B;
+  --fp-line: #2A2F37;
+  --fp-primary: #FF6B2C;
+  --fp-primary-press: #FF7D45;
+  --fp-on-primary: #0E1014;
+  --fp-success: #22C55E;
+  --fp-warning: #F5B83D;
+  --fp-danger: #F05252;
+  --fp-ink: #F4F5F7;
+  --fp-ink2: #A3A9B4;
+  --fp-ink3: #8A919C;
+  --fp-r-card: 16px;
+  --fp-r-btn: 14px;
+  --fp-font: 'Inter', system-ui, -apple-system, sans-serif;
 
-  /* tinta */
-  --ink-1: #ffffff;          /* dato y titular */
-  --ink-2: #b3b3b3;          /* texto corrido */
-  --ink-3: #8a8a8a;          /* etiqueta y dato secundario */
+  /* ---- tokens heredados, remapeados a la paleta nueva ---- */
+  --plane: var(--fp-bg);
+  --surface-1: var(--fp-s1);
+  --surface-2: var(--fp-s2);
+  --field: var(--fp-s1);
+  --nav: var(--fp-s1);
 
-  /* líneas */
-  --ring: #2b2b2b;           /* filete de 1px */
-  --grid: #232323;           /* riel de barra, línea de tabla */
-  --axis: #3a3a3a;           /* eje de gráfica */
+  --ink-1: var(--fp-ink);
+  --ink-2: var(--fp-ink2);
+  --ink-3: var(--fp-ink3);
 
-  /* el único acento. Se gana: serie hecha, sube peso, descanso, CTA */
-  --accent: #fbba00;
-  --on-accent: #0b0b0b;      /* tinta sobre amarillo — 10,9:1 */
-  --accent-dim: #3a2c00;     /* relleno tenue del acento */
-  --accent-ink: #fbba00;     /* amarillo COMO TEXTO (ver claro más abajo) */
+  --ring: var(--fp-line);
+  --grid: var(--fp-line);
+  --axis: #3A404A;
 
-  /* inversión, para el botón secundario más fuerte */
-  --inv-bg: #ffffff;
-  --inv-ink: #0b0b0b;
+  --accent: var(--fp-primary);
+  --on-accent: var(--fp-on-primary);
+  --accent-dim: rgba(255, 107, 44, 0.16);
+  --accent-ink: var(--fp-primary);
 
-  /* alarma. Solo destructivo y dato fuera de rango */
-  --alert: #ff5747;
-  --critical: var(--alert);
+  --inv-bg: var(--fp-ink);
+  --inv-ink: var(--fp-bg);
 
-  /* datos de gráfica — validados para protanopía y deuteranopía.
-     NO METER EL AMARILLO AQUÍ. */
-  --s1: #3987e5;             /* azul  */
+  --alert: var(--fp-danger);
+  --critical: var(--fp-danger);
+
+  /* datos de gráfica */
+  --s1: #3987e5;
   --s1-soft: #184f95;
-  --s2: #d95926;             /* naranja */
+  --s2: #d95926;
 
-  /* compatibilidad con las vistas actuales */
-  --good: var(--accent);
-  --warning: var(--accent);
+  --good: var(--fp-success);
+  --warning: var(--fp-warning);
 
   /* escala de espaciado — agrupa y separa, no rellena */
   --sp-1: 3px;
@@ -91,8 +90,8 @@
   --t-label: 10.5px;
 
   /* radios: casi nada, salvo las píldoras de acción */
-  --r-0: 0;
-  --r-1: 2px;
+  --r-0: var(--fp-r-card);
+  --r-1: 8px;
   --r-pill: 999px;
 
   /* movimiento: solo retroalimentación, nunca espera */
@@ -120,33 +119,7 @@
   --timer-h: 91px;
 }
 
-/* El claro no es la inversión del oscuro: es papel blanco, tinta negra y el
-   mismo amarillo, que en claro nunca se usa como texto (1,7:1 sobre blanco)
-   sino como relleno con tinta negra encima. Para texto va --accent-ink.     */
-@media (prefers-color-scheme: light) {
-  :root {
-    color-scheme: light;
-    --plane: #ffffff;
-    --surface-1: #f4f4f1;
-    --surface-2: #eaeae6;
-    --field: #ffffff;
-    --nav: #ffffff;
-    --ink-1: #0b0b0b;
-    --ink-2: #4d4d4d;
-    --ink-3: #6e6e6e;
-    --ring: #e0e0da;
-    --grid: #ecece7;
-    --axis: #b5b5b0;
-    --accent-dim: #fdf0cc;
-    --accent-ink: #7a5a00;   /* 5,9:1 sobre blanco */
-    --inv-bg: #0b0b0b;
-    --inv-ink: #ffffff;
-    --alert: #c62b1c;
-    --s1: #2a78d6;
-    --s1-soft: #cde2fb;
-    --s2: #eb6834;
-  }
-}
+/* Solo modo oscuro: sin variante clara. */
 
 /* ---------- 3. BASE ---------- */
 
@@ -157,7 +130,7 @@ body {
   margin: 0;
   background: var(--plane);
   color: var(--ink-1);
-  font-family: 'Archivo', system-ui, -apple-system, sans-serif;
+  font-family: var(--fp-font);
   font-size: var(--t-body);
   line-height: 1.5;
   overscroll-behavior-y: none;
@@ -166,18 +139,17 @@ body {
 
 h1, h2, h3, h4 {
   margin: 0;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: -0.03em;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: -0.01em;
   line-height: 1.05;
-  font-stretch: 110%;
 }
 h1 { font-size: var(--t-display); }
 h2 { font-size: 27px; }
 h3 { font-size: var(--t-title); }
 
 p { margin: 0 0 var(--sp-3); color: var(--ink-2); text-wrap: pretty; }
-strong { color: var(--ink-1); font-weight: 800; }
+strong { color: var(--ink-1); font-weight: 700; }
 a { color: var(--ink-1); text-decoration: underline; text-underline-offset: 3px; }
 a:hover { color: var(--accent-ink); }
 .num { font-variant-numeric: tabular-nums; }
@@ -187,38 +159,53 @@ a:hover { color: var(--accent-ink); }
 .app { min-height: 100%; display: flex; flex-direction: column; }
 .main {
   flex: 1;
-  padding: calc(var(--sp-4) + var(--safe-t)) 18px calc(var(--sp-7) + 66px + var(--safe-b));
+  padding: calc(var(--sp-4) + var(--safe-t)) 16px calc(var(--sp-6) + 72px + var(--safe-b));
   max-width: 760px; margin: 0 auto; width: 100%;
 }
 
 .spacer { flex: 1; }
 
-/* Tabs: bloque sólido, marca de 3px arriba del activo. Alto ≥ 58px. */
+/* Tab bar (Stitch): superficie s1, filete superior, icono 24px + etiqueta 11px.
+   Activo en naranja, inactivo en ink2. */
 .tabbar {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 30;
-  background: var(--nav); border-top: 1px solid var(--ring);
-  /* Una columna por pestaña, sin fijar cuántas: agregar una no rompe la barra. */
+  background: var(--fp-s1); border-top: 1px solid var(--fp-line);
   display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
-  padding-bottom: var(--safe-b);
+  padding: 8px 16px var(--safe-b);
 }
 .tabbar button {
-  position: relative; background: none; border: none;
-  padding: 12px 4px 12px; cursor: pointer; min-height: 58px;
-  display: flex; flex-direction: column; align-items: center; gap: var(--sp-2);
-  color: var(--ink-3);
-  font: 800 9.5px/1 inherit; letter-spacing: 0.1em; text-transform: uppercase;
-  font-family: inherit;
+  position: relative; background: none; border: none; border-radius: var(--fp-r-btn);
+  padding: 4px 12px; cursor: pointer; min-height: 48px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  color: var(--fp-ink2);
+  font: 500 11px/1.2 var(--fp-font); letter-spacing: -0.01em; text-transform: none;
+  transition: color var(--dur-1) ease-out, transform var(--dur-1) ease-out;
 }
-.tabbar button::before {
-  content: ''; position: absolute; top: -1px; left: 0; right: 0; height: 3px;
-  background: transparent;
-}
-.tabbar button.active { color: var(--ink-1); }
-.tabbar button.active::before { background: var(--accent); }
+.tabbar button:hover { color: var(--fp-ink); }
+.tabbar button:active { transform: scale(0.95); }
+.tabbar button.active { color: var(--fp-primary); }
 .tabbar svg {
-  width: 20px; height: 20px; fill: none; stroke: currentColor;
-  stroke-width: 2.1; stroke-linecap: round; stroke-linejoin: round;
+  width: 24px; height: 24px; fill: none; stroke: currentColor;
+  stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
 }
+
+/* Control segmentado (Progreso: Entrenamientos | Medidas). */
+.seg {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px;
+  background: var(--fp-s1); border: 1px solid var(--fp-line); border-radius: var(--fp-r-btn);
+  margin-bottom: var(--sp-4);
+}
+.seg button {
+  min-height: 40px; padding: 0 12px; border: none; border-radius: 10px;
+  background: none; color: var(--fp-ink2); font-size: 14px; font-weight: 600;
+}
+.seg button.active { background: var(--fp-s2); color: var(--fp-ink); }
+
+/* Modo foco (sesión en curso): sin tab bar y sin padding reservado para ella. */
+/* En modo enfocado la sesion ocupa toda la pantalla: sin pestañas ni el selector de Progreso. */
+body.fp-focus .seg { display: none; }
+body.fp-focus .tabbar { display: none; }
+body.fp-focus .main { padding-bottom: calc(var(--sp-5) + var(--safe-b)); }
 
 /* ---------- 5. BLOQUES (adiós sopa de tarjetas) ----------
    Ni sombra, ni radio de 16px, ni borde en todo. Un relleno plano y, cuando
@@ -237,8 +224,8 @@ a:hover { color: var(--accent-ink); }
 .card.warn { background: var(--surface-1); border-top: 3px solid var(--accent); }
 
 .section-title {
-  font-size: var(--t-label); font-weight: 800; letter-spacing: 0.16em;
-  text-transform: uppercase; color: var(--ink-1);
+  font-size: var(--t-label); font-weight: 700; letter-spacing: 0;
+  text-transform: none; color: var(--ink-1);
   border-bottom: 2px solid var(--ink-1);
   padding-bottom: 7px; margin: var(--sp-6) 0 2px;
 }
@@ -259,16 +246,16 @@ a:hover { color: var(--accent-ink); }
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 2px; }
 .tile { background: var(--surface-1); border: none; border-radius: var(--r-0); padding: var(--sp-4); }
 .tile .label {
-  font-size: 10px; color: var(--ink-3); letter-spacing: 0.14em;
-  text-transform: uppercase; font-weight: 700;
+  font-size: 10px; color: var(--ink-3); letter-spacing: 0;
+  text-transform: none; font-weight: 700;
 }
 .tile .value {
-  font-size: var(--t-data-l); font-weight: 800; letter-spacing: -0.045em;
-  line-height: 1; margin-top: var(--sp-2); font-stretch: 110%;
+  font-size: var(--t-data-l); font-weight: 700; letter-spacing: -0.01em;
+  line-height: 1; margin-top: var(--sp-2);
 }
 .tile .value span {
   font-size: 12px; font-weight: 700; color: var(--ink-3);
-  letter-spacing: 0.04em; text-transform: uppercase;
+  letter-spacing: 0; text-transform: none;
 }
 .tile .delta { font-size: 11.5px; font-weight: 700; margin-top: 7px; }
 /* Un delta en la dirección correcta no necesita color: es tinta. */
@@ -284,29 +271,29 @@ a:hover { color: var(--accent-ink); }
    Todo lo pulsable es una píldora de 44px mínimo. El amarillo es la acción.  */
 
 button, .btn {
-  font-family: inherit; font-size: 11.5px; font-weight: 800;
-  letter-spacing: 0.12em; text-transform: uppercase;
-  padding: 0 18px; min-height: 46px;
-  border-radius: var(--r-pill); cursor: pointer;
+  font-family: inherit; font-size: 14px; font-weight: 600;
+  letter-spacing: 0; text-transform: none;
+  padding: 0 18px; min-height: 48px;
+  border-radius: var(--fp-r-btn); cursor: pointer;
   border: 1.5px solid var(--ring);
   background: none; color: var(--ink-2);
   transition: filter var(--dur-1) ease-out, background var(--dur-1) ease-out;
 }
 button:disabled { opacity: 0.4; cursor: default; }
-button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
-button.primary:hover:not(:disabled) { filter: brightness(1.08); }
+button.primary { background: var(--fp-primary); border-color: var(--fp-primary); color: var(--fp-on-primary); }
+button.primary:hover:not(:disabled) { background: var(--fp-primary-press); border-color: var(--fp-primary-press); }
 button.ghost { background: none; border-color: transparent; color: var(--ink-2); }
 button.danger { color: var(--alert); border-color: var(--alert); background: none; }
-button.danger:hover { background: var(--alert); color: var(--plane); }
+button.danger:hover { background: var(--alert); color: #fff; }
 button.block { width: 100%; display: block; }
-button.big { min-height: 60px; font-size: 13.5px; }
+button.big { min-height: 56px; font-size: 16px; }
 .btnrow { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
 
 .pill {
-  display: inline-block; font-size: 9.5px; font-weight: 800;
-  padding: 5px 8px; border-radius: var(--r-0);
+  display: inline-block; font-size: 9.5px; font-weight: 700;
+  padding: 5px 8px; border-radius: var(--r-pill);
   background: var(--surface-2); color: var(--ink-3);
-  letter-spacing: 0.12em; text-transform: uppercase;
+  letter-spacing: 0; text-transform: none;
 }
 .pill.good { background: var(--accent); color: var(--on-accent); }
 .pill.warn { background: var(--accent-dim); color: var(--accent-ink); }
@@ -314,12 +301,12 @@ button.big { min-height: 60px; font-size: 13.5px; }
 /* ---------- 8. FORMULARIOS ---------- */
 
 label {
-  display: block; font-size: 10px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 0.14em; color: var(--ink-3); margin-bottom: var(--sp-2);
+  display: block; font-size: 10px; font-weight: 700; text-transform: none;
+  letter-spacing: 0; color: var(--ink-3); margin-bottom: var(--sp-2);
 }
 input, select, textarea {
   width: 100%; padding: 13px 12px;
-  border: 2px solid var(--ring); border-radius: var(--r-0);
+  border: 2px solid var(--ring); border-radius: var(--fp-r-btn);
   background: var(--field); color: var(--ink-1);
   font-size: 16px; font-family: inherit; font-weight: 600;
   font-variant-numeric: tabular-nums; min-height: 50px;
@@ -340,13 +327,13 @@ th, td {
 }
 th:first-child, td:first-child { text-align: left; }
 th {
-  font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em;
-  color: var(--ink-3); font-weight: 800;
+  font-size: 9px; text-transform: none; letter-spacing: 0;
+  color: var(--ink-3); font-weight: 700;
   background: var(--plane); position: sticky; top: 0;
   border-bottom: 1px solid var(--ring);
 }
 tbody tr:last-child td { border-bottom: none; }
-tr.goal td { font-weight: 800; background: var(--surface-1); }
+tr.goal td { font-weight: 700; background: var(--surface-1); }
 tr.base td { color: var(--ink-3); }
 
 /* ---------- 10. SESIÓN ACTIVA ----------
@@ -366,7 +353,7 @@ tr.base td { color: var(--ink-3); }
 .ex-head h3 { font-size: 19px; line-height: 1.1; }
 .ex-head .meta {
   font-size: 11.5px; color: var(--ink-3); margin-top: 7px;
-  font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  font-weight: 700; letter-spacing: 0; text-transform: none;
 }
 .ex-body { padding: 0 0 var(--sp-5); border-top: none; }
 
@@ -382,11 +369,11 @@ tr.base td { color: var(--ink-3); }
 }
 .setrow input {
   padding: 10px 6px; text-align: center; min-height: 46px;
-  font-size: 26px; font-weight: 800; letter-spacing: -0.03em;
+  font-size: 26px; font-weight: 700; letter-spacing: -0.01em;
   border-width: 2px;
 }
 .setrow .check {
-  width: 54px; height: 46px; min-height: 46px; border-radius: var(--r-0);
+  width: 54px; height: 46px; min-height: 46px; border-radius: var(--fp-r-btn);
   display: grid; place-items: center; padding: 0;
   border: 2px solid var(--ring); background: none; color: var(--ink-3);
 }
@@ -403,8 +390,8 @@ tr.base td { color: var(--ink-3); }
   gap: var(--sp-2); margin-top: var(--sp-4);
 }
 .setlabels span {
-  font-size: 9.5px; font-weight: 800; text-transform: uppercase;
-  letter-spacing: 0.14em; color: var(--ink-3); text-align: center;
+  font-size: 9.5px; font-weight: 700; text-transform: none;
+  letter-spacing: 0; color: var(--ink-3); text-align: center;
 }
 .setlabels span:first-child { text-align: left; }
 
@@ -424,12 +411,12 @@ tr.base td { color: var(--ink-3); }
   box-shadow: none;
 }
 .timer .t {
-  font-size: var(--t-data-xl); font-weight: 800; font-variant-numeric: tabular-nums;
-  letter-spacing: -0.05em; line-height: 1; margin-top: 4px; font-stretch: 112%;
+  font-size: var(--t-data-xl); font-weight: 700; font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em; line-height: 1; margin-top: 4px;
 }
 .timer .lbl {
-  font-size: 10px; font-weight: 800; letter-spacing: 0.16em;
-  text-transform: uppercase; opacity: 0.7;
+  font-size: 10px; font-weight: 700; letter-spacing: 0;
+  text-transform: none; opacity: 0.7;
 }
 .timer button {
   background: none; border: 2px solid var(--on-accent); color: var(--on-accent);
@@ -444,15 +431,15 @@ figure {
   border-radius: var(--r-0); padding: var(--sp-5) 0 0;
 }
 .chart-title {
-  font-size: var(--t-label); font-weight: 800; letter-spacing: 0.16em;
-  text-transform: uppercase; border-bottom: 2px solid var(--ink-1);
+  font-size: var(--t-label); font-weight: 700; letter-spacing: 0;
+  text-transform: none; border-bottom: 2px solid var(--ink-1);
   padding-bottom: 7px;
 }
 .chart-sub { font-size: 13px; color: var(--ink-3); margin: 11px 0 var(--sp-4); }
 svg.chart { display: block; width: 100%; height: auto; overflow: visible; }
 figcaption {
   font-size: 10.5px; color: var(--ink-3); margin-top: var(--sp-3);
-  font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+  font-weight: 700; letter-spacing: 0; text-transform: none;
 }
 
 /* ---------- 13. VACÍOS, AVISOS, LISTAS ----------
@@ -465,8 +452,8 @@ figcaption {
   position: fixed; left: max(18px, var(--safe-l)); right: max(18px, var(--safe-r)); bottom: calc(78px + var(--safe-b));
   background: var(--accent); color: var(--on-accent);
   padding: 14px 18px; border-radius: var(--r-0);
-  font-size: 12px; font-weight: 800; letter-spacing: 0.12em;
-  text-transform: uppercase; z-index: 60; box-shadow: none;
+  font-size: 12px; font-weight: 700; letter-spacing: 0;
+  text-transform: none; z-index: 60; box-shadow: none;
   animation: pop var(--dur-2) ease-out;
 }
 
@@ -478,8 +465,8 @@ figcaption {
 }
 .list-item:last-child { border-bottom: none; }
 .list-item .t1 {
-  font-weight: 800; font-size: 15px; text-transform: uppercase;
-  letter-spacing: -0.015em;
+  font-weight: 700; font-size: 15px; text-transform: none;
+  letter-spacing: -0.01em;
 }
 .list-item .t2 { font-size: 12.5px; color: var(--ink-3); margin-top: 3px; }
 
@@ -502,10 +489,9 @@ figcaption {
   font-size: 10px;
   font-weight: 700;
   line-height: 1;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--ink-3);
-  font-stretch: 100%;
 }
 .eyebrow.accent { color: var(--accent-ink); }
 
@@ -513,8 +499,7 @@ figcaption {
   margin-top: 12px;
   font-size: var(--t-hero);
   line-height: 1.02;
-  letter-spacing: -0.045em;
-  font-stretch: 115%;
+  letter-spacing: -0.01em;
 }
 .slab {
   display: inline-block;
@@ -544,7 +529,7 @@ figcaption {
   margin-top: 7px;
   text-align: center;
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
 }
@@ -563,14 +548,14 @@ figcaption {
   min-width: 0;
   font-size: 11.5px;
   font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--ink-3);
 }
 .comprow .v {
   font-size: 25px;
-  font-weight: 800;
-  letter-spacing: -0.035em;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 .comprow .v span {
   font-size: 11px;
@@ -580,7 +565,7 @@ figcaption {
 }
 .comprow .d {
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 700;
   min-width: 52px;
   text-align: right;
 }
@@ -595,9 +580,9 @@ figcaption {
   background: var(--surface-1);
   color: var(--ink-3);
   font-size: 10.5px;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
 }
 .day-badge.today { background: var(--accent); color: var(--on-accent); }
 
@@ -627,8 +612,8 @@ figcaption {
 .histrow .date {
   font-size: 10.5px;
   font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--ink-3);
   white-space: nowrap;
 }
@@ -638,7 +623,7 @@ figcaption {
   gap: 5px;
   min-width: 0;
 }
-.histrow .kg strong { font-size: 22px; font-weight: 800; letter-spacing: -0.035em; }
+.histrow .kg strong { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
 .histrow .kg span { font-size: 11px; font-weight: 600; color: var(--ink-3); }
 
 /* Paso 4 — Sesión activa: cabecera pegajosa con el contador de series como
@@ -649,10 +634,10 @@ figcaption {
 }
 .session-head h1 {
   display: flex; align-items: baseline; gap: 6px;
-  margin-top: 5px; font-size: 34px; font-stretch: 112%; letter-spacing: -0.035em;
+  margin-top: 5px; font-size: 34px; letter-spacing: -0.01em;
 }
 .session-head h1 span {
-  font-size: 13px; font-weight: 700; letter-spacing: 0.08em; color: var(--ink-3);
+  font-size: 13px; font-weight: 700; letter-spacing: 0; color: var(--ink-3);
 }
 .session-bar { display: flex; height: 5px; margin-top: 12px; }
 .session-bar i { display: block; font-style: normal; background: var(--grid); }
@@ -675,14 +660,14 @@ figcaption {
 }
 .rail::-webkit-scrollbar { display: none; }
 .rail button {
-  min-height: 44px; border: none; border-radius: var(--r-0); padding: 0;
-  font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: 0.02em;
+  min-height: 44px; border: none; border-radius: var(--fp-r-btn); padding: 0;
+  font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 0;
   background: var(--surface-1); color: var(--ink-3);
 }
 /* The rail clips at its own edge: draw the focus ring inward, not over it. */
 /* Anillo de foco global. --accent-ink contrasta en ambos temas (amarillo sobre
    negro, 5,9:1 en claro); --ring es un filete de 1px y casi no se ve como foco. */
-:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--fp-primary); outline-offset: 2px; }
 .rail button:focus-visible { outline-offset: -2px; }
 .rail button.current { background: var(--accent); color: var(--on-accent); }
 .rail button.done { background: var(--accent-dim); color: var(--accent-ink); }
@@ -700,7 +685,7 @@ figcaption {
 /* Paso 4 — Sesión activa: chips de prescripción del ejercicio actual. */
 .metabar { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 11px; }
 .metabar span {
-  font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  font-size: 12px; font-weight: 700; letter-spacing: 0; text-transform: none;
   color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 .metabar span:first-child { color: var(--ink-2); }
@@ -710,14 +695,14 @@ figcaption {
 .tag-skew { display: inline-block; transform: skewX(-9deg); background: var(--on-accent); color: var(--accent); padding: 5px 10px; }
 .tag-skew > span {
   display: inline-block; transform: skewX(9deg);
-  font-size: 11px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; white-space: nowrap;
+  font-size: 11px; font-weight: 700; letter-spacing: 0; text-transform: none; white-space: nowrap;
 }
 .tag-skew-wrap p { color: var(--on-accent); font-size: 14.5px; font-weight: 600; line-height: 1.4; margin: 9px 0 0; }
 
 /* Paso 4 — Sesión activa: resumen de la sesión anterior (releva a --good-text). */
 .last-perf { margin-top: 22px; padding-bottom: 9px; border-bottom: 2px solid var(--ink-1); }
 .last-perf .label {
-  font-size: 10px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-3);
+  font-size: 10px; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--ink-3);
 }
 .last-perf .value {
   font-size: 15px; font-weight: 700; letter-spacing: -0.01em; margin-top: 8px;
@@ -728,7 +713,7 @@ figcaption {
   border: 2px solid transparent;
   background: transparent;
   color: var(--ink-2);
-  font-size: 21px; font-weight: 800;
+  font-size: 21px; font-weight: 700;
   text-align: left; padding: 0;
 }
 
@@ -739,7 +724,7 @@ figcaption {
   border: 2px solid var(--ring);
   background: transparent;
   color: var(--ink-2);
-  font-size: 21px; font-weight: 800;
+  font-size: 21px; font-weight: 700;
   text-align: left; padding: 4px 6px;
 }
 .setrow.pending input::placeholder { color: var(--ink-3); font-weight: 600; }
@@ -767,23 +752,23 @@ figcaption {
 .setnow { background: var(--surface-1); margin-top: 14px; padding: 14px 15px 15px; }
 .setnow-head { display: flex; justify-content: space-between; align-items: center; }
 .setnow-head .lbl-current {
-  font-size: 11px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent-ink);
+  font-size: 11px; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--accent-ink);
 }
 .setnow-head .lbl-last {
-  font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3);
+  font-size: 11px; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--ink-3);
 }
 .setnow-grid { display: grid; grid-template-columns: 1fr 1fr 62px; gap: 9px; align-items: end; margin-top: 12px; }
 .setnow-grid .micro {
-  font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 6px;
+  font-size: 10px; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--ink-3); margin-bottom: 6px;
 }
 .setnow input {
   width: 100%; text-align: center; min-height: 62px;
-  font-size: 38px; font-weight: 800; letter-spacing: -0.04em; padding: 11px 8px;
+  font-size: 38px; font-weight: 700; letter-spacing: -0.01em; padding: 11px 8px;
   border: 2px solid var(--ring);
 }
 .setnow input.filled { border-color: var(--ink-1); }
 .setnow .check {
-  height: 62px; border-radius: var(--r-0); background: var(--accent); border: none; color: var(--on-accent);
+  height: 62px; border-radius: var(--fp-r-btn); background: var(--accent); border: none; color: var(--on-accent);
   display: grid; place-items: center; padding: 0;
 }
 .setnow .check svg { width: 26px; height: 26px; }
@@ -794,7 +779,7 @@ figcaption {
   background: none; border: none; border-radius: var(--r-0); border-bottom: 1px solid var(--ring);
   padding: 17px 0; color: var(--ink-1); text-align: left; min-height: 52px; margin-top: 6px;
 }
-.disclosure-toggle .lbl { font-size: 10.5px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; }
+.disclosure-toggle .lbl { font-size: 10.5px; font-weight: 700; letter-spacing: 0; text-transform: none; }
 .disclosure-toggle .glyph { margin-left: auto; font-size: 16px; font-weight: 700; color: var(--accent-ink); }
 .disclosure-body { padding: 16px 0 4px; }
 
@@ -907,7 +892,7 @@ figcaption {
     grid-template-columns: 1fr;
     grid-auto-rows: min-content;
     align-content: start;
-    gap: 2px;
+    gap: 4px;
     border-top: none;
     border-right: 1px solid var(--ring);
     padding:
@@ -920,12 +905,10 @@ figcaption {
     flex-direction: row; justify-content: flex-start; align-items: center;
     gap: var(--sp-3);
     min-height: 52px; padding: 0 var(--sp-4);
-    font-size: 10.5px; letter-spacing: 0.14em;
+    font-size: 14px; letter-spacing: 0;
   }
-  /* The 3px active mark rotates with the bar: top edge -> leading edge. */
-  .tabbar button::before {
-    top: 0; bottom: 0; left: 0; right: auto; width: 3px; height: auto;
-  }
+  .tabbar button.active { background: var(--fp-s2); }
+  body.fp-focus .app { padding-inline-start: var(--safe-l); }
 
   /* 19b — content grid. 64/36, not 50/50 and not auto-fit: see ADR-04. */
   .main {

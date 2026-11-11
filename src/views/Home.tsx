@@ -1,214 +1,357 @@
-import type { CSSProperties } from 'react'
-import { DONE_TODAY, SESSION_KIND_FOR_DAY, weekdayAbbr, WEEKDAYS } from '../lib/plan'
-import { activeRoutines, dayTitleFor, nextWeekdayFor, planWeekStates, routineForWeekday, routineSetCount, routineShortName, weekLabel } from '../lib/planQueries'
+import type { CSSProperties, ReactNode } from 'react'
+import { DONE_TODAY, SESSION_KIND_FOR_DAY, weekdayLabel } from '../lib/plan'
+import {
+  dayTitleFor,
+  planWeekStates,
+  routineForWeekday,
+  routineShortName,
+  routineSlots,
+  slotExerciseName,
+  weekLabel,
+} from '../lib/planQueries'
 import { blockWeekNumber, phaseForWeek } from '../lib/phases'
-import { fmt, fmtDate, fmtSigned, todayISO } from '../lib/calc'
-import { blockSessionCount, weeklySummary } from '../lib/disciplines'
+import { fmtDate, sessionVolume, todayISO } from '../lib/calc'
+import { finishedIn } from '../lib/disciplines'
 import { useDerivedMeasurements, useStore } from '../lib/store'
-import { Tile } from '../components/ui'
+import './home.css'
 
-/** Clase de color de una fila de composición, según si el cambio va en la dirección buena. */
-function deltaClass(delta: number | null, deltaGood: 'lower' | 'higher'): 'up' | 'down' | 'flat' {
-  if (delta == null || Math.abs(delta) < 0.05) return 'flat'
-  const good = deltaGood === 'lower' ? delta < 0 : delta > 0
-  return good ? 'up' : 'down'
+type Tab = 'plan' | 'progreso' | 'perfil'
+
+const DAY_LETTERS = ['D', 'L', 'M', 'X', 'J', 'V', 'S'] // indice = Date.getDay()
+const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0] // lunes a domingo
+const MAX_CHIPS = 4
+
+/* ---------- iconos (trazo de 2px, decorativos) ---------- */
+
+const ICONS: Record<string, ReactNode> = {
+  person: (<><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>),
+  dumbbell: <path d="M6.5 6.5v11M17.5 6.5v11M3.5 9v6M20.5 9v6M6.5 12h11" />,
+  timer: (<><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2 2M9 2h6" /></>),
+  gauge: <path d="M12 14l4-4M3.34 19a10 10 0 1 1 17.32 0" />,
+  play: <path d="M7 4.5v15l12-7.5z" fill="currentColor" />,
+  check: <path d="M20 6 9 17l-5-5" />,
+  walk: (<><circle cx="13" cy="4.5" r="1.5" /><path d="M9 21l2-6-2-3 3-3 3 3h3M11 15l3 2v4" /></>),
+  swim: <path d="M2 17c2 0 2-1.5 4-1.5s2 1.5 4 1.5 2-1.5 4-1.5 2 1.5 4 1.5 2-1.5 4-1.5M2 12c2 0 2-1.5 4-1.5s2 1.5 4 1.5 2-1.5 4-1.5 2 1.5 4 1.5 2-1.5 4-1.5" />,
+  moon: <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />,
+  calendar: (<><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18M9 16l2 2 4-4" /></>),
+  trend: <path d="M22 7l-8.5 8.5-5-5L2 17M16 7h6v6" />,
+  shield: <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />,
+  chevron: <path d="m9 18 6-6-6-6" />,
 }
 
-export default function Home({ go }: { go: (tab: 'train' | 'measure') => void }) {
+function Icon({ name, size = 20, className }: { name: keyof typeof ICONS; size?: number; className?: string }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+      className={className}
+    >
+      {ICONS[name]}
+    </svg>
+  )
+}
+
+/* ---------- utilidades ---------- */
+
+/** Rango ISO [lunes, domingo] de la semana calendario que contiene `now`,
+ *  desplazado `weeksBack` semanas hacia atras. */
+function weekRange(now: Date, weeksBack: number): { start: string; end: string; days: string[] } {
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7) - weeksBack * 7)
+  const days = Array.from({ length: 7 }, (_, i) =>
+    todayISO(new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i)),
+  )
+  return { start: days[0], end: days[6], days }
+}
+
+/** 4320 -> "4.320". */
+const fmtThousands = (n: number): string => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+
+const dayNumber = (name: string): string | null => /^D[ií]a\s+(\d+)/i.exec(name)?.[1] ?? null
+
+export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; startRoutine: (routineId: string) => void }) {
   const { sessions, config, plan } = useStore()
   const rows = useDerivedMeasurements()
   const now = new Date()
+  const iso = todayISO(now)
   const week = blockWeekNumber(now, config.blockStart)
   const phase = phaseForWeek(plan, week)
   const dow = now.getDay()
   const today = config.weeklyRoutine[dow]
   const suggested = routineForWeekday(plan, config.weeklyRoutine, dow)
-  const routines = activeRoutines(plan)
-  // Linea bajo el titulo del dia: enfoque de la rutina y nota del dia, o solo
-  // la nota si el dia no tiene rutina (natacion, etc.).
-  const todayLine = (suggested ? [suggested.focus, today.note] : [today.note]).filter(t => t !== '').join(' · ')
-  // "Ya entrenaste hoy" debe significar "ya hice la disciplina de HOY", no
-  // "termine cualquier sesion hoy": sin esto, una natacion de mañana
-  // reemplazaba el llamado a accion del gimnasio (R1). Un dia sin
-  // disciplina asignada (descanso, caminata, personalizado) nunca cuenta
-  // como "hecho".
+  // "Ya entrenaste hoy" = ya hice la disciplina de HOY (un dia sin disciplina
+  // asignada nunca cuenta como hecho).
   const todayKind = SESSION_KIND_FOR_DAY[today.kind]
   const doneKind =
-    todayKind != null && sessions.some(s => s.kind === todayKind && s.date === todayISO() && s.finishedAt)
-      ? todayKind
-      : null
+    todayKind != null && sessions.some(s => s.kind === todayKind && s.date === iso && s.finishedAt) ? todayKind : null
 
-  const base = rows[0]
-  const last = rows[rows.length - 1]
-  const finished = sessions.filter(s => s.finishedAt)
-  const blockFinished = blockSessionCount(finished, config.blockStart, config.blockEnd)
-  // Una linea por disciplina (conteo semanal, meta y valor de trabajo con su
-  // unidad): recorre DISCIPLINES, asi que una disciplina nueva aparece sola
-  // en los tiles de mas abajo sin tocar este componente.
-  const weekLines = weeklySummary(sessions, config.weeklyRoutine)
+  // Semana calendario (lunes a domingo): checks de la tira y tarjetas.
+  const range = weekRange(now, 0)
+  const finishedThisWeek = sessions.filter(s => s.finishedAt != null && s.date >= range.start && s.date <= range.end)
+  const plannedDays = config.weeklyRoutine.filter(d => SESSION_KIND_FOR_DAY[d.kind] != null).length
+  const doneCount = finishedThisWeek.length
+  const weekVolume = finishedIn(sessions, 'strength', range.start, range.end).reduce((a, s) => a + sessionVolume(s), 0)
+  // Barritas del volumen: esta semana y las 4 anteriores (la ultima resaltada).
+  const volumes = [4, 3, 2, 1, 0].map(back => {
+    const r = weekRange(now, back)
+    return finishedIn(sessions, 'strength', r.start, r.end).reduce((a, s) => a + sessionVolume(s), 0)
+  })
+  const maxVol = Math.max(...volumes, 1)
 
-  const daysLeft = Math.max(
-    0,
-    Math.ceil((new Date(config.blockEnd + 'T00:00:00').getTime() - now.getTime()) / 86400000),
+  // Proximo dia con disciplina (para el estado calmo).
+  let next: { label: string; title: string } | null = null
+  for (let k = 1; k <= 7 && !next; k++) {
+    const d = (dow + k) % 7
+    const day = config.weeklyRoutine[d]
+    if (SESSION_KIND_FOR_DAY[day.kind] == null) continue
+    const r = routineForWeekday(plan, config.weeklyRoutine, d)
+    next = { label: weekdayLabel(d), title: r ? routineShortName(r) : dayTitleFor(plan, day) }
+  }
+
+  const slots = suggested ? routineSlots(suggested, week).filter(s => s.target.kind !== 'note') : []
+  const names = slots.map(s => slotExerciseName(plan, s))
+  const chips = names.slice(0, MAX_CHIPS)
+  const extra = names.length - chips.length
+
+  const showHero = suggested != null && doneKind == null
+  const planActive = week <= plan.weeks
+
+  const progress = (
+    <div className="hoy-progress">
+      <div className="hoy-progress-row">
+        <span>
+          {weekLabel(plan.weeks, week)}
+          {phase && ` · ${phase.goal}`}
+        </span>
+        {planActive && <span className="hoy-progress-now hoy-num">Semana {week}</span>}
+      </div>
+      <div className="hoy-seg" style={{ '--weeks': plan.weeks } as CSSProperties} aria-hidden="true">
+        {planWeekStates(plan.weeks, week).map(w => (
+          <i key={w.week} className={w.state} />
+        ))}
+      </div>
+    </div>
   )
 
   return (
-    <>
-      <div className="eyebrow">
-        {WEEKDAYS[dow]} {fmtDate(todayISO())} · {weekLabel(plan.weeks, week)}
-      </div>
-      <h1 className="hero">
-        Hoy
-        {suggested && (
-          <>
-            <br />
-            <span className="slab">{routineShortName(suggested)}</span>
-          </>
-        )}
-      </h1>
-
-      <div className="col-a">
-        <div className="card accent">
-          <div className="muted" style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
-            Hoy es {WEEKDAYS[dow]}
-          </div>
-          {doneKind ? (
-            <>
-              <h2 style={{ fontSize: 19, marginTop: 2 }}>{DONE_TODAY[doneKind].title}</h2>
-              <p style={{ marginBottom: 0 }}>{DONE_TODAY[doneKind].note}</p>
-            </>
-          ) : todayKind ? (
-            <>
-              <h2 style={{ fontSize: 19, marginTop: 2 }}>{dayTitleFor(plan, today)}</h2>
-              {/* suggested es null en un dia de natacion (routineForWeekday
-                 solo resuelve dias de entreno): sin zona de rutina que
-                 mostrar, solo la nota del dia si existe. El boton, en
-                 cambio, se habilita por disciplina planificada (todayKind),
-                 no por si hay una rutina de fuerza — antes routineForWeekday
-                 devolvia null para natacion y el CTA desaparecia entero. */}
-              {todayLine !== '' && <p style={{ marginBottom: 10 }}>{todayLine}</p>}
-              <button className="primary big block" onClick={() => go('train')}>Empezar la sesión</button>
-            </>
-          ) : (
-            <>
-              <h2 style={{ fontSize: 19, marginTop: 2 }}>{dayTitleFor(plan, today)}</h2>
-              {today.note !== '' && <p style={{ marginBottom: 0 }}>{today.note}</p>}
-            </>
-          )}
+    <div className="hoy">
+      <header className="hoy-header">
+        <div className="hoy-header-text">
+          <span className="hoy-date">{weekdayLabel(dow)} {fmtDate(iso)}</span>
+          <span className="hoy-brand">FitPlan</span>
         </div>
+        <button type="button" className="hoy-avatar" aria-label="Perfil" onClick={() => go('perfil')}>
+          <Icon name="person" size={22} />
+        </button>
+      </header>
 
-        <div className="card tight">
-          <div className="row">
-            <div className="grow">
-              <strong>{weekLabel(plan.weeks, week)}{phase && ` · ${phase.intensity}`}</strong>
-              {phase && <div className="muted">{phase.goal}</div>}
-              {phase && phase.loadNote !== '' && <div className="muted">Esta semana: {phase.loadNote}</div>}
+      <main className="hoy-main">
+        {showHero && suggested ? (
+          <section className="hoy-hero">
+            <div className="hoy-hero-glow" aria-hidden="true" />
+            {progress}
+            <h1 className="hoy-title">{suggested.name.replace(/\s[–—-]\s/, ' · ')}</h1>
+            <div className="hoy-meta">
+              <span className="hoy-pill">
+                <Icon name="dumbbell" size={15} />
+                {slots.length} ejercicios
+              </span>
+              {suggested.duration !== '' && (
+                <span className="hoy-pill hoy-num">
+                  <Icon name="timer" size={15} />
+                  ≈ {suggested.duration}
+                </span>
+              )}
+              {phase && (
+                <span className="hoy-pill accent hoy-num">
+                  <Icon name="gauge" size={15} />
+                  {phase.intensity}
+                </span>
+              )}
+            </div>
+            {chips.length > 0 && (
+              <div className="hoy-chips-block">
+                <p className="hoy-eyebrow">Ejercicios principales</p>
+                <div className="hoy-chips">
+                  {chips.map((n, i) => (
+                    <span key={i} className="hoy-chip">{n}</span>
+                  ))}
+                  {extra > 0 && <span className="hoy-chip more hoy-num">+{extra}</span>}
+                </div>
+              </div>
+            )}
+            <button type="button" className="hoy-cta" onClick={() => startRoutine(suggested.id)}>
+              <Icon name="play" size={22} />
+              Empezar entrenamiento
+            </button>
+          </section>
+        ) : (
+          <section className="hoy-hero">
+            <div className="hoy-hero-glow" aria-hidden="true" />
+            {progress}
+            {doneKind ? (
+              <>
+                <div className="hoy-calm-icon"><Icon name="check" size={20} /></div>
+                <h1 className="hoy-title">{DONE_TODAY[doneKind].title}</h1>
+                <p className="hoy-note">{DONE_TODAY[doneKind].note}</p>
+              </>
+            ) : (
+              <>
+                <div className="hoy-calm-icon rest">
+                  <Icon name={today.kind === 'swim' ? 'swim' : today.kind === 'walk' ? 'walk' : 'moon'} size={20} />
+                </div>
+                <h1 className="hoy-title">{dayTitleFor(plan, today)}</h1>
+                {today.note !== '' && <p className="hoy-note">{today.note}</p>}
+              </>
+            )}
+            {next && (
+              <div className="hoy-next">
+                <Icon name="calendar" size={18} />
+                <span>
+                  Siguiente: <strong>{next.label}</strong> · {next.title}
+                </span>
+              </div>
+            )}
+            <button type="button" className="hoy-cta secondary" onClick={() => go('plan')}>
+              Ver plan
+            </button>
+          </section>
+        )}
+
+        <section className="hoy-section" aria-label="Esta semana">
+          <div className="hoy-section-head">
+            <h2 className="hoy-h2">Esta semana</h2>
+            <span className="hoy-section-aside hoy-num">{plannedDays} días planificados</span>
+          </div>
+          <div className="hoy-week">
+            {WEEK_ORDER.map((d, i) => {
+              const day = config.weeklyRoutine[d]
+              const kind = SESSION_KIND_FOR_DAY[day.kind]
+              const date = range.days[i]
+              const isToday = d === dow
+              const isDone = kind != null && finishedThisWeek.some(s => s.kind === kind && s.date === date)
+              const routine = routineForWeekday(plan, config.weeklyRoutine, d)
+              const cls = ['hoy-day']
+              if (isToday) cls.push('today')
+              if (isDone) cls.push('done')
+              if (kind == null) cls.push('rest')
+
+              let body: ReactNode
+              if (isToday) {
+                body = (
+                  <>
+                    <span className="hoy-day-dot hoy-num">
+                      {isDone ? <Icon name="check" size={16} /> : Number(date.slice(8))}
+                    </span>
+                    <span className="hoy-day-sub">{isDone ? 'Listo' : 'Hoy'}</span>
+                  </>
+                )
+              } else if (isDone) {
+                body = (
+                  <>
+                    <span className="hoy-day-check"><Icon name="check" size={16} /></span>
+                    <span className="hoy-day-sub">Listo</span>
+                  </>
+                )
+              } else if (kind == null) {
+                body = (
+                  <>
+                    <Icon name={day.kind === 'walk' ? 'walk' : 'moon'} size={17} className="hoy-day-main-icon" />
+                    <span className="hoy-day-sub">{day.kind === 'walk' ? 'Caminar' : 'Descanso'}</span>
+                  </>
+                )
+              } else if (routine) {
+                const n = dayNumber(routine.name)
+                body = (
+                  <>
+                    <span className="hoy-day-main hoy-num">{n ? `Día ${n}` : routineShortName(routine)}</span>
+                    <span className="hoy-day-sub">{n ? routineShortName(routine) : ''}</span>
+                  </>
+                )
+              } else {
+                body = (
+                  <>
+                    <Icon name="swim" size={17} />
+                    <span className="hoy-day-sub">Natación</span>
+                  </>
+                )
+              }
+
+              return (
+                <div key={d} className={cls.join(' ')}>
+                  <span className="hoy-day-letter">{DAY_LETTERS[d]}</span>
+                  {body}
+                </div>
+              )
+            })}
+          </div>
+        </section>
+
+        <section className="hoy-stats" aria-label="Resumen semanal">
+          <div className="hoy-stat">
+            <div className="hoy-stat-head">
+              <span className="hoy-stat-label">Sesiones</span>
+              <Icon name="calendar" size={18} />
+            </div>
+            <div className="hoy-stat-value">
+              <span className="hoy-stat-big hoy-num">{doneCount}</span>
+              <span className="hoy-stat-unit hoy-num">/ {plannedDays}</span>
+            </div>
+            <div className="hoy-bar" aria-hidden="true">
+              <i style={{ width: `${plannedDays > 0 ? Math.min(100, (doneCount / plannedDays) * 100) : 0}%` }} />
             </div>
           </div>
-          <div className="weekbar" style={{ marginTop: 9, '--weeks': plan.weeks } as CSSProperties}>
-            {planWeekStates(plan.weeks, week).map(w => (
-              <div key={w.week}>
-                <i className={w.state} />
-                <span className={w.state === 'current' ? 'wnum current' : 'wnum'}>{w.week}</span>
-              </div>
-            ))}
+          <div className="hoy-stat">
+            <div className="hoy-stat-head">
+              <span className="hoy-stat-label">Volumen</span>
+              <Icon name="trend" size={18} className="up" />
+            </div>
+            <div className="hoy-stat-value">
+              <span className="hoy-stat-mid hoy-num">{fmtThousands(weekVolume)}</span>
+              <span className="hoy-stat-unit sm">kg</span>
+            </div>
+            <div className="hoy-spark" aria-hidden="true">
+              {volumes.map((v, i) => (
+                <i key={i} className={i === volumes.length - 1 ? 'on' : ''} style={{ height: `${Math.max(20, (v / maxVol) * 100)}%` }} />
+              ))}
+            </div>
           </div>
-          <div className="muted num" style={{ fontSize: 12.5, marginTop: 4 }}>
-            {daysLeft} días para la remedición del {fmtDate(config.blockEnd, true)}
+        </section>
+
+        <section className="hoy-tip">
+          <div className="hoy-tip-body">
+            <div className="hoy-tip-icon"><Icon name="shield" size={20} /></div>
+            <div>
+              <span className="hoy-tip-kicker">Cuidado lumbar</span>
+              <p className="hoy-tip-text">Columna neutra: piensa en sacar un poco la cola</p>
+            </div>
           </div>
-        </div>
-      </div>
-
-      <div className="col-b">
-        <div className="section-title">Esta semana</div>
-        <div className="tiles">
-          {/* Un tile nunca mezcla unidades: conteo de sesiones (sin unidad,
-             contra la meta de dias programados) y valor de trabajo (kg o m)
-             van separados, uno por disciplina. Solo se muestra una
-             disciplina si tiene dias programados o ya tiene sesiones esta
-             semana — evita un "Natación 0" permanente para quien solo hace
-             fuerza. */}
-          {weekLines
-            .filter(l => l.target > 0 || l.count > 0)
-            .flatMap(l => [
-              <Tile
-                key={`${l.kind}-count`}
-                testId={`tile-${l.kind}-count`}
-                label={l.label}
-                value={l.count}
-                dec={0}
-                progress={l.target > 0 ? (l.count / l.target) * 100 : undefined}
-                goalText={l.target > 0 ? `meta ${l.target} por semana` : 'sin días programados'}
-              />,
-              <Tile
-                key={`${l.kind}-work`}
-                testId={`tile-${l.kind}-work`}
-                label={l.workLabel}
-                value={l.workValue}
-                unit={l.workUnit}
-                dec={0}
-              />,
-            ])}
-          {/* Cuenta sesiones de cualquier disciplina: es un conteo, no una
-             suma de unidades incompatibles, asi que mezclarlas no lo vuelve
-             incorrecto (ver R1). */}
-          <Tile testId="tile-block" label="Sesiones del bloque" value={blockFinished} dec={0} />
-        </div>
-      </div>
-
-      <div className="col-a">
-        {base && last && rows.length > 1 && (
-          <>
-            <div className="section-title">Composición</div>
-            {[
-              { label: 'Peso', value: last.weight, unit: 'kg',
-                delta: last.weight - base.weight, deltaGood: 'lower' as const },
-              { label: 'Masa grasa', value: last.fatMass ?? null, unit: 'kg',
-                delta: last.fatMass != null && base.fatMass != null ? last.fatMass - base.fatMass : null, deltaGood: 'lower' as const },
-              { label: 'Músculo', value: last.muscle ?? null, unit: 'kg',
-                delta: last.muscle != null && base.muscle != null ? last.muscle - base.muscle : null, deltaGood: 'higher' as const },
-              { label: 'Cintura', value: last.waist ?? null, unit: 'cm',
-                delta: last.waist != null && base.waist != null ? last.waist - base.waist : null, deltaGood: 'lower' as const },
-            ].map(c => (
-              <div className="comprow" key={c.label}>
-                <div className="l">{c.label}</div>
-                <div className="v num">{fmt(c.value)}<span>{c.unit}</span></div>
-                <div className={`d num ${deltaClass(c.delta, c.deltaGood)}`}>{fmtSigned(c.delta)}</div>
-              </div>
-            ))}
-          </>
-        )}
+          <button type="button" className="hoy-link" onClick={() => go('plan')}>
+            Ver guía
+            <Icon name="chevron" size={16} />
+          </button>
+        </section>
 
         {rows.length <= 1 && (
-          <div className="card" style={{ marginTop: 12 }}>
-            <strong>Falta tu primera medición del bloque</strong>
-            <p style={{ marginBottom: 10 }}>
-              Tienes la línea base del 3 de agosto. La siguiente toca a las dos semanas, y sin ella no hay forma de saber
-              si el peso que pierdes sale de la grasa o del músculo.
+          <section className="hoy-nudge">
+            <p>
+              <strong>Falta tu primera medición del bloque</strong>
+              Sin ella no sabrás si el peso que pierdes sale de grasa o de músculo.
             </p>
-            <button className="block" onClick={() => go('measure')}>Ir a medidas</button>
-          </div>
+            <button type="button" className="hoy-link" onClick={() => go('progreso')}>
+              Ir a progreso
+              <Icon name="chevron" size={16} />
+            </button>
+          </section>
         )}
-      </div>
-
-      <div className="col-b">
-        <div className="section-title">Rutinas del plan</div>
-        {routines.map(r => {
-          const badgeDow = nextWeekdayFor(config.weeklyRoutine, r.id, dow)
-          return (
-            <div className="list-item" key={r.id}>
-              <div className={r.id === suggested?.id ? 'day-badge today' : 'day-badge'}>
-                {badgeDow == null ? '—' : weekdayAbbr(badgeDow)}
-              </div>
-              <div className="grow">
-                <div className="t1">{r.name}</div>
-                <div className="t2">{r.focus !== '' ? r.focus : r.duration}</div>
-              </div>
-              <div className="muted num">{routineSetCount(plan, r, week)} ser</div>
-            </div>
-          )
-        })}
-      </div>
-    </>
+      </main>
+    </div>
   )
 }

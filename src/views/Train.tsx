@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { RoutineId, Session } from '../types'
 import { SESSION_KIND_FOR_DAY } from '../lib/plan'
 import { exerciseNameInRoutine, routineDaysLabel, routineForWeekday, routineSetCount, routineSlots, weekLabel } from '../lib/planQueries'
@@ -18,11 +18,19 @@ import { Empty } from '../components/ui'
  *  una disciplina nueva con progresion propia exige agregarle su rama aca. */
 type ProgressTarget = { kind: 'strength'; routineId: RoutineId } | { kind: 'swim' }
 
-export default function Train() {
+export default function Train({ autoStart, onAutoStarted }: { autoStart?: string; onAutoStarted?: () => void } = {}) {
   const { sessions, config, plan, saveSession, deleteSession } = useStore()
   const [active, setActive] = useState<Session | null>(null)
   const [detail, setDetail] = useState<string | null>(null)
   const [progressFor, setProgressFor] = useState<ProgressTarget | null>(null)
+
+  // Arranque directo desde Hoy: igual que el boton "start" de la rutina.
+  useEffect(() => {
+    if (!autoStart || active) return
+    setActive(DISCIPLINES.strength.create(todayISO(), autoStart))
+    onAutoStarted?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart])
 
   const week = blockWeekNumber(new Date(), config.blockStart)
   const phase = phaseForWeek(plan, week)

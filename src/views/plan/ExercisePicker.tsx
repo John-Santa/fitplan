@@ -24,7 +24,7 @@ const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCa
 
 export default function ExercisePicker({ plan, mode, currentExerciseId, taken, onPick, onCreate, onClose }: {
   plan: TrainingPlan
-  mode: 'add' | 'swap'
+  mode: 'add' | 'swap' | 'browse'
   currentExerciseId?: string
   /** Ejercicios que ya estan en la rutina: no se pueden elegir de nuevo (routineExerciseIds). */
   taken: ReadonlySet<string>
@@ -46,13 +46,13 @@ export default function ExercisePicker({ plan, mode, currentExerciseId, taken, o
     })
   }, [all, query, category])
 
-  const title = mode === 'swap' ? 'Cambiar ejercicio' : 'Agregar ejercicio'
+  const title = mode === 'swap' ? 'Cambiar ejercicio' : mode === 'browse' ? 'Biblioteca de ejercicios' : 'Agregar ejercicio'
 
   if (view === 'create') {
     return (
       <Sheet className="pe-scope" title="Ejercicio propio" onClose={onClose}>
         <CreateForm
-          submitLabel={mode === 'swap' ? 'Crear y usar' : 'Crear y agregar'}
+          submitLabel={mode === 'swap' ? 'Crear y usar' : mode === 'browse' ? 'Crear ejercicio' : 'Crear y agregar'}
           onBack={() => setView('list')}
           onSubmit={onCreate}
         />

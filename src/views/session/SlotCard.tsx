@@ -1,13 +1,13 @@
 import type { PlanSlot, SetLog } from '../../types'
 import type { lastPerformance } from '../../lib/calc'
-import { fmtDate, formatLastPerformance, progressLine, shouldProgress } from '../../lib/calc'
+import { progressLine, shouldProgress } from '../../lib/calc'
 import { formatTarget } from '../../lib/phases'
 import { Check } from '../../components/ui'
 import HoldTimer from './HoldTimer'
 import PainControl from './PainControl'
-import { InfoIcon } from './PlanIcons'
+import { ClockIcon, InfoIcon, MinusIcon, PlusIcon, TimerIcon, TipIcon, TrendIcon } from './PlanIcons'
 
-type SetRowState = 'done' | 'current' | 'pending'
+type Prev = ReturnType<typeof lastPerformance>
 
 export interface SlotCardProps {
   slot: PlanSlot
@@ -16,250 +16,282 @@ export interface SlotCardProps {
   sets: number
   /** Series ya registradas de este ejercicio en la sesion. */
   logs: SetLog[]
-  prev: ReturnType<typeof lastPerformance>
+  prev: Prev
   seat: string
   pain: number | undefined
-  /** undefined = estado por defecto (abierto la primera vez con el ejercicio). */
-  cueOpen: boolean | undefined
-  /** Dentro de una superserie o circuito, el descanso solo corre tras el
-   *  ultimo ejercicio del grupo. */
-  startsRest: boolean
-  /** Titulo de nivel 3 cuando va dentro de un grupo. */
-  nested: boolean
+  /** Indice de la serie actual (null = todas hechas o saltadas). */
+  current: number | null
+  /** Series saltadas (solo pantalla). */
+  skipped: ReadonlySet<number>
+  /** Etiqueta de superserie/circuito, si el slot va en un grupo. */
+  groupLabel?: string
   onUpdate: (setIndex: number, patch: Partial<SetLog>) => void
-  onRest: (sec: number) => void
   onPain: (v: number | null) => void
   onInfo: () => void
-  onToggleCue: () => void
   onSeat: (v: string) => void
 }
 
 const num = (v: string): number | null => (v === '' ? null : Number(v))
+const fmtN = (n: number | null | undefined): string => (n == null ? '—' : Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100))
 
-/** Un ejercicio de la sesion: cabecera, filas de series segun el tipo de
- *  objetivo, dolor y claves tecnicas. */
-export default function SlotCard(p: SlotCardProps) {
-  const { slot, name, sets: n, logs, prev } = p
-  const target = slot.target
-  const Heading = p.nested ? 'h3' : 'h2'
-  const isCueOpen = p.cueOpen ?? prev === null
-  const mine = logs.slice().sort((a, b) => a.setIndex - b.setIndex)
-  const logAt = (i: number) => mine.find(x => x.setIndex === i)
-  const currentIndex = Array.from({ length: n }, (_, i) => i).find(i => !logAt(i)?.done) ?? null
-  const stateOf = (i: number): SetRowState => (logAt(i)?.done ? 'done' : i === currentIndex ? 'current' : 'pending')
-  const rest = () => {
-    if (p.startsRest && slot.restSec > 0) p.onRest(slot.restSec)
+/** Referencia de la sesion anterior para la serie i (o su ultima serie). */
+export const refFor = (prev: Prev, i: number): SetLog | undefined => prev?.sets[i] ?? prev?.sets[prev.sets.length - 1]
+
+/** Lo que registra "Completar serie" para la serie i de un slot: igual que el
+ *  check de siempre (valores tecleados, o la referencia / el objetivo). */
+export function completionPatch(slot: PlanSlot, s: SetLog | undefined, ref: SetLog | undefined): Partial<SetLog> {
+  const t = slot.target
+  switch (t.kind) {
+    case 'reps':
+      return { done: true, weight: s?.weight ?? ref?.weight ?? null, reps: s?.reps ?? t.high }
+    case 'time':
+      return { done: true, durationSec: s?.durationSec ?? t.lowSec }
+    case 'distance':
+      return { done: true, distanceM: t.meters }
+    case 'note':
+      return { done: true }
   }
-  const label = formatTarget(target)
-  const progress = target.kind === 'reps' && prev != null && shouldProgress(prev.sets, n, target.high)
+}
 
-  /* ----- repeticiones: peso + reps, como siempre ----- */
-  const repsRows = () => {
-    if (target.kind !== 'reps') return null
-    const toggle = (i: number, s: SetLog | undefined, ref: SetLog | undefined) => {
-      const next = !s?.done
-      p.onUpdate(i, { done: next, weight: s?.weight ?? ref?.weight ?? null, reps: s?.reps ?? target.high })
-      if (next) rest()
-    }
-    return Array.from({ length: n }, (_, i) => {
-      const s = logAt(i)
-      const ref = prev?.sets[i] ?? prev?.sets[prev.sets.length - 1]
-      const state = stateOf(i)
-      const weightInput = (
-        <input
-          type="number" inputMode="decimal" step="0.5"
-          className={state === 'current' ? `num${s?.weight != null ? ' filled' : ''}` : 'num'}
-          placeholder={ref?.weight != null ? String(ref.weight) : '—'}
-          value={s?.weight ?? ''}
-          onChange={e => p.onUpdate(i, { weight: num(e.target.value) })}
-          aria-label={`Peso serie ${i + 1}`}
-        />
-      )
-      const repsInput = (
-        <input
-          type="number" inputMode="numeric"
-          className={state === 'current' ? `num${s?.reps != null ? ' filled' : ''}` : 'num'}
-          placeholder={String(target.high)}
-          value={s?.reps ?? ''}
-          onChange={e => p.onUpdate(i, { reps: num(e.target.value) })}
-          aria-label={`Repeticiones serie ${i + 1}`}
-        />
-      )
-      if (state === 'current') {
-        return (
-          <div className="setnow" key={i}>
-            <div className="setnow-head">
-              <span className="lbl-current">Serie {i + 1} de {n}</span>
-              {i + 1 === n && <span className="lbl-last">La última</span>}
-            </div>
-            <div className="setnow-grid">
-              <div><div className="micro">kg</div>{weightInput}</div>
-              <div><div className="micro">reps</div>{repsInput}</div>
-              <button className="check" aria-label={s?.done ? 'Deshacer serie' : 'Marcar serie'} onClick={() => toggle(i, s, ref)}>
-                <Check on={!!s?.done} />
-              </button>
-            </div>
-          </div>
-        )
-      }
-      return (
-        <div className={`setrow ${state}`} key={i}>
-          <div className="idx num">{i + 1}</div>
-          {weightInput}
-          {repsInput}
-          <button className={`check${s?.done ? ' on' : ''}`} aria-label={s?.done ? 'Deshacer serie' : 'Marcar serie'} onClick={() => toggle(i, s, ref)}>
-            <Check on={!!s?.done} />
-          </button>
-        </div>
-      )
-    })
-  }
-
-  /* ----- tiempo: segundos + cronometro de sostenido ----- */
-  const timeRows = () => {
-    if (target.kind !== 'time') return null
-    return Array.from({ length: n }, (_, i) => {
-      const s = logAt(i)
-      const state = stateOf(i)
-      return (
-        <div className={`sp-row time ${state}`} key={i}>
-          <div className="idx num">{i + 1}</div>
-          <div className="sp-field">
-            <input
-              type="number" inputMode="numeric" className="num"
-              placeholder={String(target.lowSec)}
-              value={s?.durationSec ?? ''}
-              onChange={e => p.onUpdate(i, { durationSec: num(e.target.value) })}
-              aria-label={`Segundos serie ${i + 1}`}
-            />
-            <span className="sp-unit" aria-hidden="true">s</span>
-          </div>
-          <HoldTimer label={`Serie ${i + 1}`} onStop={sec => p.onUpdate(i, { durationSec: sec })} />
-          <button
-            className={`sp-check${s?.done ? ' on' : ''}`}
-            aria-label={s?.done ? 'Deshacer serie' : 'Marcar serie'}
-            onClick={() => {
-              const next = !s?.done
-              p.onUpdate(i, { done: next, durationSec: s?.durationSec ?? target.lowSec })
-              if (next) rest()
-            }}
-          >
-            <Check on={!!s?.done} />
-          </button>
-        </div>
-      )
-    })
-  }
-
-  /* ----- distancia: una marca por serie ----- */
-  const distanceRows = () => {
-    if (target.kind !== 'distance') return null
-    return Array.from({ length: n }, (_, i) => {
-      const s = logAt(i)
-      const state = stateOf(i)
-      return (
-        <div className={`sp-row distance ${state}`} key={i}>
-          <div className="idx num">{i + 1}</div>
-          <div className="sp-distance num">{label}</div>
-          <button
-            className={`sp-check${s?.done ? ' on' : ''}`}
-            aria-label={s?.done ? `Deshacer serie ${i + 1}` : `Marcar serie ${i + 1}`}
-            onClick={() => {
-              const next = !s?.done
-              p.onUpdate(i, { done: next, distanceM: next ? target.meters : null })
-              if (next) rest()
-            }}
-          >
-            <Check on={!!s?.done} />
-          </button>
-        </div>
-      )
-    })
-  }
-
-  /* ----- nota: una sola marca ----- */
-  const noteRow = () => {
-    if (target.kind !== 'note') return null
-    const s = logAt(0)
-    return (
-      <div className={`sp-row note ${s?.done ? 'done' : 'current'}`}>
-        <button
-          type="button"
-          role="checkbox"
-          aria-checked={!!s?.done}
-          className={s?.done ? 'sp-tick on' : 'sp-tick'}
-          onClick={() => p.onUpdate(0, { done: !s?.done })}
-        >
-          <span className="sp-tick-box"><Check on={!!s?.done} /></span>
-          <span className="sp-tick-text">Hecho</span>
+function Stepper(p: {
+  label: string
+  unit: string
+  value: number | null
+  step: number
+  min: number
+  decimal?: boolean
+  onChange: (v: number | null) => void
+}) {
+  const base = p.value ?? 0
+  const bump = (d: number) => p.onChange(Math.max(p.min, Math.round((base + d) * 100) / 100))
+  return (
+    <div className="ses-stepper">
+      <span className="ses-stepper-label">{p.label}</span>
+      <div className="ses-stepper-row">
+        <button type="button" className="ses-round" aria-label={`Disminuir ${p.label.toLowerCase()}`} onClick={() => bump(-p.step)}>
+          <MinusIcon />
+        </button>
+        <label className="ses-stepper-val">
+          <input
+            type="number" inputMode={p.decimal ? 'decimal' : 'numeric'} step={p.decimal ? '0.5' : '1'}
+            value={p.value ?? ''}
+            placeholder="0"
+            aria-label={p.label}
+            onChange={e => p.onChange(num(e.target.value))}
+          />
+          <span className="ses-unit">{p.unit}</span>
+        </label>
+        <button type="button" className="ses-round" aria-label={`Aumentar ${p.label.toLowerCase()}`} onClick={() => bump(p.step)}>
+          <PlusIcon />
         </button>
       </div>
+    </div>
+  )
+}
+
+/** El ejercicio en foco de la sesion: cabecera, serie actual con steppers,
+ *  lista de series, dolor al terminar y ajuste del equipo. La accion de
+ *  "Completar serie" vive en la zona del pulgar de StrengthBody. */
+export default function SlotCard(p: SlotCardProps) {
+  const { slot, name, sets: n, logs, prev, current } = p
+  const target = slot.target
+  const mine = logs.slice().sort((a, b) => a.setIndex - b.setIndex)
+  const logAt = (i: number) => mine.find(x => x.setIndex === i)
+  const label = formatTarget(target)
+  const progress = target.kind === 'reps' && prev != null && shouldProgress(prev.sets, n, target.high)
+  const cur = current !== null ? logAt(current) : undefined
+  const curRef = current !== null ? refFor(prev, current) : undefined
+  const stateOf = (i: number): 'done' | 'current' | 'skipped' | 'pending' =>
+    logAt(i)?.done ? 'done' : i === current ? 'current' : p.skipped.has(i) ? 'skipped' : 'pending'
+
+  const doneText = (s: SetLog | undefined): string => {
+    if (!s) return '—'
+    if (target.kind === 'reps') return `${fmtN(s.weight)} kg × ${fmtN(s.reps)}`
+    if (target.kind === 'time') return `${fmtN(s.durationSec)} s`
+    if (target.kind === 'distance') return label
+    return 'Hecho'
+  }
+  const plannedText = (i: number): string => {
+    if (target.kind === 'reps') {
+      const ref = refFor(prev, i)
+      return `${fmtN(ref?.weight)} kg × ${target.high}`
+    }
+    if (target.kind === 'time') return `${target.lowSec} s`
+    if (target.kind === 'distance') return label
+    return '—'
+  }
+
+  const undo = (i: number) => p.onUpdate(i, { done: false })
+
+  const card = () => {
+    if (current === null) return null
+    const i = current
+    const isLast = i + 1 === n
+    return (
+      <section className="ses-now" aria-label={`Serie ${i + 1} de ${n}`}>
+        <div className="ses-now-head">
+          <div>
+            <div className="ses-now-title">
+              <span>{target.kind === 'note' ? 'Pendiente' : `Serie ${i + 1} de ${n}`}</span>
+              {progress && (
+                <span className="ses-pill good"><TrendIcon /> Sube peso la próxima</span>
+              )}
+              {isLast && n > 1 && <span className="ses-pill">La última</span>}
+            </div>
+            {target.kind === 'reps' && (
+              <p className="ses-prevline">
+                {curRef ? `Anterior: ${fmtN(curRef.weight)} kg × ${fmtN(curRef.reps)}` : 'Primera vez: empieza liviano, la primera serie es de reconocimiento.'}
+              </p>
+            )}
+            {progress && prev && target.kind === 'reps' && (
+              <p className="ses-prevline">{progressLine(prev.sets.length, Math.min(...prev.sets.map(s => s.reps ?? target.high)))}</p>
+            )}
+          </div>
+          <span className="ses-state">En curso</span>
+        </div>
+
+        {target.kind === 'reps' && (
+          <div className="ses-steppers">
+            <Stepper
+              label="Peso" unit="kg" step={2.5} min={0} decimal
+              value={cur?.weight ?? curRef?.weight ?? null}
+              onChange={v => p.onUpdate(i, { weight: v })}
+            />
+            <Stepper
+              label="Reps" unit="reps" step={1} min={0}
+              value={cur?.reps ?? target.high}
+              onChange={v => p.onUpdate(i, { reps: v })}
+            />
+          </div>
+        )}
+
+        {target.kind === 'time' && (
+          <div className="ses-steppers one">
+            <Stepper
+              label="Segundos" unit="s" step={5} min={0}
+              value={cur?.durationSec ?? target.lowSec}
+              onChange={v => p.onUpdate(i, { durationSec: v })}
+            />
+            <HoldTimer label={`Serie ${i + 1}`} onStop={sec => p.onUpdate(i, { durationSec: sec })} />
+          </div>
+        )}
+
+        {target.kind === 'distance' && (
+          <div className="ses-bigrow">
+            <span className="ses-bigval">{label}</span>
+            <button
+              type="button" role="checkbox" aria-checked={!!cur?.done}
+              className={cur?.done ? 'ses-tick on' : 'ses-tick'}
+              onClick={() => p.onUpdate(i, cur?.done ? { done: false } : completionPatch(slot, cur, curRef))}
+            >
+              <span className="ses-tick-box"><Check on={!!cur?.done} /></span>
+              <span className="ses-tick-text">Hecha</span>
+            </button>
+          </div>
+        )}
+
+        {target.kind === 'note' && (
+          <div className="ses-bigrow">
+            <button
+              type="button" role="checkbox" aria-checked={!!cur?.done}
+              className={cur?.done ? 'ses-tick on' : 'ses-tick'}
+              onClick={() => p.onUpdate(0, { done: !cur?.done })}
+            >
+              <span className="ses-tick-box"><Check on={!!cur?.done} /></span>
+              <span className="ses-tick-text">Hecho</span>
+            </button>
+          </div>
+        )}
+      </section>
     )
   }
 
   return (
-    <div className="sp-slot">
-      <div className="sp-head">
-        <Heading>
-          {name} {slot.primary && <span className="pill">principal</span>}
-        </Heading>
-        <button type="button" className="sp-info" aria-label={`Ver ficha de ${name}`} onClick={p.onInfo}>
-          <InfoIcon />
-        </button>
-      </div>
-      <div className="metabar">
-        {target.kind !== 'note' && <span>{n} × {label}</span>}
-        {slot.restSec > 0 && <span>Descanso {slot.restSec}s</span>}
-        {p.seat && <span>Asiento {p.seat}</span>}
-      </div>
-
-      {slot.primary && target.kind === 'reps' && mine.length === 0 && (
-        <p className="hint">Primera serie con poco peso (aproximación) antes de las series de trabajo.</p>
-      )}
-
-      {progress && prev && target.kind === 'reps' && (
-        <div className="tag-skew-wrap">
-          <div className="tag-skew"><span>Sube peso</span></div>
-          <p>{progressLine(prev.sets.length, Math.min(...prev.sets.map(s => s.reps ?? target.high)))}</p>
-        </div>
-      )}
-
-      {target.kind === 'reps' &&
-        (prev ? (
-          <div className="last-perf">
-            <div className="label">La vez pasada · {fmtDate(prev.session.date)}</div>
-            <div className="value num">{formatLastPerformance(prev.sets)}</div>
+    <div className="ses-slot">
+      <div className="ses-exhead">
+        <div className="ses-exhead-main">
+          {p.groupLabel && <span className="ses-pill good">{p.groupLabel}</span>}
+          <h1 className="ses-title">
+            {name} {slot.primary && <span className="ses-pill">principal</span>}
+          </h1>
+          <div className="ses-chips">
+            {target.kind !== 'note' && <span className="ses-chip strong">{n} × {label}</span>}
+            {slot.restSec > 0 && (
+              <span className="ses-chip"><TimerIcon /> Descanso {slot.restSec} s</span>
+            )}
+            <button type="button" className="ses-chip btn" aria-label={`Ver ficha de ${name}`} onClick={p.onInfo}>
+              <InfoIcon /> Ficha
+            </button>
           </div>
-        ) : (
-          <p className="hint">Primera vez con este ejercicio. Empieza liviano: la primera serie es de reconocimiento.</p>
-        ))}
-
-      {repsRows()}
-      {timeRows()}
-      {distanceRows()}
-      {noteRow()}
-
-      {target.kind !== 'note' && <PainControl id={`pain-${slot.id}`} value={p.pain} onChange={p.onPain} />}
-
-      <button className="disclosure-toggle" aria-expanded={isCueOpen} onClick={p.onToggleCue}>
-        <span className="lbl">Claves técnicas</span>
-        <span className="glyph">{isCueOpen ? '−' : '+'}</span>
-      </button>
-      {isCueOpen && (
-        <div className="disclosure-body">
-          {slot.note !== '' && <p className="hint" style={{ marginBottom: 12 }}>{slot.note}</p>}
-          <label htmlFor={`seat-${slot.exerciseId}`}>Número de asiento o ajuste</label>
-          <input
-            id={`seat-${slot.exerciseId}`}
-            key={slot.exerciseId}
-            type="text"
-            defaultValue={p.seat}
-            placeholder="p. ej. asiento 4, pin 3"
-            onBlur={e => p.onSeat(e.target.value)}
-          />
-          <p className="hint">Se guarda solo y aparece aquí la próxima sesión.</p>
         </div>
+      </div>
+
+      {slot.note !== '' && (
+        <p className="ses-cue"><TipIcon /> <span>{slot.note}</span></p>
       )}
+      {slot.primary && target.kind === 'reps' && mine.length === 0 && (
+        <p className="ses-hint">Primera serie con poco peso (aproximación) antes de las series de trabajo.</p>
+      )}
+
+      {card()}
+
+      {current === null && target.kind !== 'note' && (
+        <p className="ses-doneline"><Check on /> Ejercicio terminado</p>
+      )}
+
+      {target.kind !== 'note' && (
+        <section className="ses-list-wrap">
+          <div className="ses-list-head">
+            <span>Registro de series</span>
+            <span>Objetivo: {label}</span>
+          </div>
+          <ul className="ses-list">
+            {Array.from({ length: n }, (_, i) => {
+              const state = stateOf(i)
+              const s = logAt(i)
+              const body = (
+                <>
+                  <span className={`ses-idx ${state}`}>{state === 'done' ? <Check on /> : i + 1}</span>
+                  <span className="ses-row-name">
+                    Serie {i + 1}
+                    {state === 'current' && <em className="ses-pill">Actual</em>}
+                    {state === 'skipped' && <em className="ses-pill">Saltada</em>}
+                  </span>
+                  <span className="ses-row-val">{state === 'done' ? doneText(s) : plannedText(i)}</span>
+                  {state === 'pending' && <ClockIcon />}
+                </>
+              )
+              return (
+                <li key={i} className={`ses-row ${state}`}>
+                  {state === 'done' ? (
+                    <button type="button" className="ses-row-btn" aria-label={`Deshacer serie ${i + 1}`} onClick={() => undo(i)}>
+                      {body}
+                    </button>
+                  ) : (
+                    <div className="ses-row-btn">{body}</div>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      )}
+
+      {current === null && target.kind !== 'note' && (
+        <PainControl id={`pain-${slot.id}`} value={p.pain} onChange={p.onPain} />
+      )}
+
+      <div className="ses-seat">
+        <label htmlFor={`seat-${slot.exerciseId}`}>Asiento o ajuste</label>
+        <input
+          id={`seat-${slot.exerciseId}`}
+          key={slot.exerciseId}
+          type="text"
+          defaultValue={p.seat}
+          placeholder="p. ej. asiento 4, pin 3"
+          onBlur={e => p.onSeat(e.target.value)}
+        />
+      </div>
     </div>
   )
 }
