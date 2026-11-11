@@ -81,7 +81,13 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
     [hasWarmup, steps],
   )
 
-  const [currentIndex, setCurrentIndex] = useState(0)
+  // A restored session (reload) resumes at the first unfinished exercise.
+  const [currentIndex, setCurrentIndex] = useState(() => {
+    if (!session.sets.some(s => s.done)) return 0
+    const at = items.findIndex(it => it.kind === 'work' && it.step.slots.some(sl =>
+      sl.target.kind !== 'note' && session.sets.filter(s => s.exerciseId === sl.exerciseId && s.done).length < setsForSlot(sl, phase)))
+    return at >= 0 ? at : 0
+  })
   const [warmupTicked, setWarmupTicked] = useState<Record<string, boolean>>({})
   /** Series saltadas ("slotId:indice"). Solo pantalla: no se guardan. */
   const [skipped, setSkipped] = useState<Set<string>>(() => new Set())

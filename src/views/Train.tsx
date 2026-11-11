@@ -7,6 +7,7 @@ import { isPainValue, painVerdict } from '../lib/pain'
 import { doneSets, fmtDate, fmtDuration, mmss, sessionVolume, todayISO } from '../lib/calc'
 import { DISCIPLINES, SWIM_STROKE_LABELS, finishSwimSession, metresToLaps, sessionDigest, swimDistance, swimPaceSecPer100m } from '../lib/disciplines'
 import { useStore } from '../lib/store'
+import { loadActiveDraft, saveActiveDraft } from '../lib/activeSession'
 import ActiveSession from './ActiveSession'
 import ExerciseProgress from './ExerciseProgress'
 import SwimProgress from './SwimProgress'
@@ -20,7 +21,9 @@ type ProgressTarget = { kind: 'strength'; routineId: RoutineId } | { kind: 'swim
 
 export default function Train({ autoStart, autoStartMinimal, onAutoStarted }: { autoStart?: string; autoStartMinimal?: boolean; onAutoStarted?: () => void } = {}) {
   const { sessions, config, plan, saveSession, deleteSession } = useStore()
-  const [active, setActive] = useState<Session | null>(null)
+  // Restores the workout in progress after a reload.
+  const [active, setActive] = useState<Session | null>(() => loadActiveDraft())
+  useEffect(() => { saveActiveDraft(active) }, [active])
   const [detail, setDetail] = useState<string | null>(null)
   const [progressFor, setProgressFor] = useState<ProgressTarget | null>(null)
 

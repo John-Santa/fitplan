@@ -7,6 +7,7 @@ import Measure from './views/Measure'
 import Habit from './views/Habit'
 import Settings from './views/Settings'
 import PlanEditor from './views/PlanEditor'
+import { loadActiveDraft } from './lib/activeSession'
 import Guide from './views/Guide'
 
 type Tab = 'home' | 'plan' | 'progreso' | 'perfil'
@@ -21,8 +22,9 @@ const TABS: { id: Tab; label: string; icon: ReactNode }[] = [
 
 function Shell() {
   const { ready, dbError } = useStore()
-  const [tab, setTab] = useState<Tab>('home')
-  const [progressView, setProgressView] = useState<ProgressView>('habit')
+  // A workout in progress survives a reload: reopen it where it was.
+  const [tab, setTab] = useState<Tab>(() => (loadActiveDraft() ? 'progreso' : 'home'))
+  const [progressView, setProgressView] = useState<ProgressView>(() => (loadActiveDraft() ? 'train' : 'habit'))
   const [auto, setAuto] = useState<{ id: string; minimal: boolean } | undefined>(undefined)
   // La Guia es una pantalla secundaria: se abre desde Plan y no tiene pestaña propia.
   const [guideOpen, setGuideOpen] = useState(false)
