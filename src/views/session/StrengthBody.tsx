@@ -237,6 +237,10 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
     }
   }
 
+  // Finishing before every exercise is done is allowed: the sets logged count.
+  const finishEarly = () => {
+    if (totalDone >= totalTarget || confirm(`¿Terminar con ${totalDone} de ${totalTarget} series? Se guarda lo que hiciste.`)) onFinish()
+  }
   const goNext = () => { if (nextIndex != null) setCurrentIndex(nextIndex) }
 
   return (
@@ -280,6 +284,11 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
                 <button type="button" className="ses-textbtn" onClick={skip} disabled={!focus}>Saltar</button>
               ) : (
                 <span />
+              )}
+              {item && !isLastItem && (
+                <button type="button" className="ses-textbtn" onClick={finishEarly} disabled={totalDone === 0}>
+                  Terminar
+                </button>
               )}
               {item && next ? (
                 <button type="button" className="ses-textbtn" onClick={goNext}>
