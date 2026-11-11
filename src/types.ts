@@ -179,6 +179,9 @@ export interface StrengthSession extends SessionBase {
   /** Exercises swapped for this session only (slot id -> exercise id), e.g.
    *  when a machine is busy. Optional: older sessions stay valid. */
   swaps?: Record<string, string>
+  /** Extra sets added during the session beyond the plan (slot id -> count).
+   *  Optional: older sessions stay valid. */
+  extraSets?: Record<string, number>
 }
 
 /** Estilo de un bloque de natacion. Todavia no hay forma de elegirlo desde la

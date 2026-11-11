@@ -97,17 +97,19 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
   const [flagsOpen, setFlagsOpen] = useState(false)
 
   const nameOf = (slot: PlanSlot) => slotExerciseName(plan, slot)
+  // Plan sets for the week plus any set the user added in this session.
+  const targetOf = (slot: PlanSlot) => slotTarget(slot, phase) + (slot.target.kind === 'note' ? 0 : session.extraSets?.[slot.id] ?? 0)
   const doneOf = (slot: PlanSlot) =>
-    Math.min(session.sets.filter(s => s.exerciseId === slot.exerciseId && s.done).length, slotTarget(slot, phase))
+    Math.min(session.sets.filter(s => s.exerciseId === slot.exerciseId && s.done).length, targetOf(slot))
   const stepDone = (step: SessionStep) => step.slots.reduce((a, s) => a + doneOf(s), 0)
-  const stepTarget = (step: SessionStep) => step.slots.reduce((a, s) => a + slotTarget(s, phase), 0)
+  const stepTarget = (step: SessionStep) => step.slots.reduce((a, s) => a + targetOf(s), 0)
   const itemName = (it: Item) => (it.kind === 'warmup' ? 'Calentamiento' : it.step.slots.map(nameOf).join(' + '))
   const logsOf = (slot: PlanSlot) => session.sets.filter(s => s.exerciseId === slot.exerciseId)
   const isSkipped = (slot: PlanSlot, i: number) => skipped.has(`${slot.id}:${i}`)
   /** Primera serie sin hacer ni saltar (null = el slot ya termino). */
   const currentOf = (slot: PlanSlot): number | null => {
     const logs = logsOf(slot)
-    const n = slotTarget(slot, phase)
+    const n = targetOf(slot)
     for (let i = 0; i < n; i++) {
       if (!logs.some(l => l.setIndex === i && l.done) && !isSkipped(slot, i)) return i
     }
@@ -119,6 +121,25 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
     const next = session.sets.slice()
     if (idx >= 0) next[idx] = { ...next[idx], ...patch }
     else next.push({ exerciseId, setIndex, weight: null, reps: null, done: false, ...patch })
+    onChange({ ...session, sets: next })
+  }
+
+  const addSet = (slot: PlanSlot) => {
+    const extra = session.extraSets ?? {}
+    onChange({ ...session, extraSets: { ...extra, [slot.id]: (extra[slot.id] ?? 0) + 1 } })
+  }
+  /** Marks every remaining set of the exercise as done in one tap, using the
+   *  values on screen or the last session's as the default. */
+  const completeAll = (slot: PlanSlot) => {
+    const prev = lastPerformance(strengthSessions, slot.exerciseId, session.id)
+    const next = session.sets.slice()
+    for (let i = 0; i < targetOf(slot); i++) {
+      const idx = next.findIndex(s => s.exerciseId === slot.exerciseId && s.setIndex === i)
+      if (idx >= 0 && next[idx].done) continue
+      const patch = completionPatch(slot, idx >= 0 ? next[idx] : undefined, refFor(prev, i))
+      if (idx >= 0) next[idx] = { ...next[idx], ...patch }
+      else next.push({ exerciseId: slot.exerciseId, setIndex: i, weight: null, reps: null, done: false, ...patch })
+    }
     onChange({ ...session, sets: next })
   }
 
@@ -289,18 +310,20 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
             key={slot.id}
             slot={slot}
             name={nameOf(slot)}
-            sets={slotTarget(slot, phase)}
+            sets={targetOf(slot)}
             logs={logsOf(slot)}
             prev={lastPerformance(strengthSessions, slot.exerciseId, session.id)}
             seat={meta[slot.exerciseId]?.seat ?? ''}
             pain={session.pain?.[slot.exerciseId]}
             current={currentOf(slot)}
-            skipped={new Set(Array.from({ length: slotTarget(slot, phase) }, (_, i) => i).filter(i => isSkipped(slot, i)))}
+            skipped={new Set(Array.from({ length: targetOf(slot) }, (_, i) => i).filter(i => isSkipped(slot, i)))}
             groupLabel={label}
             onUpdate={(i, patch) => update(slot.exerciseId, i, patch)}
             onPain={v => setPain(slot.exerciseId, v)}
             onInfo={() => setSheetSlot(slot)}
             onSeat={v => saveMeta({ exerciseId: slot.exerciseId, seat: v, note: meta[slot.exerciseId]?.note ?? '' })}
+            onAddSet={() => addSet(slot)}
+            onCompleteAll={() => completeAll(slot)}
             onSwap={step ? () => setSwapTarget({ slot, blockId: step.blockId }) : undefined}
             swapped={session.swaps?.[slot.id] != null}
             onKeepInPlan={step ? () => { void keepInPlan(slot.id, step.blockId) } : undefined}
@@ -320,7 +343,7 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
           )
         } else {
           const st = item.step
-          const gLabel = group ? groupLabel(st.slots, slotTarget(st.slots[0], phase)) : undefined
+          const gLabel = group ? groupLabel(st.slots, targetOf(st.slots[0])) : undefined
           body = (
             <>
               {multiBlock && st.firstInBlock && (
@@ -339,7 +362,7 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
                         {st.slots.map(sl => (
                           <li key={sl.id} className={sl.id === focus.slot.id ? 'on' : undefined}>
                             <span>{nameOf(sl)}</span>
-                            <span className="ses-peer-n">{doneOf(sl)} / {slotTarget(sl, phase)}</span>
+                            <span className="ses-peer-n">{doneOf(sl)} / {targetOf(sl)}</span>
                           </li>
                         ))}
                       </ul>

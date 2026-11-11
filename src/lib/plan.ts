@@ -585,6 +585,14 @@ function isSwimBlock(v: unknown): v is SwimBlock {
 }
 
 /** Session-only exercise swaps: keeps string -> non-empty string entries. */
+/** Extra sets per slot: keeps positive integer counts only. */
+function normalizeExtraSets(v: unknown): Record<string, number> | undefined {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return undefined
+  const out: Record<string, number> = {}
+  for (const [k, x] of Object.entries(v)) if (typeof x === 'number' && Number.isInteger(x) && x > 0) out[k] = x
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
 function normalizeSwaps(v: unknown): Record<string, string> | undefined {
   if (typeof v !== 'object' || v === null || Array.isArray(v)) return undefined
   const out: Record<string, string> = {}
@@ -608,6 +616,7 @@ function normalizeStrengthSession(r: Record<string, unknown>): StrengthSession |
   if (!Array.isArray(r.sets)) return null
   const pain = normalizePain(r.pain)
   const swaps = normalizeSwaps(r.swaps)
+  const extraSets = normalizeExtraSets(r.extraSets)
   return {
     kind: 'strength',
     id: r.id,
@@ -620,6 +629,7 @@ function normalizeStrengthSession(r: Record<string, unknown>): StrengthSession |
     ...(pain ? { pain } : {}),
     ...(r.minimal === true ? { minimal: true as const } : {}),
     ...(swaps ? { swaps } : {}),
+    ...(extraSets ? { extraSets } : {}),
   }
 }
 

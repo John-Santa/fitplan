@@ -299,3 +299,5 @@
   .ses-stepper-row { gap: 12px; }
 }
 .ses-swapped { margin: 8px 0 0; font-size: 13px; color: var(--fp-ink2); }
+.ses-setactions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.ses-setactions .ses-chip { min-height: 44px; padding: 0 14px; }

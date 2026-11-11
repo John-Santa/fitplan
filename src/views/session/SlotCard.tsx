@@ -35,6 +35,10 @@ export interface SlotCardProps {
   swapped?: boolean
   /** Saves the session-only swap into the plan. */
   onKeepInPlan?: () => void
+  /** Adds one more set to this exercise for this session. */
+  onAddSet?: () => void
+  /** Marks every remaining set as done. */
+  onCompleteAll?: () => void
 }
 
 const num = (v: string): number | null => (v === '' ? null : Number(v))
@@ -254,6 +258,19 @@ export default function SlotCard(p: SlotCardProps) {
 
       {current === null && target.kind !== 'note' && (
         <p className="ses-doneline"><Check on /> Ejercicio terminado</p>
+      )}
+
+      {target.kind !== 'note' && (p.onAddSet || p.onCompleteAll) && (
+        <div className="ses-setactions">
+          {p.onAddSet && (
+            <button type="button" className="ses-chip btn" onClick={p.onAddSet}>+ Agregar serie</button>
+          )}
+          {p.onCompleteAll && current !== null && (
+            <button type="button" className="ses-chip btn" onClick={p.onCompleteAll}>
+              <Check on /> Completar ejercicio
+            </button>
+          )}
+        </div>
       )}
 
       {target.kind !== 'note' && (
