@@ -265,6 +265,16 @@ export type DayPlan = TrainingDay | OtherDay
 /** Indice 0 = domingo .. 6 = sabado, igual que Date.getDay(). */
 export type WeeklyRoutine = readonly [DayPlan, DayPlan, DayPlan, DayPlan, DayPlan, DayPlan, DayPlan]
 
+/** Implementation intention for a weekday ("I train at [time] at [place]").
+ *  time is "HH:MM" or "" (unset); place is trimmed free text or "". */
+export interface Intention {
+  time: string
+  place: string
+}
+
+/** Index 0 = Sunday .. 6 = Saturday, same as Date.getDay(). */
+export type WeeklyIntentions = readonly [Intention, Intention, Intention, Intention, Intention, Intention, Intention]
+
 /** Ejercicios personalizados por rutina. Una clave ausente = la rutina usa los
  *  ejercicios por defecto del catalogo; presente = lista completa y ordenada
  *  que reemplaza a la de por defecto. */
@@ -283,6 +293,11 @@ export interface Config {
   poolLengthM: number
   /** Ejercicios que el usuario eligio para cada rutina (ver RoutineOverrides). */
   routineExercises: RoutineOverrides
+  /** Sorted, unique YYYY-MM-DD dates the user checked in as done (walk or
+   *  custom days have no session log). */
+  habitCheckIns: string[]
+  /** Implementation intention per weekday (see WeeklyIntentions). */
+  intentions: WeeklyIntentions
 }
 
 /** version 1 = una sola disciplina (fuerza), sin `kind` en el registro de

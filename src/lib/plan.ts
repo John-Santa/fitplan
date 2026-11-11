@@ -13,6 +13,7 @@ import type {
   SwimBlock,
   SwimSession,
   SwimStroke,
+  WeeklyIntentions,
   WeeklyRoutine,
 } from '../types'
 
@@ -179,6 +180,11 @@ export const DEFAULT_CONFIG: Config = {
   weeklyRoutine: PLAN_WEEKLY_ROUTINE,
   poolLengthM: 25,
   routineExercises: {},
+  habitCheckIns: [],
+  intentions: [
+    { time: '', place: '' }, { time: '', place: '' }, { time: '', place: '' }, { time: '', place: '' },
+    { time: '', place: '' }, { time: '', place: '' }, { time: '', place: '' },
+  ],
 }
 
 export const BASELINE = {
@@ -443,6 +449,38 @@ function str(v: unknown, fallback: string): string {
   return typeof v === 'string' ? v : fallback
 }
 
+const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/
+
+/** True for a real calendar date in YYYY-MM-DD form ("2026-02-30" is not). */
+function isISODate(v: unknown): v is string {
+  if (typeof v !== 'string') return false
+  const m = ISO_DATE.exec(v)
+  if (!m) return false
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+  return d.getFullYear() === Number(m[1]) && d.getMonth() === Number(m[2]) - 1 && d.getDate() === Number(m[3])
+}
+
+/** Keeps only valid ISO dates, deduplicated and sorted ascending. */
+function mergeHabitCheckIns(stored: unknown): string[] {
+  if (!Array.isArray(stored)) return []
+  return [...new Set(stored.filter(isISODate))].sort()
+}
+
+/** Each weekday is merged on its own: a bad time resets only the time, never
+ *  the place or the other days. Same reason as mergeGoal (see mergeConfig). */
+function mergeIntentions(stored: unknown): WeeklyIntentions {
+  const src = Array.isArray(stored) ? stored : []
+  const at = (i: number) => {
+    const raw = typeof src[i] === 'object' && src[i] !== null ? (src[i] as Record<string, unknown>) : {}
+    const time = str(raw.time, '')
+    return {
+      time: /^([01]\d|2[0-3]):[0-5]\d$/.test(time) ? time : '',
+      place: str(raw.place, '').trim(),
+    }
+  }
+  return [at(0), at(1), at(2), at(3), at(4), at(5), at(6)]
+}
+
 /** Mezcla goal campo por campo. Al escribirlo asi en vez de con spread, un
  *  campo nuevo en Measurement (y por lo tanto en Config['goal']) rompe esta
  *  funcion en TS2739 hasta que se le da valor, en vez de heredarlo en
@@ -483,6 +521,8 @@ export function mergeConfig(stored: unknown): Config {
     weeklyRoutine: mergeWeeklyRoutine(c.weeklyRoutine),
     poolLengthM: num(c.poolLengthM, DEFAULT_CONFIG.poolLengthM),
     routineExercises: mergeRoutineOverrides(c.routineExercises),
+    habitCheckIns: mergeHabitCheckIns(c.habitCheckIns),
+    intentions: mergeIntentions(c.intentions),
   }
 }
 

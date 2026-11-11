@@ -1,0 +1,119 @@
+// Habit tracking (Atomic Habits): pure domain over sessions + config. No
+// clock reads: every function receives `today` so results are deterministic.
+import type { Config, Intention, Session } from '../types'
+import { todayISO } from './calc'
+
+/** 'none' = before the person's first ever activity (neutral, never a miss). */
+export type DayStatus = 'kept' | 'rest' | 'missed' | 'pending' | 'future' | 'none'
+
+export interface HabitContext {
+  sessions: readonly Session[]
+  config: Config
+  /** Local date, YYYY-MM-DD. */
+  today: string
+}
+
+export interface HabitCell {
+  date: string
+  status: DayStatus
+}
+
+export interface Streak {
+  days: number
+  atRisk: boolean
+}
+
+/** Longest walk back in days; a hard stop so a malformed context can never loop. */
+const MAX_WALK_DAYS = 3660
+
+const parse = (iso: string): Date => {
+  const [y, m, d] = iso.split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
+/** ISO date `delta` days from `iso` (local calendar, DST-safe). */
+const shift = (iso: string, delta: number): string => {
+  const d = parse(iso)
+  d.setDate(d.getDate() + delta)
+  return todayISO(d)
+}
+
+const finishedDates = (ctx: HabitContext): Set<string> =>
+  new Set(ctx.sessions.filter(s => s.finishedAt != null).map(s => s.date))
+
+/** Earliest date with a finished session or a check-in; null with no activity. */
+function firstActivity(ctx: HabitContext): string | null {
+  const dates = [...finishedDates(ctx), ...ctx.config.habitCheckIns]
+  return dates.length === 0 ? null : dates.reduce((a, b) => (a < b ? a : b))
+}
+
+export function dayStatus(date: string, ctx: HabitContext): DayStatus {
+  if (date > ctx.today) return 'future'
+  if (finishedDates(ctx).has(date) || ctx.config.habitCheckIns.includes(date)) return 'kept'
+  const first = firstActivity(ctx)
+  if (date < ctx.today && (first === null || date < first)) return 'none'
+  if (ctx.config.weeklyRoutine[parse(date).getDay()].kind === 'rest') return 'rest'
+  return date === ctx.today ? 'pending' : 'missed'
+}
+
+/** `weeks` weeks, oldest first, each Monday..Sunday. The last one is the
+ *  calendar week that contains today. */
+export function habitGrid(ctx: HabitContext, weeks = 12): HabitCell[][] {
+  const sinceMonday = (parse(ctx.today).getDay() + 6) % 7
+  const currentMonday = shift(ctx.today, -sinceMonday)
+  return Array.from({ length: weeks }, (_, w) =>
+    Array.from({ length: 7 }, (_, d) => {
+      const date = shift(currentMonday, (w - (weeks - 1)) * 7 + d)
+      return { date, status: dayStatus(date, ctx) }
+    }),
+  )
+}
+
+export function missedYesterday(ctx: HabitContext): boolean {
+  return dayStatus(shift(ctx.today, -1), ctx) === 'missed'
+}
+
+/** Never miss twice: kept and rest days add to the chain, one isolated missed
+ *  day is forgiven (adds nothing, breaks nothing), two in a row end it.
+ *  Today only counts when kept or rest; a pending today neither counts nor
+ *  breaks. atRisk: yesterday was missed and today is still pending (a rest
+ *  day cannot be missed, so it is not at risk). */
+export function streak(ctx: HabitContext): Streak {
+  let days = 0
+  let misses = 0
+  for (let i = 0; i < MAX_WALK_DAYS; i++) {
+    const status = dayStatus(shift(ctx.today, -i), ctx)
+    if (status === 'kept' || status === 'rest') {
+      days++
+      misses = 0
+    } else if (status === 'missed') {
+      if (++misses >= 2) break
+    } else if (status === 'none') {
+      break
+    } // pending: today without a verdict yet, skip
+  }
+  return { days, atRisk: missedYesterday(ctx) && dayStatus(ctx.today, ctx) === 'pending' }
+}
+
+/** Identity votes: each finished session, plus each check-in on a date that
+ *  has no finished session (so a session and a check-in the same day are one
+ *  vote per session, not two). */
+export function votes(ctx: HabitContext): number {
+  const finished = ctx.sessions.filter(s => s.finishedAt != null)
+  const withSession = new Set(finished.map(s => s.date))
+  return finished.length + ctx.config.habitCheckIns.filter(d => !withSession.has(d)).length
+}
+
+/** The implementation intention for a weekday (0 = Sunday), or null when
+ *  neither time nor place is set. */
+export function intentionFor(config: Config, dow: number): Intention | null {
+  const i = config.intentions[dow]
+  return i && (i.time !== '' || i.place !== '') ? i : null
+}
+
+/** Adds the date to habitCheckIns, or removes it if already there. */
+export function toggleCheckIn(config: Config, date: string): Config {
+  const has = config.habitCheckIns.includes(date)
+  const next = has ? config.habitCheckIns.filter(d => d !== date) : [...config.habitCheckIns, date].sort()
+  return { ...config, habitCheckIns: next }
+}
