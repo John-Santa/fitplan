@@ -19,7 +19,7 @@ import { Empty } from '../components/ui'
  *  una disciplina nueva con progresion propia exige agregarle su rama aca. */
 type ProgressTarget = { kind: 'strength'; routineId: RoutineId } | { kind: 'swim' }
 
-export default function Train({ autoStart, autoStartMinimal, onAutoStarted }: { autoStart?: string; autoStartMinimal?: boolean; onAutoStarted?: () => void } = {}) {
+export default function Train({ autoStart, autoStartMinimal, autoStartDate, onAutoStarted }: { autoStart?: string; autoStartMinimal?: boolean; autoStartDate?: string; onAutoStarted?: () => void } = {}) {
   const { sessions, config, plan, saveSession, deleteSession } = useStore()
   // Restores the workout in progress after a reload.
   const [active, setActive] = useState<Session | null>(() => loadActiveDraft())
@@ -30,7 +30,8 @@ export default function Train({ autoStart, autoStartMinimal, onAutoStarted }: { 
   // Arranque directo desde Hoy: igual que el boton "start" de la rutina.
   useEffect(() => {
     if (!autoStart || active) return
-    const created = DISCIPLINES.strength.create(todayISO(), autoStart)
+    // A past date logs that day's workout retroactively.
+    const created = DISCIPLINES.strength.create(autoStartDate ?? todayISO(), autoStart)
     setActive(autoStartMinimal ? { ...created, minimal: true } : created)
     onAutoStarted?.()
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -25,7 +25,7 @@ function Shell() {
   // A workout in progress survives a reload: reopen it where it was.
   const [tab, setTab] = useState<Tab>(() => (loadActiveDraft() ? 'progreso' : 'home'))
   const [progressView, setProgressView] = useState<ProgressView>(() => (loadActiveDraft() ? 'train' : 'habit'))
-  const [auto, setAuto] = useState<{ id: string; minimal: boolean } | undefined>(undefined)
+  const [auto, setAuto] = useState<{ id: string; minimal: boolean; date?: string } | undefined>(undefined)
   // La Guia es una pantalla secundaria: se abre desde Plan y no tiene pestaña propia.
   const [guideOpen, setGuideOpen] = useState(false)
   // Tapping Progreso always lands on Hábito, the default segment.
@@ -34,10 +34,10 @@ function Shell() {
     if (t === 'progreso') setProgressView('habit')
     setTab(t)
   }
-  const startRoutine = (routineId: string, opts?: { minimal?: boolean }) => {
+  const startRoutine = (routineId: string, opts?: { minimal?: boolean; date?: string }) => {
     setGuideOpen(false)
     setProgressView('train')
-    setAuto({ id: routineId, minimal: opts?.minimal === true })
+    setAuto({ id: routineId, minimal: opts?.minimal === true, date: opts?.date })
     setTab('progreso')
   }
 
@@ -94,7 +94,7 @@ function Shell() {
                 </div>
                 {progressView === 'habit' && <Habit />}
                 {progressView === 'train' && (
-                  <Train autoStart={auto?.id} autoStartMinimal={auto?.minimal} onAutoStarted={() => setAuto(undefined)} />
+                  <Train autoStart={auto?.id} autoStartMinimal={auto?.minimal} autoStartDate={auto?.date} onAutoStarted={() => setAuto(undefined)} />
                 )}
                 {progressView === 'measure' && <Measure />}
               </>

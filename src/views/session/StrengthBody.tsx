@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { PlanRoutine, PlanSlot, SetLog, StrengthSession } from '../../types'
-import { lastPerformance } from '../../lib/calc'
+import { fmtDate, lastPerformance, todayISO } from '../../lib/calc'
 import { blockWeekNumber, phaseForWeek, setsForSlot } from '../../lib/phases'
 import { addCustomExercise, swapExercise } from '../../lib/planEdits'
 import ExercisePicker, { type NewExerciseInput } from '../plan/ExercisePicker'
@@ -245,7 +245,7 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
 
   return (
     <SessionShell
-      eyebrow={minimal ? `${routineDisplayName(routine.name)} · Versión mínima` : routineDisplayName(routine.name)}
+      eyebrow={[routineDisplayName(routine.name), minimal ? 'Versión mínima' : '', session.date !== todayISO() ? fmtDate(session.date) : ''].filter(Boolean).join(' · ')}
       startedAt={session.startedAt}
       doneCount={totalDone}
       totalCount={totalTarget}

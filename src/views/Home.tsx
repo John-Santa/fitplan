@@ -7,6 +7,7 @@ import { finishedIn } from '../lib/disciplines'
 import { dayStatus, intentionFor, missedYesterday, streak as habitStreak, toggleCheckIn, votes as habitVotes } from '../lib/habit'
 import { nextRoutine, restAllowance, routinesDoneThisWeek, weekDays, weekRotation, weekSummary } from '../lib/week'
 import { useDerivedMeasurements, useStore } from '../lib/store'
+import BottomSheet from '../components/BottomSheet'
 import './home.css'
 
 type Tab = 'plan' | 'progreso' | 'perfil'
@@ -64,7 +65,7 @@ function Icon({ name, size = 20, className }: { name: keyof typeof ICONS; size?:
 /** 4320 -> "4.320". */
 const fmtThousands = (n: number): string => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')
 
-export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; startRoutine: (routineId: string, opts?: { minimal?: boolean }) => void }) {
+export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; startRoutine: (routineId: string, opts?: { minimal?: boolean; date?: string }) => void }) {
   const { sessions, config, plan, saveConfig } = useStore()
   const rows = useDerivedMeasurements()
   const now = new Date()
@@ -83,6 +84,8 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
   // routine not yet done this week, and any active routine can be picked instead.
   const [pickedId, setPickedId] = useState<string | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
+  // Day being logged from the week strip (today or a past date).
+  const [logDate, setLogDate] = useState<string | null>(null)
   const rotation = weekRotation(plan)
   const doneIds = routinesDoneThisWeek(sessions, iso)
   const suggestion = nextRoutine(plan, sessions, iso)
@@ -325,6 +328,7 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
             </h2>
           </div>
           <p className="hoy-rest-line">{restLine}</p>
+          <button type="button" className="hoy-link hoy-logdate" onClick={() => setLogDate(iso)}>Registrar otra fecha</button>
           <div className="hoy-week">
             {days.map((date, i) => {
               const isToday = date === iso
@@ -375,8 +379,15 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
                 )
               }
 
-              return (
-                <div key={date} className={cls.join(' ')} aria-label={`${weekdayLabel((i + 1) % 7)}${label !== '' ? `: ${label}` : ''}`}>
+              const aria = `${weekdayLabel((i + 1) % 7)} ${fmtDate(date)}${label !== '' ? `: ${label}` : ''}`
+              // Today and past days can be logged with any routine.
+              return date <= iso ? (
+                <button type="button" key={date} className={`${cls.join(' ')} tap`} aria-label={`${aria}. Registrar una rutina`} onClick={() => setLogDate(date)}>
+                  <span className="hoy-day-letter">{DAY_LETTERS[i]}</span>
+                  {body}
+                </button>
+              ) : (
+                <div key={date} className={cls.join(' ')} aria-label={aria}>
                   <span className="hoy-day-letter">{DAY_LETTERS[i]}</span>
                   {body}
                 </div>
@@ -483,6 +494,46 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
           </section>
         )}
       </main>
+
+      {logDate && (() => {
+        const onDate = sessions.filter(s => s.kind === 'strength' && s.finishedAt != null && s.date === logDate)
+        const dow = new Date(Number(logDate.slice(0, 4)), Number(logDate.slice(5, 7)) - 1, Number(logDate.slice(8))).getDay()
+        return (
+          <BottomSheet title={logDate === iso ? 'Entrenar hoy' : `Registrar ${weekdayLabel(dow).toLowerCase()} ${fmtDate(logDate)}`} onClose={() => setLogDate(null)}>
+            <label className="hoy-log-field">
+              <span>Fecha</span>
+              <input type="date" value={logDate} max={iso} onChange={e => { if (e.target.value !== '' && e.target.value <= iso) setLogDate(e.target.value) }} />
+            </label>
+            {onDate.length > 0 && (
+              <p className="hoy-log-note">
+                Ya registraste: {onDate.map(s => (s.kind === 'strength' ? routineDisplayName(plan.routines.find(r => r.id === s.routineId)?.name ?? 'Rutina') : '')).join(', ')}
+              </p>
+            )}
+            <p className="hoy-log-note">Elige la rutina que hiciste o vas a hacer ese día.</p>
+            <ul className="hoy-checklist">
+              {rotation.map(r => (
+                <li key={r.id}>
+                  <button
+                    type="button"
+                    className="hoy-checklist-row"
+                    onClick={() => {
+                      const date = logDate
+                      setLogDate(null)
+                      startRoutine(r.id, date === iso ? undefined : { date })
+                    }}
+                  >
+                    <span className={`hoy-check${doneIds.has(r.id) ? ' on' : ''}`} aria-hidden="true">
+                      {doneIds.has(r.id) && <Icon name="check" size={14} />}
+                    </span>
+                    <span className="hoy-checklist-name">{routineDisplayName(r.name)}</span>
+                    <span className="hoy-checklist-state">{doneIds.has(r.id) ? 'Hecha esta semana' : 'Pendiente'}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </BottomSheet>
+        )
+      })()}
     </div>
   )
 }
