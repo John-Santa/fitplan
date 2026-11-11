@@ -1,17 +1,17 @@
 import { useState, type CSSProperties, type ReactNode } from 'react'
-import { DONE_TODAY, SESSION_KIND_FOR_DAY, weekdayLabel } from '../lib/plan'
-import { dayTitleFor, planWeekStates, routineForWeekday, routineShortName, routineSlots, slotExerciseName, weekLabel, routineDisplayName } from '../lib/planQueries'
+import { DONE_TODAY, weekdayLabel } from '../lib/plan'
+import { planWeekStates, routineShortName, routineSlots, slotExerciseName, weekLabel, routineDisplayName } from '../lib/planQueries'
 import { blockWeekNumber, phaseForWeek } from '../lib/phases'
 import { fmtDate, sessionVolume, todayISO } from '../lib/calc'
 import { finishedIn } from '../lib/disciplines'
 import { dayStatus, intentionFor, missedYesterday, streak as habitStreak, toggleCheckIn, votes as habitVotes } from '../lib/habit'
+import { nextRoutine, restAllowance, routinesDoneThisWeek, weekDays, weekRotation, weekSummary } from '../lib/week'
 import { useDerivedMeasurements, useStore } from '../lib/store'
 import './home.css'
 
 type Tab = 'plan' | 'progreso' | 'perfil'
 
-const DAY_LETTERS = ['D', 'L', 'M', 'X', 'J', 'V', 'S'] // indice = Date.getDay()
-const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0] // lunes a domingo
+const DAY_LETTERS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'] // Monday..Sunday, same order as weekDays()
 const MAX_CHIPS = 4
 
 /* ---------- iconos (trazo de 2px, decorativos) ---------- */
@@ -58,21 +58,11 @@ function Icon({ name, size = 20, className }: { name: keyof typeof ICONS; size?:
   )
 }
 
-/* ---------- utilidades ---------- */
 
-/** Rango ISO [lunes, domingo] de la semana calendario que contiene `now`,
- *  desplazado `weeksBack` semanas hacia atras. */
-function weekRange(now: Date, weeksBack: number): { start: string; end: string; days: string[] } {
-  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7) - weeksBack * 7)
-  const days = Array.from({ length: 7 }, (_, i) =>
-    todayISO(new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i)),
-  )
-  return { start: days[0], end: days[6], days }
-}
+/* ---------- utilidades ---------- */
 
 /** 4320 -> "4.320". */
 const fmtThousands = (n: number): string => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')
-
 
 export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; startRoutine: (routineId: string, opts?: { minimal?: boolean }) => void }) {
   const { sessions, config, plan, saveConfig } = useStore()
@@ -82,19 +72,28 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
   const week = blockWeekNumber(now, config.blockStart)
   const phase = phaseForWeek(plan, week)
   const dow = now.getDay()
-  const habitCtx = { sessions, config, today: iso }
+  const allowance = restAllowance(plan)
+  const habitCtx = { sessions, config, today: iso, restAllowance: allowance }
   const streakInfo = habitStreak(habitCtx)
   const voteCount = habitVotes(habitCtx)
   const todayKept = dayStatus(iso, habitCtx) === 'kept'
   const showMissedBanner = missedYesterday(habitCtx) && !todayKept
-  const today = config.weeklyRoutine[dow]
-  // Dia elegido en la tira semanal: por defecto hoy, pero se puede entrenar la
-  // rutina de cualquier dia (adelantar, recuperar o cambiar el orden).
-  const [picked, setPicked] = useState(dow)
-  const isPickedToday = picked === dow
-  const intention = intentionFor(config, picked)
+
+  // Flexible week: no routine is tied to a weekday. The hero suggests the next
+  // routine not yet done this week, and any active routine can be picked instead.
+  const [pickedId, setPickedId] = useState<string | null>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const rotation = weekRotation(plan)
+  const doneIds = routinesDoneThisWeek(sessions, iso)
+  const suggestion = nextRoutine(plan, sessions, iso)
+  const picked = pickedId != null ? rotation.find(r => r.id === pickedId) ?? null : null
+  const selected = picked ?? suggestion
+  const summary = weekSummary(plan, sessions, config.habitCheckIns, iso)
+  const restLeft = summary.restAllowance - summary.restUsed
+
+  const intention = intentionFor(config, dow)
   const intentionText = intention
-    ? `${isPickedToday ? 'Hoy' : weekdayLabel(picked)}${intention.time !== '' ? ` a las ${intention.time}` : ''}${intention.place !== '' ? ` en ${intention.place}` : ''}`
+    ? `Hoy${intention.time !== '' ? ` a las ${intention.time}` : ''}${intention.place !== '' ? ` en ${intention.place}` : ''}`
     : null
   const intentionRow = intentionText != null ? (
     <div className="hoy-intention">
@@ -108,47 +107,67 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
       Define cuándo y dónde entrenas
     </button>
   )
-  const pickedDay = config.weeklyRoutine[picked]
-  const suggested = routineForWeekday(plan, config.weeklyRoutine, picked)
-  // "Ya entrenaste hoy" = ya hice la disciplina de HOY (un dia sin disciplina
-  // asignada nunca cuenta como hecho).
-  const todayKind = SESSION_KIND_FOR_DAY[today.kind]
-  const doneKind =
-    todayKind != null && sessions.some(s => s.kind === todayKind && s.date === iso && s.finishedAt) ? todayKind : null
 
-  // Semana calendario (lunes a domingo): checks de la tira y tarjetas.
-  const range = weekRange(now, 0)
+  const finishedToday = sessions.some(s => s.finishedAt != null && s.date === iso)
+  const strengthDoneToday = sessions.some(s => s.kind === 'strength' && s.finishedAt != null && s.date === iso)
   const checkedToday = config.habitCheckIns.includes(iso)
-  const canCheckIn = isPickedToday && (pickedDay.kind === 'walk' || pickedDay.kind === 'custom')
-  const finishedThisWeek = sessions.filter(s => s.finishedAt != null && s.date >= range.start && s.date <= range.end)
-  const plannedDays = config.weeklyRoutine.filter(d => SESSION_KIND_FOR_DAY[d.kind] != null).length
-  const doneCount = finishedThisWeek.length
-  const weekVolume = finishedIn(sessions, 'strength', range.start, range.end).reduce((a, s) => a + sessionVolume(s), 0)
-  // Barritas del volumen: esta semana y las 4 anteriores (la ultima resaltada).
+
+  // Calendar week (Monday..Sunday): volume stats and the day cells.
+  const days = weekDays(iso)
+  const weekVolume = finishedIn(sessions, 'strength', days[0], days[6]).reduce((a, s) => a + sessionVolume(s), 0)
+  // Volume bars: this week and the 4 previous ones (the last one highlighted).
   const volumes = [4, 3, 2, 1, 0].map(back => {
-    const r = weekRange(now, back)
-    return finishedIn(sessions, 'strength', r.start, r.end).reduce((a, s) => a + sessionVolume(s), 0)
+    const d = weekDays(todayISO(new Date(now.getFullYear(), now.getMonth(), now.getDate() - back * 7)))
+    return finishedIn(sessions, 'strength', d[0], d[6]).reduce((a, s) => a + sessionVolume(s), 0)
   })
   const maxVol = Math.max(...volumes, 1)
 
-  // Proximo dia con disciplina (para el estado calmo).
-  let next: { label: string; title: string } | null = null
-  for (let k = 1; k <= 7 && !next; k++) {
-    const d = (dow + k) % 7
-    const day = config.weeklyRoutine[d]
-    if (SESSION_KIND_FOR_DAY[day.kind] == null) continue
-    const r = routineForWeekday(plan, config.weeklyRoutine, d)
-    next = { label: weekdayLabel(d), title: r ? routineShortName(r) : dayTitleFor(plan, day) }
-  }
-
-  const slots = suggested ? routineSlots(suggested, week).filter(s => s.target.kind !== 'note') : []
+  const slots = selected ? routineSlots(selected, week).filter(s => s.target.kind !== 'note') : []
   const names = slots.map(s => slotExerciseName(plan, s))
   const chips = names.slice(0, MAX_CHIPS)
   const extra = names.length - chips.length
 
-  // "Ya entrenaste hoy" solo tapa la tarjeta cuando el dia elegido es hoy.
-  const showHero = suggested != null && (!isPickedToday || doneKind == null)
+  // "Ya entrenaste hoy" calms the hero until the user explicitly picks another routine.
+  const showHero = selected != null && (picked != null || !strengthDoneToday)
   const planActive = week <= plan.weeks
+
+  const choose = (id: string) => {
+    setPickedId(id)
+    setPickerOpen(false)
+  }
+
+  const picker = rotation.length > 0 && (
+    <div className="hoy-picker">
+      <button
+        type="button"
+        className="hoy-link hoy-picker-toggle"
+        aria-expanded={pickerOpen}
+        onClick={() => setPickerOpen(o => !o)}
+      >
+        {showHero ? 'Elegir otra rutina' : 'Entrenar otra'}
+      </button>
+      {pickerOpen && (
+        <div className="hoy-picker-list" role="group" aria-label="Elegir rutina">
+          {rotation.map(r => {
+            const done = doneIds.has(r.id)
+            const on = showHero && selected?.id === r.id
+            return (
+              <button
+                key={r.id}
+                type="button"
+                className={`hoy-pick${on ? ' on' : ''}${done ? ' done' : ''}`}
+                aria-pressed={on}
+                onClick={() => choose(r.id)}
+              >
+                {done && <Icon name="check" size={14} />}
+                {routineDisplayName(r.name)}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
 
   const progress = (
     <div className="hoy-progress">
@@ -166,6 +185,11 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
       </div>
     </div>
   )
+
+  const restLine =
+    summary.restAllowance === 0
+      ? 'Esta semana no hay comodines de descanso'
+      : `Comodines de descanso: ${restLeft} de ${summary.restAllowance} ${restLeft === 1 ? 'disponible' : 'disponibles'}`
 
   return (
     <div className="hoy">
@@ -210,26 +234,20 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
           </section>
         )}
 
-        {showHero && suggested ? (
+        {showHero && selected ? (
           <section className="hoy-hero">
             <div className="hoy-hero-glow" aria-hidden="true" />
             {progress}
-            {!isPickedToday && (
-              <div className="hoy-picked">
-                <span>Rutina del <strong>{weekdayLabel(picked).toLowerCase()}</strong></span>
-                <button type="button" className="hoy-link" onClick={() => setPicked(dow)}>Volver a hoy</button>
-              </div>
-            )}
-            <h1 className="hoy-title">{routineDisplayName(suggested.name)}</h1>
+            <h1 className="hoy-title">{routineDisplayName(selected.name)}</h1>
             <div className="hoy-meta">
               <span className="hoy-pill">
                 <Icon name="dumbbell" size={15} />
                 {slots.length} ejercicios
               </span>
-              {suggested.duration !== '' && (
+              {selected.duration !== '' && (
                 <span className="hoy-pill hoy-num">
                   <Icon name="timer" size={15} />
-                  ≈ {suggested.duration}
+                  ≈ {selected.duration}
                 </span>
               )}
               {phase && (
@@ -251,153 +269,161 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
                 </div>
               </div>
             )}
-            <button type="button" className="hoy-cta" onClick={() => startRoutine(suggested.id)}>
+            <button type="button" className="hoy-cta" onClick={() => startRoutine(selected.id)}>
               <Icon name="play" size={22} />
               Empezar entrenamiento
             </button>
-            <button type="button" className="hoy-minimal" onClick={() => startRoutine(suggested.id, { minimal: true })}>
+            <button type="button" className="hoy-minimal" onClick={() => startRoutine(selected.id, { minimal: true })}>
               <span>
                 <strong>Día difícil: versión mínima</strong>
                 <small>Calentamiento + primer ejercicio · ~10 min</small>
               </span>
               <Icon name="sliders" size={20} />
             </button>
+            {picker}
           </section>
         ) : (
           <section className="hoy-hero">
             <div className="hoy-hero-glow" aria-hidden="true" />
             {progress}
-            {!isPickedToday && (
-              <div className="hoy-picked">
-                <span>Elegiste el <strong>{weekdayLabel(picked).toLowerCase()}</strong></span>
-                <button type="button" className="hoy-link" onClick={() => setPicked(dow)}>Volver a hoy</button>
-              </div>
-            )}
-            {isPickedToday && doneKind ? (
+            {strengthDoneToday ? (
               <>
                 <div className="hoy-calm-icon"><Icon name="check" size={20} /></div>
-                <h1 className="hoy-title">{DONE_TODAY[doneKind].title}</h1>
-                <p className="hoy-note">{DONE_TODAY[doneKind].note}</p>
+                <h1 className="hoy-title">{DONE_TODAY.strength.title}</h1>
+                <p className="hoy-note">{DONE_TODAY.strength.note}</p>
               </>
             ) : (
               <>
-                <div className="hoy-calm-icon rest">
-                  <Icon name={pickedDay.kind === 'swim' ? 'swim' : pickedDay.kind === 'walk' ? 'walk' : 'moon'} size={20} />
-                </div>
-                <h1 className="hoy-title">{dayTitleFor(plan, pickedDay)}</h1>
-                {pickedDay.note !== '' && <p className="hoy-note">{pickedDay.note}</p>}
+                <div className="hoy-calm-icon"><Icon name="check" size={20} /></div>
+                <h1 className="hoy-title">Semana completa</h1>
+                <p className="hoy-note">Hiciste todas tus rutinas. Descansa o suma una extra.</p>
               </>
             )}
-            {canCheckIn && (
-              <button
-                type="button"
-                className={`hoy-cta secondary hoy-checkin${checkedToday ? ' on' : ''}`}
-                aria-pressed={checkedToday}
-                onClick={() => void saveConfig(toggleCheckIn(config, iso))}
-              >
-                <Icon name="check" size={20} />
-                {checkedToday ? 'Hecho ✓ · Deshacer' : 'Marcar como hecho'}
-              </button>
-            )}
-            {next && (
-              <div className="hoy-next">
-                <Icon name="calendar" size={18} />
-                <span>
-                  Siguiente: <strong>{next.label}</strong> · {next.title}
-                </span>
-              </div>
-            )}
+            {picker}
             <button type="button" className="hoy-cta secondary" onClick={() => go('plan')}>
               Ver plan
             </button>
           </section>
         )}
 
+        {!finishedToday && (
+          <button
+            type="button"
+            className={`hoy-cta secondary hoy-checkin${checkedToday ? ' on' : ''}`}
+            aria-pressed={checkedToday}
+            onClick={() => void saveConfig(toggleCheckIn(config, iso))}
+          >
+            <Icon name="walk" size={20} />
+            {checkedToday ? 'Caminata hecha ✓ · Deshacer' : 'Marcar caminata hecha'}
+          </button>
+        )}
+
         <section className="hoy-section" aria-label="Esta semana">
           <div className="hoy-section-head">
-            <h2 className="hoy-h2">Esta semana</h2>
-            <span className="hoy-section-aside hoy-num">{plannedDays} días planificados</span>
+            <h2 className="hoy-h2">
+              Esta semana · {summary.done} de {summary.target} {summary.target === 1 ? 'entrenamiento' : 'entrenamientos'}
+            </h2>
           </div>
+          <p className="hoy-rest-line">{restLine}</p>
           <div className="hoy-week">
-            {WEEK_ORDER.map((d, i) => {
-              const day = config.weeklyRoutine[d]
-              const kind = SESSION_KIND_FOR_DAY[day.kind]
-              const date = range.days[i]
-              const isToday = d === dow
-              const isDone =
-                (kind != null && finishedThisWeek.some(s => s.kind === kind && s.date === date)) ||
-                config.habitCheckIns.includes(date)
-              const isMissed = !isToday && !isDone && dayStatus(date, habitCtx) === 'missed'
-              const routine = routineForWeekday(plan, config.weeklyRoutine, d)
+            {days.map((date, i) => {
+              const isToday = date === iso
+              const status = dayStatus(date, habitCtx)
+              const doneSession = sessions.find(s => s.kind === 'strength' && s.finishedAt != null && s.date === date)
+              const doneRoutine = doneSession && doneSession.kind === 'strength' ? plan.routines.find(r => r.id === doneSession.routineId) : undefined
+              const kept = status === 'kept'
               const cls = ['hoy-day']
               if (isToday) cls.push('today')
-              if (d === picked) cls.push('picked')
-              if (isDone) cls.push('done')
-              if (kind == null) cls.push('rest')
-              if (isMissed) cls.push('missed')
+              if (kept) cls.push('done')
+              if (status === 'rest') cls.push('rest')
+              if (status === 'missed') cls.push('missed')
 
-              let body: ReactNode
-              if (isToday) {
-                body = (
-                  <>
-                    <span className="hoy-day-dot hoy-num">
-                      {isDone ? <Icon name="check" size={16} /> : Number(date.slice(8))}
-                    </span>
-                    <span className="hoy-day-sub">{isDone ? 'Listo' : 'Hoy'}</span>
-                  </>
-                )
-              } else if (isDone) {
+              let body: ReactNode = null
+              let label = ''
+              if (kept) {
+                const name = doneRoutine ? routineShortName(doneRoutine) : null
+                label = name ?? 'Hecho'
                 body = (
                   <>
                     <span className="hoy-day-check"><Icon name="check" size={16} /></span>
-                    <span className="hoy-day-sub">Listo</span>
+                    {name != null ? <span className="hoy-day-name">{name}</span> : <span className="hoy-day-sub">Hecho</span>}
                   </>
                 )
-              } else if (isMissed) {
+              } else if (status === 'rest') {
+                label = 'Descanso'
+                body = (
+                  <>
+                    <Icon name="moon" size={17} className="hoy-day-main-icon" />
+                    <span className="hoy-day-sub">Descanso</span>
+                  </>
+                )
+              } else if (status === 'missed') {
+                label = 'Faltó'
                 body = (
                   <>
                     <span className="hoy-day-miss"><i /></span>
                     <span className="hoy-day-sub">Faltó</span>
                   </>
                 )
-              } else if (kind == null) {
+              } else if (isToday) {
+                label = 'Hoy'
                 body = (
                   <>
-                    <Icon name={day.kind === 'walk' ? 'walk' : 'moon'} size={17} className="hoy-day-main-icon" />
-                    <span className="hoy-day-sub">{day.kind === 'walk' ? 'Caminar' : 'Descanso'}</span>
-                  </>
-                )
-              } else if (routine) {
-                body = (
-                  <>
-                    <span className="hoy-day-main hoy-focus">{routineShortName(routine)}</span>
-                  </>
-                )
-              } else {
-                body = (
-                  <>
-                    <Icon name="swim" size={17} />
-                    <span className="hoy-day-sub">Natación</span>
+                    <span className="hoy-day-dot hoy-num">{Number(date.slice(8))}</span>
+                    <span className="hoy-day-sub">Hoy</span>
                   </>
                 )
               }
 
               return (
-                <button
-                  key={d}
-                  type="button"
-                  className={cls.join(' ')}
-                  aria-pressed={d === picked}
-                  aria-label={`${weekdayLabel(d)}: ${routine ? routineDisplayName(routine.name) : dayTitleFor(plan, day)}`}
-                  onClick={() => setPicked(d)}
-                >
-                  <span className="hoy-day-letter">{DAY_LETTERS[d]}</span>
+                <div key={date} className={cls.join(' ')} aria-label={`${weekdayLabel((i + 1) % 7)}${label !== '' ? `: ${label}` : ''}`}>
+                  <span className="hoy-day-letter">{DAY_LETTERS[i]}</span>
                   {body}
-                </button>
+                </div>
               )
             })}
           </div>
         </section>
+
+        {rotation.length > 0 && (
+          <section className="hoy-section" aria-label="Rutinas de la semana">
+            <div className="hoy-section-head">
+              <h2 className="hoy-h2">Rutinas de la semana</h2>
+            </div>
+            <ul className="hoy-checklist">
+              {rotation.map(r => {
+                const done = doneIds.has(r.id)
+                const inner = (
+                  <>
+                    <span className={`hoy-check${done ? ' on' : ''}`} aria-hidden="true">
+                      {done && <Icon name="check" size={14} />}
+                    </span>
+                    <span className="hoy-checklist-name">{routineDisplayName(r.name)}</span>
+                    <span className="hoy-checklist-state">{done ? 'Hecha' : 'Pendiente'}</span>
+                  </>
+                )
+                return (
+                  <li key={r.id}>
+                    {done ? (
+                      <div className="hoy-checklist-row done">{inner}</div>
+                    ) : (
+                      <button
+                        type="button"
+                        className={`hoy-checklist-row${selected?.id === r.id && showHero ? ' on' : ''}`}
+                        onClick={() => {
+                          choose(r.id)
+                          window.scrollTo({ top: 0, behavior: 'smooth' })
+                        }}
+                      >
+                        {inner}
+                      </button>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          </section>
+        )}
 
         <section className="hoy-stats" aria-label="Resumen semanal">
           <div className="hoy-stat">
@@ -406,11 +432,11 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
               <Icon name="calendar" size={18} />
             </div>
             <div className="hoy-stat-value">
-              <span className="hoy-stat-big hoy-num">{doneCount}</span>
-              <span className="hoy-stat-unit hoy-num">/ {plannedDays}</span>
+              <span className="hoy-stat-big hoy-num">{summary.done}</span>
+              <span className="hoy-stat-unit hoy-num">/ {summary.target}</span>
             </div>
             <div className="hoy-bar" aria-hidden="true">
-              <i style={{ width: `${plannedDays > 0 ? Math.min(100, (doneCount / plannedDays) * 100) : 0}%` }} />
+              <i style={{ width: `${summary.target > 0 ? Math.min(100, (summary.done / summary.target) * 100) : 0}%` }} />
             </div>
           </div>
           <div className="hoy-stat">

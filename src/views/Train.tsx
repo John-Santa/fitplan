@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { RoutineId, Session } from '../types'
-import { SESSION_KIND_FOR_DAY } from '../lib/plan'
-import { exerciseNameInRoutine, routineDaysLabel, routineForWeekday, routineSetCount, routineSlots, weekLabel, routineDisplayName, sortByFocus } from '../lib/planQueries'
+import { nextRoutine } from '../lib/week'
+import { exerciseNameInRoutine, routineSetCount, routineSlots, weekLabel, routineDisplayName, sortByFocus } from '../lib/planQueries'
 import { blockWeekNumber, phaseForWeek } from '../lib/phases'
 import { isPainValue, painVerdict } from '../lib/pain'
 import { doneSets, fmtDate, fmtDuration, mmss, sessionVolume, todayISO } from '../lib/calc'
@@ -38,17 +38,13 @@ export default function Train({ autoStart, autoStartMinimal, onAutoStarted }: { 
 
   const week = blockWeekNumber(new Date(), config.blockStart)
   const phase = phaseForWeek(plan, week)
-  const suggested = routineForWeekday(plan, config.weeklyRoutine, new Date().getDay())
-  // Las activas, mas la de hoy si el dia semanal todavia apunta a una archivada.
-  const routines = sortByFocus(plan.routines.filter(r => !r.archived || r.id === suggested?.id))
+  const suggested = nextRoutine(plan, sessions, todayISO())
+  const routines = sortByFocus(plan.routines.filter(r => !r.archived))
   // Rutinas archivadas con historial: ya no se empiezan, pero su progresion
   // sigue consultable.
   const archivedWithHistory = plan.routines.filter(
     r => r.archived && sessions.some(s => s.kind === 'strength' && s.routineId === r.id),
   )
-  // Que disciplina, si alguna, planifica hoy — gobierna la pildora "hoy" de
-  // la tarjeta de natacion, igual criterio que Home.tsx usa para su CTA.
-  const todayKind = SESSION_KIND_FOR_DAY[config.weeklyRoutine[new Date().getDay()].kind]
 
   if (active) {
     return (
@@ -207,7 +203,7 @@ export default function Train({ autoStart, autoStartMinimal, onAutoStarted }: { 
               <div className="grow">
                 <strong>{routineDisplayName(r.name)}</strong>
                 {suggested?.id === r.id && <span className="pill" style={{ marginLeft: 8 }}>hoy</span>}
-                <div className="muted">{routineDaysLabel(config.weeklyRoutine, r.id)}{r.focus !== '' && ` · ${r.focus}`}</div>
+                {r.focus !== '' && <div className="muted">{r.focus}</div>}
                 <div className="muted num" style={{ fontSize: 12.5 }}>
                   {routineSlots(r, week).length} ejercicios · {routineSetCount(plan, r, week)} series
                 </div>
@@ -240,7 +236,6 @@ export default function Train({ autoStart, autoStartMinimal, onAutoStarted }: { 
           <div className="row">
             <div className="grow">
               <strong>{DISCIPLINES.swim.label}</strong>
-              {todayKind === 'swim' && <span className="pill" style={{ marginLeft: 8 }}>hoy</span>}
               <div className="muted">Piscina de {config.poolLengthM} m</div>
             </div>
             <button

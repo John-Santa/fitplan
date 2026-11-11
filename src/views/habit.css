@@ -79,7 +79,6 @@
 .hab-plan li.open .hab-planrow svg { transform: rotate(90deg); }
 .hab-planmain { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .hab-planmain strong { font-size: 16px; font-weight: 700; }
-.hab-kind { font-size: 12px; color: var(--fp-ink3); }
 .hab-when { font-size: 14px; color: var(--fp-ink2); }
 .hab-when.empty { color: var(--fp-ink3); font-style: italic; }
 .hab-edit { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 0 0 16px; }

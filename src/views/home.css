@@ -109,12 +109,6 @@
 .hoy-calm-icon.rest {
   background: var(--fp-s2); border-color: var(--fp-line); color: var(--fp-ink2);
 }
-.hoy-next {
-  display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
-  background: var(--fp-s2); border: 1px solid var(--fp-line); border-radius: 12px;
-  padding: 12px 14px; font-size: 13px; color: var(--fp-ink2);
-}
-.hoy-next strong { color: var(--fp-ink); font-weight: 600; }
 
 /* ---- semana ---- */
 .hoy-section { display: flex; flex-direction: column; gap: 10px; }
@@ -128,12 +122,9 @@
   display: flex; flex-direction: column; align-items: center; justify-content: space-between;
   text-align: center;
   background: var(--fp-s1); border: 1px solid var(--fp-line); border-radius: 12px;
-  width: 100%; font: inherit; color: inherit; cursor: pointer; appearance: none;
-  touch-action: manipulation;
+  width: 100%; font: inherit; color: inherit;
 }
-.hoy-day:hover { border-color: var(--fp-ink3); }
 .hoy-day-letter { font-size: 11px; font-weight: 500; color: var(--fp-ink2); }
-.hoy-day-main { margin: auto 0; font-size: 12px; font-weight: 600; color: var(--fp-ink); }
 .hoy-day-sub {
   max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-size: 10px; line-height: 1; color: var(--fp-ink3);
@@ -146,10 +137,14 @@
   border: 1px solid color-mix(in srgb, var(--fp-success) 30%, transparent);
   color: var(--fp-success);
 }
-/* El dia elegido lleva el borde naranja; hoy conserva su letra en naranja. */
-.hoy-day.picked {
+/* Today carries the orange border and letter. */
+.hoy-day.today {
   background: var(--fp-s2); border: 2px solid var(--fp-primary); padding: 7px;
   box-shadow: 0 1px 2px 0 color-mix(in srgb, var(--fp-primary) 10%, transparent);
+}
+.hoy-day-name {
+  max-width: 100%; font-size: 10px; line-height: 1.1; font-weight: 600; color: var(--fp-success);
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere;
 }
 .hoy-day.today .hoy-day-letter { font-weight: 700; color: var(--fp-primary); }
 .hoy-day.today .hoy-day-sub { color: var(--fp-primary); font-weight: 600; }
@@ -171,9 +166,8 @@
   opacity: .85;
 }
 .hoy-day.rest .hoy-day-letter { color: var(--fp-ink3); }
-.hoy-day.rest .hoy-day-main { color: var(--fp-ink2); }
 .hoy-day.rest .hoy-day-sub { font-size: 9px; font-weight: 500; color: var(--fp-ink2); }
-.hoy-day.rest.today { padding: 5px; opacity: 1; background: var(--fp-s2); }
+.hoy-day.rest.today { padding: 7px; opacity: 1; background: var(--fp-s2); }
 
 /* ---- stats ---- */
 .hoy-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -226,12 +220,6 @@
 .hoy-nudge p { margin: 0; font-size: 12px; line-height: 1.4; color: var(--fp-ink2); }
 .hoy-nudge strong { display: block; font-size: 13px; color: var(--fp-ink); }
 
-/* Aviso cuando la tarjeta muestra otro dia que no es hoy. */
-.hoy-picked {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  margin: 4px 0 8px; font-size: 13px; color: var(--fp-ink2);
-}
-.hoy-picked strong { color: var(--fp-ink); font-weight: 600; }
 
 /* ---- habito: identidad, aviso, intencion, version minima, faltó ---- */
 .hoy-identity {
@@ -310,8 +298,44 @@
 }
 .hoy-day-miss i { display: block; width: 8px; height: 8px; border-radius: 9999px; background: var(--fp-danger); opacity: .75; }
 .hoy-day.missed .hoy-day-sub { color: var(--fp-danger); font-weight: 500; }
-/* Focus name (no day number) in the narrow week cell. */
-.hoy-day-main.hoy-focus {
-  font-size: 11px; line-height: 1.2; text-align: center; overflow-wrap: anywhere; hyphens: auto;
-  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden;
+/* ---- flexible week: rest line, routine picker, weekly checklist ---- */
+.hoy-rest-line { margin: -4px 0 0; font-size: 12px; color: var(--fp-ink2); }
+.hoy-checkin { width: 100%; }
+
+.hoy-picker { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin-top: 12px; }
+.hoy-picker-toggle { font-size: 13px; }
+.hoy-picker-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.hoy-pick {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 6px 12px;
+  font: inherit; font-size: 13px; font-weight: 500; color: var(--fp-ink);
+  background: var(--fp-s2); border: 1px solid var(--fp-line); border-radius: 9999px;
+  cursor: pointer; appearance: none; touch-action: manipulation;
 }
+.hoy-pick:hover { border-color: var(--fp-ink3); }
+.hoy-pick.done { color: var(--fp-ink2); }
+.hoy-pick.done svg { color: var(--fp-success); }
+.hoy-pick.on { border-color: var(--fp-primary); color: var(--fp-primary); }
+
+.hoy-checklist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.hoy-checklist-row {
+  box-sizing: border-box; width: 100%; min-height: 48px; padding: 10px 14px;
+  display: flex; align-items: center; gap: 12px; text-align: left;
+  font: inherit; color: var(--fp-ink);
+  background: var(--fp-s1); border: 1px solid var(--fp-line); border-radius: 12px;
+}
+button.hoy-checklist-row { cursor: pointer; appearance: none; touch-action: manipulation; }
+button.hoy-checklist-row:hover { border-color: var(--fp-ink3); }
+.hoy-checklist-row.on { border-color: var(--fp-primary); }
+.hoy-check {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 9999px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1.5px solid var(--fp-ink3); color: var(--fp-success);
+}
+.hoy-check.on {
+  border-color: color-mix(in srgb, var(--fp-success) 40%, transparent);
+  background: color-mix(in srgb, var(--fp-success) 15%, transparent);
+}
+.hoy-checklist-name { flex: 1; min-width: 0; font-size: 14px; font-weight: 500; }
+.hoy-checklist-row.done .hoy-checklist-name { color: var(--fp-ink2); }
+.hoy-checklist-state { font-size: 12px; color: var(--fp-ink2); }
+.hoy-checklist-row.done .hoy-checklist-state { color: var(--fp-success); }

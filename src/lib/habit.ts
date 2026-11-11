@@ -11,6 +11,10 @@ export interface HabitContext {
   config: Config
   /** Local date, YYYY-MM-DD. */
   today: string
+  /** Rest wildcards per calendar week (Monday..Sunday): the first days without
+   *  activity in a week are rest, any day any week; past that they are missed.
+   *  Defaults to the rest days of the configured week (2 in the default plan). */
+  restAllowance?: number
 }
 
 export interface HabitCell {
@@ -52,8 +56,23 @@ export function dayStatus(date: string, ctx: HabitContext): DayStatus {
   if (finishedDates(ctx).has(date) || ctx.config.habitCheckIns.includes(date)) return 'kept'
   const first = firstActivity(ctx)
   if (date < ctx.today && (first === null || date < first)) return 'none'
-  if (ctx.config.weeklyRoutine[parse(date).getDay()].kind === 'rest') return 'rest'
-  return date === ctx.today ? 'pending' : 'missed'
+  if (date === ctx.today) return 'pending'
+  return restWildcardUsed(date, ctx, first) ? 'rest' : 'missed'
+}
+
+/** Rest days are not fixed weekdays: they are wildcards. A past day with no
+ *  activity uses one of the week's wildcards while any are left. */
+function restWildcardUsed(date: string, ctx: HabitContext, first: string | null): boolean {
+  const allowance = ctx.restAllowance ?? ctx.config.weeklyRoutine.filter(d => d.kind === 'rest').length
+  const sinceMonday = (parse(date).getDay() + 6) % 7
+  const done = finishedDates(ctx)
+  let usedBefore = 0
+  for (let i = sinceMonday; i > 0; i--) {
+    const d = shift(date, -i)
+    if (first !== null && d < first) continue
+    if (!done.has(d) && !ctx.config.habitCheckIns.includes(d)) usedBefore++
+  }
+  return usedBefore < allowance
 }
 
 /** `weeks` weeks, oldest first, each Monday..Sunday. The last one is the

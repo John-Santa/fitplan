@@ -27,10 +27,13 @@ const session = (date: string, finished = true): Session => ({
   sets: [],
 })
 
-const ctx = (today: string, sessions: Session[] = [], over: Partial<Config> = {}): HabitContext => ({
+// restAllowance defaults to 0 here so a day without activity is a plain miss;
+// the wildcard tests pass their own allowance.
+const ctx = (today: string, sessions: Session[] = [], over: Partial<Config> = {}, restAllowance = 0): HabitContext => ({
   sessions,
   config: config(over),
   today,
+  restAllowance,
 })
 
 // 2026-11-11 is a Wednesday. Mon 09, Tue 10, Sun 08, Sat 07, Fri 06, Thu 05.
@@ -51,8 +54,21 @@ describe('dayStatus', () => {
     expect(dayStatus('2026-11-07', c)).toBe('kept')
   })
 
-  it('a planned rest day with nothing logged is rest', () => {
-    expect(dayStatus('2026-11-08', ctx(WED, [session('2026-11-02')]))).toBe('rest')
+  it('rest days are wildcards: the first empty days of a week are rest, any weekday', () => {
+    // Week Mon 09..Sun 15, today Wed 11. Mon 09 and Tue 10 empty.
+    const c = ctx(WED, [session('2026-11-02')], {}, 1)
+    expect(dayStatus('2026-11-09', c)).toBe('rest')
+    expect(dayStatus('2026-11-10', c)).toBe('missed')
+    const two = ctx(WED, [session('2026-11-02')], {}, 2)
+    expect(dayStatus('2026-11-10', two)).toBe('rest')
+  })
+
+  it('wildcards reset every Monday', () => {
+    // Sun 08 is the last day of the previous week; Mon 09 starts a new one.
+    const c = ctx(WED, [session('2026-11-02')], {}, 1)
+    expect(dayStatus('2026-11-03', c)).toBe('rest')
+    expect(dayStatus('2026-11-04', c)).toBe('missed')
+    expect(dayStatus('2026-11-09', c)).toBe('rest')
   })
 
   it('a session on a rest day still counts as kept', () => {
@@ -132,27 +148,27 @@ describe('streak', () => {
 
   it('rest days keep the chain and count', () => {
     // Fri 06 kept, Sat 07 walk checked, Sun 08 rest, Mon 09 kept, Tue 10 kept
-    const c = ctx(WED, [session('2026-11-06'), session('2026-11-09'), session('2026-11-10')], { habitCheckIns: ['2026-11-07'] })
+    const c = ctx(WED, [session('2026-11-06'), session('2026-11-09'), session('2026-11-10')], { habitCheckIns: ['2026-11-07'] }, 1)
     expect(streak(c).days).toBe(5)
   })
 
   it('a check-in counts as kept for the chain', () => {
     const c = ctx('2026-11-08', [session('2026-11-06')], { habitCheckIns: ['2026-11-07'] })
-    expect(streak(c).days).toBe(3) // Fri, Sat (check-in), Sun (rest)
+    expect(streak(c).days).toBe(2) // Fri, Sat (check-in); Sun is today, still pending
   })
 
   it('a single isolated miss is tolerated: no break and no increment', () => {
     // Mon 09 kept, Tue 10 missed, Wed today kept, Fri 06 kept (Thu 05 kept)
     const c = ctx(WED, [session('2026-11-05'), session('2026-11-06'), session('2026-11-09'), session(WED)], { habitCheckIns: ['2026-11-07'] })
-    // Wed, (Tue miss), Mon, Sun rest, Sat check-in, Fri, Thu = 6 kept/rest days
-    expect(streak(c).days).toBe(6)
+    // Wed, (Tue miss), Mon, (Sun miss), Sat check-in, Fri, Thu = 5 kept days
+    expect(streak(c).days).toBe(5)
   })
 
   it('two consecutive misses stop the count', () => {
     // Thu 05 kept, Fri 06 missed, Sat 07 missed -> chain starts after them
     const c = ctx(WED, [session('2026-11-05'), session('2026-11-09'), session('2026-11-10')])
-    // Tue, Mon, Sun (rest) then Sat missed + Fri missed -> stop
-    expect(streak(c).days).toBe(3)
+    // Tue, Mon, then Sun missed + Sat missed -> stop
+    expect(streak(c).days).toBe(2)
   })
 
   it('is 0 when yesterday and the day before were both missed', () => {
@@ -189,7 +205,7 @@ describe('missedYesterday', () => {
   })
 
   it('is false when yesterday was a rest day', () => {
-    expect(missedYesterday(ctx('2026-11-09', [session('2026-11-06')]))).toBe(false)
+    expect(missedYesterday(ctx('2026-11-09', [session('2026-11-06')], {}, 2))).toBe(false)
   })
 
   it('is false when yesterday is before the first activity', () => {

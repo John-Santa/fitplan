@@ -8,6 +8,7 @@ import { useStore } from '../lib/store'
 import { useToast } from '../components/ui'
 import { addCustomExercise, addRoutine, archiveRoutine, resetToTemplate, restoreRoutine } from '../lib/planEdits'
 import { blockWeekNumber, phaseForWeek } from '../lib/phases'
+import { restAllowance, weeklyTarget } from '../lib/week'
 import ExerciseSheet from '../components/ExerciseSheet'
 import ConfirmSheet from './plan/ConfirmSheet'
 import { Icon } from './plan/icons'
@@ -22,10 +23,6 @@ const countExercises = (r: PlanRoutine) => r.blocks.reduce((n, b) => n + b.slots
 const exercisesLabel = (n: number) => (n === 1 ? '1 ejercicio' : `${n} ejercicios`)
 
 const NO_TAKEN: ReadonlySet<string> = new Set()
-/** Lunes primero; los indices son Date.getDay() (0 = domingo). */
-const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0]
-const DAY_ABBR = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
-const DAY_NAME = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
 const weeksLabel = (from: number, to: number, short = false) =>
   `${short ? 'Sem' : from === to ? 'semana' : 'semanas'} ${from === to ? from : `${from}–${to}`}`
 
@@ -82,9 +79,6 @@ export default function PlanEditor({ onOpenGuide }: { onOpenGuide: () => void })
   const archived = sortByFocus(plan.routines.filter(r => r.archived))
   const open = openId ? plan.routines.find(r => r.id === openId && !r.archived) : undefined
   const archiveTarget = dialog?.kind === 'archive' ? plan.routines.find(r => r.id === dialog.routineId) : undefined
-  const assignedInWeek = archiveTarget
-    ? config.weeklyRoutine.some(d => d.kind === 'training' && d.routineId === archiveTarget.id)
-    : false
 
   const createRoutine = (name: string) => {
     const next = addRoutine(plan, name)
@@ -119,7 +113,6 @@ export default function PlanEditor({ onOpenGuide }: { onOpenGuide: () => void })
           }}
         >
           <p>La rutina deja de aparecer en tu plan activo, pero <strong>tu historial se conserva</strong>: tus sesiones siguen mostrando su nombre y sus ejercicios. Puedes restaurarla cuando quieras.</p>
-          {assignedInWeek && <p className="pe-warn">Está asignada en tu semana. Elige otra rutina para ese día en Ajustes.</p>}
         </ConfirmSheet>
       )}
       {dialog?.kind === 'reset' && (
@@ -161,60 +154,9 @@ export default function PlanEditor({ onOpenGuide }: { onOpenGuide: () => void })
   const week = blockWeekNumber(new Date(), config.blockStart)
   const phase = phaseForWeek(plan, week)
   const total = plan.weeks
-  const todayIdx = new Date().getDay()
-  const trainingDays = config.weeklyRoutine.filter(d => d.kind === 'training').length
+  const target = weeklyTarget(plan)
+  const rests = restAllowance(plan)
   const markerPct = Math.min(Math.max((week - 0.5) / total, 0), 1) * 100
-
-  const renderDay = (idx: number) => {
-    const day = config.weeklyRoutine[idx]
-    const abbr = DAY_ABBR[idx]
-    const isToday = idx === todayIdx
-    if (day.kind === 'training') {
-      const routine = plan.routines.find(r => r.id === day.routineId)
-      const usable = routine && !routine.archived ? routine : undefined
-      const title = usable?.name ?? (day.title || 'Rutina no disponible')
-      const sub = usable
-        ? [usable.focus, exercisesLabel(countExercises(usable))].filter(Boolean).join(' · ')
-        : 'Elige otra rutina para este día en Ajustes'
-      const body = (
-        <>
-          <span className="pe-day-badge" aria-hidden="true">{abbr}</span>
-          <span className="pe-day-text">
-            <span className="pe-day-title">
-              <span>{title}</span>
-              {isToday && <span className="pe-today-pill">Hoy</span>}
-            </span>
-            <span className="pe-day-sub">{sub}</span>
-          </span>
-          {usable && <span className="pe-chev" aria-hidden="true"><Icon name="next" /></span>}
-        </>
-      )
-      return usable ? (
-        <button type="button" className="pe-day" data-today={isToday} onClick={() => setOpenId(usable.id)} aria-label={`${DAY_NAME[idx]}: ${title}`}>
-          {body}
-        </button>
-      ) : <div className="pe-day" data-today={isToday}>{body}</div>
-    }
-    const title = day.title || (day.kind === 'swim' ? 'Natación' : day.kind === 'walk' ? 'Caminata' : day.kind === 'rest' ? 'Descanso' : 'Libre')
-    const swim = day.kind === 'swim'
-    return (
-      <div className="pe-day" data-today={isToday} data-muted={!swim}>
-        <span className="pe-day-badge" aria-hidden="true">{abbr}</span>
-        <span className="pe-day-text">
-          <span className="pe-day-title">
-            <span>{title}</span>
-            {isToday && <span className="pe-today-pill">Hoy</span>}
-          </span>
-          {(day.note || !swim) && (
-            <span className="pe-day-sub">
-              <Icon name={swim ? 'swim' : 'steps'} />
-              {day.note || (swim ? 'Natación' : 'Descanso')}
-            </span>
-          )}
-        </span>
-      </div>
-    )
-  }
 
   return (
     <div className="pe-scope">
@@ -266,13 +208,13 @@ export default function PlanEditor({ onOpenGuide }: { onOpenGuide: () => void })
         </div>
       </section>
 
-      <div className="pe-week-head">
-        <h2>Semana</h2>
-        <span>{trainingDays === 1 ? '1 entrenamiento' : `${trainingDays} entrenamientos`}</span>
-      </div>
-      <ul className="pe-list">
-        {WEEK_ORDER.map(idx => <li key={idx}>{renderDay(idx)}</li>)}
-      </ul>
+      <section className="pe-weekcard" aria-label="Tu semana">
+        <h2>Tu semana</h2>
+        <p className="pe-weekcard-count">
+          <strong>{target} {target === 1 ? 'entrenamiento' : 'entrenamientos'}</strong> + <strong>{rests} {rests === 1 ? 'comodín' : 'comodines'} de descanso</strong>
+        </p>
+        <p className="pe-weekcard-note">Haz tus rutinas en el orden y los días que quieras; los días libres son tus comodines de descanso.</p>
+      </section>
 
       <div className="pe-links">
         <button type="button" className="pe-link" onClick={onOpenGuide}>

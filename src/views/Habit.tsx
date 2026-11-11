@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useStore } from '../lib/store'
 import { todayISO } from '../lib/calc'
 import { bestStreak, consistency, habitGrid, intentionFor, streak, votes, type DayStatus, type HabitContext } from '../lib/habit'
-import type { DayPlan, Intention, WeeklyIntentions } from '../types'
+import { restAllowance, weekSummary } from '../lib/week'
+import type { Intention, WeeklyIntentions } from '../types'
 import './habit.css'
 
 const ROW_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
@@ -11,7 +12,7 @@ const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0]
 const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
 const STATUS_LABEL: Record<DayStatus, string> = {
   kept: 'cumplido',
-  rest: 'descanso',
+  rest: 'comodín de descanso',
   missed: 'faltó',
   pending: 'pendiente hoy',
   future: 'por venir',
@@ -26,22 +27,17 @@ const parse = (iso: string): Date => {
 const dateLabel = (iso: string) =>
   parse(iso).toLocaleDateString('es', { weekday: 'long', day: 'numeric', month: 'long' })
 
-const planLabel = (p: DayPlan): string => {
-  if (p.kind === 'rest') return 'Descanso'
-  if (p.kind === 'walk') return p.title || 'Caminata'
-  return p.title || (p.kind === 'training' ? 'Entrenamiento' : 'Actividad')
-}
-
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many)
 
 export default function Habit() {
-  const { sessions, config, saveConfig } = useStore()
+  const { sessions, config, plan, saveConfig } = useStore()
   const [openDow, setOpenDow] = useState<number | null>(null)
   const [time, setTime] = useState('')
   const [place, setPlace] = useState('')
   const [saving, setSaving] = useState(false)
 
-  const ctx: HabitContext = { sessions, config, today: todayISO() }
+  const today = todayISO()
+  const ctx: HabitContext = { sessions, config, today, restAllowance: restAllowance(plan) }
   const { days } = streak(ctx)
   const best = Math.max(bestStreak(ctx), days)
   const pct = consistency(ctx, 12)
@@ -49,9 +45,7 @@ export default function Habit() {
   const total = votes(ctx)
   const sessionDates = new Set(sessions.filter(s => s.finishedAt != null).map(s => s.date))
 
-  const thisWeek = grid[grid.length - 1]
-  const planned = thisWeek.filter(c => config.weeklyRoutine[parse(c.date).getDay()].kind !== 'rest')
-  const done = planned.filter(c => c.status === 'kept').length
+  const { done, target } = weekSummary(plan, sessions, config.habitCheckIns, today)
 
   const toggle = (dow: number) => {
     if (openDow === dow) { setOpenDow(null); return }
@@ -125,7 +119,7 @@ export default function Habit() {
         <ul className="hab-legend">
           <li><i className="hab-cell kept-session" />Entrenado</li>
           <li><i className="hab-cell kept-check" />Hecho</li>
-          <li><i className="hab-cell rest" />Descanso</li>
+          <li><i className="hab-cell rest" />Comodín de descanso</li>
           <li><i className="hab-cell missed" />Faltó</li>
         </ul>
       </section>
@@ -139,10 +133,10 @@ export default function Habit() {
         <blockquote className="hab-quote">Cada sesión es un voto por el atleta que estás construyendo.</blockquote>
         <div className="hab-row hab-week">
           <span>Esta semana</span>
-          <span className="hab-good">{done} de {planned.length}</span>
+          <span className="hab-good">{done} de {target}</span>
         </div>
-        <div className="hab-segs" role="img" aria-label={`Esta semana: ${done} de ${planned.length}`}>
-          {planned.map((c, i) => <span key={c.date} className={i < done ? 'on' : ''} />)}
+        <div className="hab-segs" role="img" aria-label={`Esta semana: ${done} de ${target}`}>
+          {Array.from({ length: target }, (_, i) => <span key={i} className={i < done ? 'on' : ''} />)}
         </div>
       </section>
 
@@ -158,7 +152,6 @@ export default function Habit() {
                 <button type="button" className="hab-planrow" aria-expanded={open} onClick={() => toggle(dow)}>
                   <span className="hab-planmain">
                     <strong>{DAY_NAMES[dow]}</strong>
-                    <span className="hab-kind">{planLabel(config.weeklyRoutine[dow])}</span>
                     <span className={it ? 'hab-when' : 'hab-when empty'}>{describe(it)}</span>
                   </span>
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
