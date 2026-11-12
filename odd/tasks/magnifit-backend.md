@@ -14,14 +14,14 @@ Objective: split the app into the existing React PWA (front) and a Go API with P
 Assumptions (parent): the front stays at the repo root for now (no move to `web/`) so the live GitHub Pages deploy is untouched; `api/` is added beside it. Sync uses a server-side monotonic change sequence per row (pull "changes since cursor") and tombstones (`deleted_at`). Accounts (Clerk, Neon, Fly) and secrets are created by the user.
 
 ## Tasks
-- [ ] T1 — S2: Go module skeleton in `api/` (config, `/health`, CORS, graceful shutdown, Dockerfile, CI workflow). Risk 5 (CI). Route: delegated, parallel with T2.
-- [ ] T2 — S4,S6: Postgres schema + goose migrations + sqlc queries (sync columns), validated against a throwaway Postgres container. Risk 1 (data). Route: delegated, parallel with T1.
+- [x] T1 — S2: Go module skeleton in `api/` (config, `/health`, CORS, graceful shutdown, Dockerfile, CI workflow). Risk 5 (CI). Route: delegated, parallel with T2. Done: go vet/test/build green; api/.env.example left untracked (parent cannot read .env* files by permission).
+- [x] T2 — S4,S6: Postgres schema + goose migrations + sqlc queries (sync columns), validated against a throwaway Postgres container. Risk 1 (data). Route: delegated, parallel with T1. Done: sqlc compile/generate/vet ok; Up/Down + 6 smoke checks PASS on postgres:17.
 - [ ] T3 — S3: Clerk middleware (Go) + login in the front. Risk 2. Route: delegated + independent verifier.
 - [ ] T4 — S2,S4: API endpoints (documents, sessions, measurements, exercise meta; push/pull sync) with Postgres integration tests. Risk 3.
 - [ ] T5 — S6: offline sync layer in the front. Risk 4. Independent verifier.
 - [ ] T6 — S7: first-login upload of local data. Risk 1. Independent verifier.
 - [ ] T7 — S8: deploy (DNS, API host, DB, secrets). Risk 5. Parent, user confirms each external step.
-- [ ] T8 — rename the app to MagniFit (title, manifest, icon text). Route: inline.
+- [x] T8 — rename the app to MagniFit (title, manifest, icon text). Route: inline. Commit 6b914cc; 333 tests green.
 
 ## Log
 - L1 (2026-11-11) user: "Perfecto, ahora evalua cómo tener el api dividida, un back en go y un front en react, todo esto usando el flujo odd y tu rol como orquestador, debe contar con base de datos y un login en clerk"
