@@ -6,7 +6,11 @@
 // - meta: cursor de bajada, última sincronización, usuario dueño de los datos
 //   locales y último error; además, bajo la llave 'preBootstrapBackup', la
 //   copia de los datos locales que el primer ingreso guardó antes de que el
-//   servidor ganara en un conflicto.
+//   servidor ganara en un conflicto. Under 'configBase', the config as last
+//   synced with the server (the base of the three-way merge, see
+//   configMerge.ts), and under 'configConflict', the pending "esto cambió en
+//   otro dispositivo" notice. Both are plain keys of the existing store: no
+//   schema change, and an install without them simply has no base yet.
 // - rejected: registros que el servidor rechazó uno por uno (400), con su
 //   mensaje. Salieron del outbox para no bloquear al resto.
 import type { Backup } from '../../../lib/types'
@@ -17,6 +21,8 @@ const STORE_OUTBOX = 'outbox'
 const STORE_META = 'meta'
 const STORE_REJECTED = 'rejected'
 const BACKUP_KEY = 'preBootstrapBackup'
+const CONFIG_BASE_KEY = 'configBase'
+const CONFIG_CONFLICT_KEY = 'configConflict'
 
 export type Entity = 'document' | 'session' | 'measurement' | 'exerciseMeta'
 
@@ -143,6 +149,30 @@ export async function savePreBootstrapBackup(backup: Backup, now = Date.now()) {
   if (await getPreBootstrapBackup()) return
   await tx(STORE_META, 'readwrite', s => s.put({ savedAt: now, backup } satisfies PreBootstrapBackup, BACKUP_KEY))
 }
+
+/* ---------- config merge (S15) ---------- */
+
+/** Config as last synced with the server; undefined = no base stored yet. */
+export const getConfigBase = () =>
+  tx<unknown>(STORE_META, 'readonly', s => s.get(CONFIG_BASE_KEY) as IDBRequest<unknown>)
+
+export const saveConfigBase = (config: unknown) =>
+  tx(STORE_META, 'readwrite', s => s.put(structuredClone(config), CONFIG_BASE_KEY))
+
+/** Labels of the settings where a local change lost to another device. */
+export type ConfigConflict = { at: number; fields: string[] }
+
+export const getConfigConflict = () =>
+  tx<ConfigConflict | undefined>(STORE_META, 'readonly', s => s.get(CONFIG_CONFLICT_KEY) as IDBRequest<ConfigConflict | undefined>)
+
+/** Adds labels to the pending notice (kept until dismissed). */
+export async function addConfigConflict(fields: string[], now = Date.now()) {
+  const prev = await getConfigConflict()
+  const merged = [...new Set([...(prev?.fields ?? []), ...fields])]
+  await tx(STORE_META, 'readwrite', s => s.put({ at: now, fields: merged } satisfies ConfigConflict, CONFIG_CONFLICT_KEY))
+}
+
+export const clearConfigConflict = () => tx(STORE_META, 'readwrite', s => s.delete(CONFIG_CONFLICT_KEY))
 
 /* ---------- meta ---------- */
 
