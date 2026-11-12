@@ -1,0 +1,190 @@
+/* Pantalla "Guía" y la lista de señales de alarma. Lenguaje oscuro del Stitch
+   "Ficha de ejercicio": títulos en frase, tarjetas --fp-s1 de 16px, roja urgente.
+   Solo tokens --fp-* de styles.css. */
+
+.guide {
+  min-height: 100vh; min-height: 100dvh;
+  background: var(--fp-bg); color: var(--fp-ink);
+  padding: 16px 16px calc(46px + var(--safe-b));
+  padding-left: max(16px, var(--safe-l));
+  padding-right: max(16px, var(--safe-r));
+}
+
+.guide-head {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 12px;
+  margin-bottom: 22px;
+}
+
+.guide-back {
+  min-height: 48px;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 0 16px;
+  background: var(--fp-s1); color: var(--fp-ink);
+  border: 1px solid var(--fp-line); border-radius: var(--fp-r-btn, 14px);
+  font: inherit; font-size: 16px; font-weight: 600; cursor: pointer;
+}
+
+.guide-back svg,
+.guide-icon {
+  width: 20px; height: 20px; flex: 0 0 auto;
+  fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+
+.guide-title {
+  margin: 0; font-size: 28px; font-weight: 600; line-height: 1.2;
+  letter-spacing: -0.01em; color: var(--fp-ink);
+}
+
+.guide-body {
+  max-width: 720px; margin: 0 auto;
+  display: grid; gap: 28px;
+  font-size: 16px; line-height: 1.5; color: var(--fp-ink2);
+}
+
+.guide-section { display: grid; gap: 12px; }
+
+/* Titulos en frase, sin mayusculas espaciadas de la app. */
+.guide .section-title {
+  margin: 0; padding: 0; border: 0;
+  font-size: 18px; font-weight: 600; line-height: 1.3; letter-spacing: 0;
+  text-transform: none; color: var(--fp-ink);
+}
+
+.guide-body p,
+.guide-body li { max-width: 65ch; }
+
+.guide-lead { color: var(--fp-ink); }
+
+.guide-callout {
+  display: grid; grid-template-columns: 24px 1fr; gap: 12px; align-items: start;
+  padding: 16px;
+  background: var(--fp-s1);
+  border: 1px solid var(--fp-line); border-radius: var(--fp-r-card, 16px);
+}
+
+.guide-callout svg { color: var(--fp-primary); margin-top: 1px; }
+.guide-callout p { margin: 0; }
+
+.guide-red-flags {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; gap: 10px;
+}
+
+.guide-red-flags li {
+  display: grid; grid-template-columns: 24px 1fr; gap: 12px; align-items: start;
+  padding: 14px 16px;
+  background: var(--fp-s1);
+  border: 1px solid var(--fp-line); border-radius: var(--fp-r-card, 16px);
+  color: var(--fp-ink2);
+}
+
+.guide-bullet {
+  width: 8px; height: 8px; margin: 8px auto 0;
+  border-radius: 999px; background: var(--fp-ink3);
+}
+
+.guide-red-flags li.is-urgent {
+  border-color: var(--fp-danger); border-left: 4px solid var(--fp-danger);
+  color: var(--fp-ink);
+}
+
+.guide-red-flags li.is-urgent .guide-icon { color: var(--fp-danger); margin-top: 1px; }
+.guide-red-flags li.is-urgent strong { font-weight: 700; color: var(--fp-ink); }
+
+.guide-rules,
+.guide-steps,
+.guide-list {
+  margin: 0; padding-left: 22px;
+  display: grid; gap: 8px;
+}
+
+.guide-table { font-size: 16px; font-weight: 400; }
+
+.guide-table caption { caption-side: top; text-align: left; }
+
+.guide .pill.guide-now {
+  margin-left: 8px;
+  display: inline-flex; align-items: center; min-height: 24px;
+  padding: 2px 10px; border: 0; border-radius: 999px;
+  background: color-mix(in srgb, var(--fp-success) 15%, transparent);
+  color: var(--fp-success); font-size: 12px; font-weight: 600;
+}
+
+.guide-sr {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+/* Narrow screens: each row becomes a stacked card, with labels from data-label. */
+.guide-table thead {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+.guide-table,
+.guide-table tbody,
+.guide-table tr,
+.guide-table th,
+.guide-table td {
+  display: block; width: 100%;
+}
+
+.guide-table tr {
+  margin-bottom: 10px; padding: 14px 16px;
+  background: var(--fp-s1);
+  border: 1px solid var(--fp-line); border-radius: var(--fp-r-card, 16px);
+}
+
+.guide-table tr.is-current { border-left: 4px solid var(--fp-primary); }
+
+.guide-table th[scope="row"] {
+  padding: 0 0 8px;
+  font-weight: 700; color: var(--fp-ink); text-align: left;
+}
+
+.guide-table td { padding: 4px 0; }
+
+/* Texto de tabla: parte lineas (no ensancha la pagina ni saca la navegacion). */
+.guide-table th,
+.guide-table td { white-space: normal; }
+
+.guide-table td::before {
+  content: attr(data-label);
+  display: block; margin-bottom: 2px;
+  font-size: 12px; font-weight: 500; text-transform: none; letter-spacing: 0;
+  color: var(--fp-ink3);
+}
+
+/* Wide screens: a real table. */
+@media (min-width: 640px) {
+  .guide-table { display: table; }
+  .guide-table thead {
+    position: static; width: auto; height: auto; overflow: visible;
+    clip: auto; white-space: normal;
+  }
+  .guide-table thead,
+  .guide-table tbody { display: table-header-group; }
+  .guide-table tbody { display: table-row-group; }
+  .guide-table tr {
+    display: table-row;
+    margin: 0; padding: 0;
+    background: none; border: 0; border-radius: 0;
+  }
+  .guide-table th,
+  .guide-table td {
+    display: table-cell; width: auto;
+    padding: 12px 12px 12px 0;
+    border-bottom: 1px solid var(--fp-line);
+    text-align: left; vertical-align: top;
+  }
+  .guide-table thead th {
+    font-size: 12px; font-weight: 500; color: var(--fp-ink3);
+  }
+  .guide-table td::before { content: none; display: none; }
+  .guide-table tr.is-current { background: color-mix(in srgb, var(--fp-primary) 10%, transparent); border: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .guide-back { transition: none; }
+}
