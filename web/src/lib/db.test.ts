@@ -3,10 +3,11 @@
 // sea testeable aca sin un mock del navegador. Importar './db' en el
 // entorno 'node' de vitest es seguro: ninguna de las funciones que se
 // ejercitan en este archivo llama a `indexedDB.open`.
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Session } from './types'
 import { checkBackupVersion } from './db'
 import { normalizeSession } from './plan'
+import { installMemoryIdb } from './testing/memoryIdb'
 
 describe('checkBackupVersion', () => {
   it('acepta la version 1 (respaldos de antes del motor de disciplinas)', () => {
@@ -50,5 +51,60 @@ describe('importar un respaldo v1', () => {
     const normalized = v1Sessions.map(normalizeSession).filter((s): s is Session => s !== null)
     expect(normalized).toHaveLength(1)
     expect(normalized[0].kind).toBe('strength')
+  })
+})
+
+/** Minimal localStorage double: the vitest environment is 'node'. */
+function memoryLocalStorage() {
+  const rows = new Map<string, string>()
+  return {
+    rows,
+    getItem: (k: string) => rows.get(k) ?? null,
+    setItem: (k: string, v: string) => void rows.set(k, v),
+    removeItem: (k: string) => void rows.delete(k),
+  }
+}
+
+const strengthSession = {
+  id: 's1', kind: 'strength', routineId: 'dia1', date: '2026-09-01', startedAt: 1, finishedAt: 2, notes: '',
+  sets: [{ exerciseId: 'leg-press', setIndex: 0, weight: 80, reps: 10, done: true }],
+}
+
+/** Fresh modules and an empty in-memory IndexedDB (db.ts keeps its connection
+ *  in a module variable). */
+async function freshDb() {
+  vi.resetModules()
+  const idb = installMemoryIdb()
+  const storage = memoryLocalStorage()
+  vi.stubGlobal('localStorage', storage)
+  const db = await import('./db')
+  return { db, idb, storage }
+}
+
+afterEach(() => vi.unstubAllGlobals())
+
+describe('wipeAll', () => {
+  async function seeded() {
+    const ctx = await freshDb()
+    await ctx.db.saveSession(strengthSession as never)
+    await ctx.db.saveMeasurement({ date: '2026-09-01', weightKg: 80 } as never)
+    await ctx.db.saveExerciseMeta({ exerciseId: 'leg-press', note: 'x' } as never)
+    await ctx.db.saveLastBackupAt(5)
+    return ctx
+  }
+
+  it('keeps emptying every store of the fitplan database', async () => {
+    const { db, idb } = await seeded()
+    await db.wipeAll()
+    for (const store of ['sessions', 'measurements', 'exerciseMeta', 'config']) {
+      expect(idb.dump(store).size).toBe(0)
+    }
+  })
+
+  it('also removes the active session draft from localStorage', async () => {
+    const { db, storage } = await seeded()
+    storage.setItem('fitplan:active-session', JSON.stringify({ ...strengthSession, finishedAt: null }))
+    await db.wipeAll()
+    expect(storage.getItem('fitplan:active-session')).toBeNull()
   })
 })

@@ -3,6 +3,7 @@ import { mergeConfig, normalizeSession } from './plan'
 import { normalizePlan, planFromBackup } from './planStorage'
 import { defaultPlanWithLegacy } from './defaultPlan'
 import { migrateLegacyConfig } from './legacyConfig'
+import { saveActiveDraft } from '../features/session/lib/activeSession'
 import { addLegacyCustomExercises, applyLegacyRoutineExercises, legacyRoutinesUntouched } from './legacyRoutines'
 
 const DB_NAME = 'fitplan'
@@ -274,6 +275,9 @@ export function downloadBackupFile(data: Backup): void {
   setTimeout(() => URL.revokeObjectURL(a.href), 2000)
 }
 
+/** Empties the fitplan database and the session draft kept in localStorage
+ *  (the workout in progress is user data too). The sync database is not
+ *  touched here: eraseDevice (features/account) combines both. */
 export async function wipeAll() {
   await Promise.all([
     clear(STORE_SESSIONS),
@@ -281,4 +285,5 @@ export async function wipeAll() {
     clear(STORE_EXERCISE_META),
     clear(STORE_CONFIG),
   ])
+  saveActiveDraft(null)
 }
