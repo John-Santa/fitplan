@@ -155,7 +155,7 @@ export default function Settings() {
       </div>
 
       <p className="hint" style={{ textAlign: 'center', marginTop: 22 }}>
-        FitPlan · bloque {fmtDate(config.blockStart)} – {fmtDate(config.blockEnd, true)}<br />
+        MagniFit · bloque {fmtDate(config.blockStart)} – {fmtDate(config.blockEnd, true)}<br />
         Herramienta personal de seguimiento. No sustituye valoración médica ni nutricional.
       </p>
       {toast.node}

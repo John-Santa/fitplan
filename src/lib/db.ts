@@ -64,8 +64,8 @@ function openDb(): Promise<IDBDatabase> {
         // Un bundle viejo intento abrir una base que ya quedo en una version
         // mas nueva (escrita por otra pestana con el codigo actualizado).
         reject(new Error(
-          'Esta copia de FitPlan quedó desactualizada respecto a los datos guardados en este dispositivo. ' +
-          'Cierra todas las pestañas de FitPlan y vuelve a abrir la aplicación.',
+          'Esta copia de MagniFit quedó desactualizada respecto a los datos guardados en este dispositivo. ' +
+          'Cierra todas las pestañas de MagniFit y vuelve a abrir la aplicación.',
         ))
         return
       }
@@ -77,8 +77,8 @@ function openDb(): Promise<IDBDatabase> {
     // se rechaza, y la aplicacion queda en "Cargando..." para siempre.
     req.onblocked = () => {
       reject(new Error(
-        'FitPlan está abierto en otra pestaña o en otro dispositivo con la app instalada, y esta versión ' +
-        'necesita que se cierren antes de continuar. Cierra las demás pestañas de FitPlan y vuelve a intentarlo.',
+        'MagniFit está abierto en otra pestaña o en otro dispositivo con la app instalada, y esta versión ' +
+        'necesita que se cierren antes de continuar. Cierra las demás pestañas de MagniFit y vuelve a intentarlo.',
       ))
     }
   })
@@ -170,15 +170,15 @@ export const saveLastBackupAt = (ts: number) => put(STORE_CONFIG, ts, 'lastBacku
  *  rechaza con un mensaje real en espanol en vez de intentar leerla — surge
  *  a traves de Settings.tsx, que ya renderiza e.message. Cualquier otra
  *  cosa (version ausente, no numerica, fraccionaria o menor a 1) se trata
- *  como "no es un respaldo de FitPlan": un respaldo real siempre trae
+ *  como "no es un respaldo de MagniFit": un respaldo real siempre trae
  *  `version` desde que existe este archivo. */
 export function checkBackupVersion(version: unknown): void {
   if (typeof version !== 'number' || !Number.isInteger(version) || version < 1) {
-    throw new Error('Ese archivo no es un respaldo de FitPlan.')
+    throw new Error('Ese archivo no es un respaldo de MagniFit.')
   }
   if (version > CURRENT_BACKUP_VERSION) {
     throw new Error(
-      'Ese respaldo lo hizo una versión más nueva de FitPlan. Actualiza la app antes de restaurarlo.',
+      'Ese respaldo lo hizo una versión más nueva de MagniFit. Actualiza la app antes de restaurarlo.',
     )
   }
 }
@@ -211,7 +211,7 @@ export async function exportBackup(): Promise<Backup> {
 
 export async function importBackup(data: unknown, mode: 'replace' | 'merge' = 'replace') {
   const b = data as Backup
-  if (!b || b.app !== 'fitplan') throw new Error('Ese archivo no es un respaldo de FitPlan.')
+  if (!b || b.app !== 'fitplan') throw new Error('Ese archivo no es un respaldo de MagniFit.')
   checkBackupVersion(b.version)
   // Normaliza antes de escribir: un respaldo v1 (o mas viejo) queda guardado
   // en la forma v2, asi que exportar -> importar -> exportar es idempotente.

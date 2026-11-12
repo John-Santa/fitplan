@@ -22,14 +22,14 @@ describe('checkBackupVersion', () => {
   })
 
   it('rechaza una version mayor a la actual con un mensaje real, no generico', () => {
-    expect(() => checkBackupVersion(4)).toThrow(/versión más nueva de FitPlan/)
+    expect(() => checkBackupVersion(4)).toThrow(/versión más nueva de MagniFit/)
   })
 
   it('trata version ausente, no numerica, fraccionaria o menor a 1 como "no es un respaldo"', () => {
-    expect(() => checkBackupVersion(undefined)).toThrow(/no es un respaldo de FitPlan/)
-    expect(() => checkBackupVersion('2')).toThrow(/no es un respaldo de FitPlan/)
-    expect(() => checkBackupVersion(0)).toThrow(/no es un respaldo de FitPlan/)
-    expect(() => checkBackupVersion(1.5)).toThrow(/no es un respaldo de FitPlan/)
+    expect(() => checkBackupVersion(undefined)).toThrow(/no es un respaldo de MagniFit/)
+    expect(() => checkBackupVersion('2')).toThrow(/no es un respaldo de MagniFit/)
+    expect(() => checkBackupVersion(0)).toThrow(/no es un respaldo de MagniFit/)
+    expect(() => checkBackupVersion(1.5)).toThrow(/no es un respaldo de MagniFit/)
   })
 })
 

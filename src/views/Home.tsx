@@ -199,7 +199,7 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
       <header className="hoy-header">
         <div className="hoy-header-text">
           <span className="hoy-date">{weekdayLabel(dow)} {fmtDate(iso)}</span>
-          <span className="hoy-brand">FitPlan</span>
+          <span className="hoy-brand">MagniFit</span>
         </div>
         <button type="button" className="hoy-avatar" aria-label="Perfil" onClick={() => go('perfil')}>
           <Icon name="person" size={22} />

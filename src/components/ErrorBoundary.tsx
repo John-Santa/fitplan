@@ -35,7 +35,7 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <ErrorScreen
           title="Algo salió mal"
-          message="FitPlan encontró un error inesperado al mostrar esta pantalla. Tus datos siguen guardados en este dispositivo. Puedes exportar un respaldo ahora y luego recargar la aplicación."
+          message="MagniFit encontró un error inesperado al mostrar esta pantalla. Tus datos siguen guardados en este dispositivo. Puedes exportar un respaldo ahora y luego recargar la aplicación."
         />
       )
     }

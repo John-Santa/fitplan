@@ -14,8 +14,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icon-192.png', 'icon-512.png', 'apple-touch-icon.png'],
       manifest: {
-        name: 'FitPlan — bitacora de John',
-        short_name: 'FitPlan',
+        name: 'MagniFit',
+        short_name: 'MagniFit',
         description: 'Registro de entrenamiento y composicion corporal. Funciona sin conexion.',
         lang: 'es',
         start_url: base,

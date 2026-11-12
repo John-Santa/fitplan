@@ -214,7 +214,7 @@ describe('respaldos', () => {
     for (const v of [1, 2, 3]) expect(() => checkBackupVersion(v)).not.toThrow()
     for (const v of [4, 2.5, '2', 0, -1, null, undefined, NaN]) expect(() => checkBackupVersion(v)).toThrow()
     expect(() => checkBackupVersion(4)).toThrow('versión más nueva')
-    expect(() => checkBackupVersion('2')).toThrow('no es un respaldo de FitPlan')
+    expect(() => checkBackupVersion('2')).toThrow('no es un respaldo de MagniFit')
   })
 
   it('planFromBackup: v2 sin plan da null, v3 con plan lo devuelve y un plan roto da null', () => {
