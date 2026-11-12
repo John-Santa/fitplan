@@ -9,6 +9,7 @@ import { enqueueAllLocalChanges, syncNow, type SyncStatus } from '../../sync/lib
 import { getPreBootstrapBackup, resetSyncState } from '../../sync/lib/syncDb'
 import { BACKUP_NOTICE, restoreHint, syncStatusLines, wipeConfirmTexts } from '../../sync/lib/statusText'
 import { useSyncStatus } from '../../sync/lib/useSync'
+import { CloudDangerZone } from '../components/CloudDangerZone'
 
 // Clerk solo se carga si hay clave; sin ella este módulo nunca se importa.
 const AccountControls = lazy(() => import('../components/clerkAuth.tsx').then(m => ({ default: m.AccountControls })))
@@ -232,6 +233,8 @@ export default function Settings() {
       <div className="col-b">
         <div className="section-title alert">Zona de peligro</div>
         <div className="card">
+          {/* Con sesión: borrar la cuenta o los datos del servidor (F30/F31). */}
+          {signedIn && <CloudDangerZone onExport={doExport} />}
           <button
             className="danger block"
             onClick={async () => {
