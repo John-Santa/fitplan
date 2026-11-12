@@ -98,7 +98,7 @@ services:
       # for a production instance on clerk.magnifit.co.
       - path: /*
         name: Content-Security-Policy-Report-Only
-        value: "default-src 'self'; script-src 'self' https://clerk.magnifit.co https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://img.clerk.com; connect-src 'self' https://api.magnifit.co https://clerk.magnifit.co https://clerk-telemetry.com; frame-src https://challenges.cloudflare.com; worker-src 'self' blob:; manifest-src 'self'; form-action 'self'"
+        value: "default-src 'self'; script-src 'self' https://clerk.magnifit.co https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https://img.clerk.com; connect-src 'self' https://api.magnifit.co https://clerk.magnifit.co https://clerk-telemetry.com; frame-src https://challenges.cloudflare.com; worker-src 'self' blob:; manifest-src 'self'; form-action 'self'"
     envVars:
       - key: NODE_VERSION
         value: "22"
