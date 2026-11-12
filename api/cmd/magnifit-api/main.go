@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/John-Santa/fitplan/api/internal/adapter/clerk"
 	"github.com/John-Santa/fitplan/api/internal/adapter/httpapi"
 	"github.com/John-Santa/fitplan/api/internal/adapter/postgres"
@@ -31,6 +33,28 @@ func main() {
 		log.ErrorContext(context.Background(), "fatal", slog.Any("error", err))
 		os.Exit(1)
 	}
+}
+
+// migrateOnBoot applies the migrations. With an empty migrationURL they run on
+// the serving pool. Otherwise they run (advisory lock included) on a dedicated
+// pool opened from migrationURL, which is closed before returning, so the
+// serving role can be limited to data access.
+func migrateOnBoot(
+	ctx context.Context,
+	migrationURL string,
+	serving *pgxpool.Pool,
+	open func(context.Context, string) (*pgxpool.Pool, error),
+	migrate func(context.Context, *pgxpool.Pool) error,
+) error {
+	if migrationURL == "" {
+		return migrate(ctx, serving)
+	}
+	pool, err := open(ctx, migrationURL)
+	if err != nil {
+		return fmt.Errorf("open migration connection: %w", err)
+	}
+	defer pool.Close()
+	return migrate(ctx, pool)
 }
 
 func run(log *slog.Logger) error {
@@ -67,7 +91,7 @@ func run(log *slog.Logger) error {
 		defer pool.Close()
 
 		migrateCtx, cancel := context.WithTimeout(ctx, migrateTimeout)
-		err = postgres.Migrate(migrateCtx, pool)
+		err = migrateOnBoot(migrateCtx, cfg.MigrationDatabaseURL, pool, postgresdb.Open, postgres.Migrate)
 		cancel()
 		if err != nil {
 			return err
