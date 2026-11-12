@@ -30,12 +30,14 @@ type RouterConfig struct {
 	Sync SyncService
 	// Readiness is pinged by /readyz; nil answers 503.
 	Readiness Pinger
+	// RateLimit tunes the per-user limit on /v1/*; zero fields take defaults.
+	RateLimit RateLimitConfig
 	// Extra registers additional routes (tests only).
 	Extra func(r chi.Router)
 }
 
 // NewRouter builds the router. Middleware order, outermost first:
-// RequestID → SecurityHeaders → Logger → Recover → CORS → Auth → Timeout. The logger sees the final
+// RequestID → SecurityHeaders → Logger → Recover → CORS → Auth → RateLimit → Timeout. The logger sees the final
 // status of recovered panics; CORS headers are set before Auth and the
 // handlers run, so 401 and 500 answers still carry them and preflights are
 // answered without credentials.
@@ -51,6 +53,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	r.Use(recoverer(log))
 	r.Use(cors(cfg.AllowedOrigins))
 	r.Use(authenticate(cfg.Authenticator, r))
+	r.Use(rateLimit(cfg.RateLimit))
 	r.Use(middleware.Timeout(handlerTimeout))
 	r.Use(middleware.GetHead)
 

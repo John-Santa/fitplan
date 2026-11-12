@@ -42,7 +42,11 @@ func run(log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	routes := httpapi.RouterConfig{Logger: log, AllowedOrigins: cfg.AllowedOrigins}
+	routes := httpapi.RouterConfig{
+		Logger:         log,
+		AllowedOrigins: cfg.AllowedOrigins,
+		RateLimit:      httpapi.RateLimitConfig{RPS: cfg.RateLimitRPS, Burst: cfg.RateLimitBurst},
+	}
 
 	if cfg.ClerkSecretKey != "" {
 		auth := clerk.New(cfg.ClerkSecretKey, cfg.AllowedOrigins)

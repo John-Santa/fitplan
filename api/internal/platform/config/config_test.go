@@ -83,3 +83,29 @@ func TestLoadRequiresDatabaseAndClerkOutsideTest(t *testing.T) {
 		t.Errorf("APP_ENV=test without secrets: cfg=%+v err=%v, want ok", cfg, err)
 	}
 }
+
+func TestLoadRateLimit(t *testing.T) {
+	cfg, err := config.Load(env(map[string]string{"APP_ENV": "test"}))
+	if err != nil || cfg.RateLimitRPS != 0 || cfg.RateLimitBurst != 0 {
+		t.Errorf("unset: cfg = %+v err = %v, want zero values (the router applies its defaults)", cfg, err)
+	}
+	cfg, err = config.Load(env(map[string]string{"APP_ENV": "test", "RATE_LIMIT_RPS": " 2.5 ", "RATE_LIMIT_BURST": "20"}))
+	if err != nil || cfg.RateLimitRPS != 2.5 || cfg.RateLimitBurst != 20 {
+		t.Errorf("set: cfg = %+v err = %v, want 2.5 and 20", cfg, err)
+	}
+}
+
+func TestLoadRejectsInvalidRateLimit(t *testing.T) {
+	for _, tc := range []struct{ name, value string }{
+		{"RATE_LIMIT_RPS", "fast"},
+		{"RATE_LIMIT_RPS", "0"},
+		{"RATE_LIMIT_RPS", "-1"},
+		{"RATE_LIMIT_BURST", "many"},
+		{"RATE_LIMIT_BURST", "0"},
+	} {
+		_, err := config.Load(env(map[string]string{"APP_ENV": "test", tc.name: tc.value}))
+		if err == nil || !strings.Contains(err.Error(), tc.name) {
+			t.Errorf("%s=%q: err = %v, want it to name %s", tc.name, tc.value, err, tc.name)
+		}
+	}
+}
