@@ -1,0 +1,72 @@
+# Render Blueprint for MagniFit (single environment).
+# Create it from the dashboard: New > Blueprint > pick this repo (path deploy/render.yaml).
+# Secrets use `sync: false`: Render asks for them in the dashboard on first sync.
+# NEVER put secret values in this file.
+services:
+  # Go API. Docker build context is api/ so the image only sees backend code.
+  - type: web
+    name: magnifit-api
+    runtime: docker
+    dockerfilePath: ./api/Dockerfile
+    dockerContext: ./api
+    healthCheckPath: /readyz
+    # Region alternatives: oregon, ohio, virginia, frankfurt, singapore.
+    # Keep it close to the Neon project region to cut query latency.
+    region: oregon
+    plan: free
+    branch: main
+    autoDeploy: true
+    domains:
+      - api.magnifit.co
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: PORT
+        value: "8080"
+      - key: ALLOWED_ORIGINS
+        value: https://app.magnifit.co
+      # Neon POOLED connection string (host contains -pooler). Set in the dashboard.
+      - key: DATABASE_URL
+        sync: false
+      # Clerk production secret key (sk_live_...). Set in the dashboard.
+      - key: CLERK_SECRET_KEY
+        sync: false
+
+  # React PWA, built with Vite and served as a static site.
+  - type: web
+    name: magnifit-web
+    runtime: static
+    rootDir: web
+    branch: main
+    autoDeploy: true
+    domains:
+      - app.magnifit.co
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    staticPublishPath: dist
+    # SPA fallback: every unknown path serves the app shell.
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      # Hashed Vite assets never change for a given URL.
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+      # The service worker and shell must always revalidate or updates never ship.
+      - path: /sw.js
+        name: Cache-Control
+        value: no-cache
+      - path: /index.html
+        name: Cache-Control
+        value: no-cache
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: VITE_BASE
+        value: /
+      - key: VITE_API_URL
+        value: https://api.magnifit.co
+      # Clerk production publishable key (pk_live_...). Public, but set per environment.
+      - key: VITE_CLERK_PUBLISHABLE_KEY
+        sync: false

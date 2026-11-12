@@ -1,12 +1,24 @@
-name: Verify
+name: web
 
 on:
   push:
+    paths:
+      - "web/**"
+      - ".github/workflows/web.yml"
   pull_request:
+    paths:
+      - "web/**"
+      - ".github/workflows/web.yml"
+
+permissions:
+  contents: read
 
 jobs:
   verify:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
     steps:
       - uses: actions/checkout@v4
 
@@ -20,6 +32,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
 
       - run: pnpm install --frozen-lockfile
 
@@ -28,3 +41,7 @@ jobs:
 
       - name: Unit tests
         run: pnpm test
+
+      # Sin variables de entorno: el build debe funcionar en modo solo-local.
+      - name: Build
+        run: pnpm build
