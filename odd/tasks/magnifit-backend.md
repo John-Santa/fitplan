@@ -1,5 +1,5 @@
 # MagniFit backend (Go API + Postgres + Clerk)
-Objective: split the app into the existing React PWA (front) and a Go API with Postgres and Clerk login, keeping offline-first. Branch: feat/magnifit-backend. Delivery: chained PRs (ask-on-risk, > 400 lines). Runners: `pnpm test` / `pnpm typecheck` (front), `go test ./...` / `go vet ./...` in `api/` (back).
+Objective: split the app into the existing React PWA (front) and a Go API with Postgres and Clerk login, keeping offline-first. Branch: feat/magnifit-backend. Delivery: single PR #3 (user chose it over chained PRs on 2026-11-11 because the restructure moved every file). Runners: `pnpm test` / `pnpm typecheck` (front), `go test ./...` / `go vet ./...` in `api/` (back).
 
 ## Specs
 - S1 — Request: "evalua cómo tener el api dividida, un back en go y un front en react, todo esto usando el flujo odd y tu rol como orquestador, debe contar con base de datos y un login en clerk". Approved: "Ya tengo dominio,  es magnifit.co  y me gusta la arquitectura que propones, cómo seguimos?"
@@ -39,3 +39,4 @@ Assumptions (parent): the front stays at the repo root for now (no move to `web/
 - L7 (2026-11-11) user asked to follow icaro's architecture; explorer mapped ~/Dev/icaro-ink (hermes Go API, iris React SPA, atlas infra). Proposal approved: "Dale".
 - L8 (2026-11-11) R1-R3 done: a9950d1 (api hermes layout: chi, problem+json, openapi.yaml + libopenapi-validator conformance, depguard domain purity, /readyz, make check; middleware order RequestID→Logger→Recover→CORS→Auth so 401s carry CORS), 9a50d65+66c0974 (front to web/ feature-sliced), 2a2be2b (deploy/render.yaml, env.md, web.yml/api.yml/deploy.yml; verify.yml removed, replaced by web.yml), 9c04b8a (front reads problem+json `detail`; gen:api generated schema.d.ts; type-level contract drift test). Checks: web 377 tests, typecheck, build; api gofmt/vet/golangci 0 issues/unit+integration on postgres:17.
 - Hosting switched from Fly.io to Render (same as icaro).
+- L9 (2026-11-11) — User: "Si" (push and open the PR). Asked the PR shape; user chose "Un solo PR (Recomendado)". Branch pushed; PR #3 opened against main: https://github.com/John-Santa/fitplan/pull/3. Merge, Render/Neon/Clerk accounts and DNS stay with the user.
