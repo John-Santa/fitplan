@@ -131,11 +131,18 @@ export default function Settings() {
 
         <div className="section-title">Tus datos</div>
         <div className="card">
-          <p>
-            Todo vive en <strong>este dispositivo</strong>, en la base de datos del navegador. No hay servidor, no hay
-            cuenta y nadie más los ve. La contracara es que si borras los datos del navegador o cambias de teléfono, se
-            van contigo solo si exportas.
-          </p>
+          {signedIn ? (
+            <p>
+              Tus datos viven en <strong>este dispositivo</strong> y se respaldan en <strong>tu cuenta</strong>: si cambias
+              de teléfono, vuelven al iniciar sesión. Funciona sin señal y se sincroniza al volver la conexión.
+            </p>
+          ) : (
+            <p>
+              Todo vive en <strong>este dispositivo</strong>, en la base de datos del navegador. No hay servidor, no hay
+              cuenta y nadie más los ve. La contracara es que si borras los datos del navegador o cambias de teléfono, se
+              van contigo solo si exportas.
+            </p>
+          )}
           <div className="tiles" style={{ marginTop: 12, marginBottom: 12 }}>
             <Tile label="Sesiones" value={sessions.length} dec={0} />
             <Tile label="Mediciones" value={measurements.length} dec={0} />
