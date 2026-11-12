@@ -982,3 +982,16 @@ figcaption {
   .main:has(.session-head) { display: block; max-width: 760px; }
   .main:has(.session-head) > * { max-width: none; }
 }
+
+/* Visually hidden, still announced by screen readers (e.g. view headings that have no visible title). */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
