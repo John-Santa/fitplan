@@ -44,18 +44,26 @@ function planned(config: Config, day: Date): Reminder | null {
 
 const midnight = (now: Date, plus = 0): Date => new Date(now.getFullYear(), now.getMonth(), now.getDate() + plus)
 
+/** Not-yet-fired reminders from today (even if its time already passed) over
+ *  the next week, in order, skipping today when it is already done. This is
+ *  what the page hands to the service worker for the periodic-sync bonus. */
+export function upcomingReminders(input: ReminderInput, lastFiredKey: string | null): Reminder[] {
+  const ctx = { sessions: input.sessions, config: input.config, today: todayISO(input.now) }
+  const out: Reminder[] = []
+  for (let i = 0; i < LOOKAHEAD_DAYS; i++) {
+    const r = planned(input.config, midnight(input.now, i))
+    if (!r || r.key === lastFiredKey) continue
+    if (i === 0 && dayStatus(r.date, ctx) === 'kept') continue
+    out.push(r)
+  }
+  return out
+}
+
 /** The earliest not-yet-fired reminder strictly after `now` whose day has no
  *  finished session or check-in, within the next week. null when none. */
 export function nextReminder(input: ReminderInput, lastFiredKey: string | null): Reminder | null {
-  const ctx = { sessions: input.sessions, config: input.config, today: todayISO(input.now) }
   const nowMs = input.now.getTime()
-  for (let i = 0; i < LOOKAHEAD_DAYS; i++) {
-    const r = planned(input.config, midnight(input.now, i))
-    if (!r || r.at <= nowMs || r.key === lastFiredKey) continue
-    if (i === 0 && dayStatus(r.date, ctx) === 'kept') continue
-    return r
-  }
-  return null
+  return upcomingReminders(input, lastFiredKey).find(r => r.at > nowMs) ?? null
 }
 
 /** Reminders whose time already passed today and that are neither done nor

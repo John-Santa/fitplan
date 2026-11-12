@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Config, Session } from '../../../lib/types'
 import { loadActiveDraft } from '../../session/lib/activeSession'
-import { dueReminders, nextReminder, type Reminder } from './scheduler'
+import { dueReminders, nextReminder, upcomingReminders, type Reminder } from './scheduler'
+import { firedInBackground, syncBackground } from './background'
 import { loadReminderPrefs, saveReminderPrefs, type ReminderPrefs } from './prefs'
 import { alreadyNotified, showReminderNotification } from './notify'
 
@@ -40,13 +41,13 @@ export function useReminders(config: Config, sessions: readonly Session[], enabl
   const [banner, setBanner] = useState<Reminder | null>(null)
 
   useEffect(() => {
-    if (!enabled) { setBanner(null); return }
+    if (!enabled) { setBanner(null); void syncBackground(null); return }
     let timer: ReturnType<typeof setTimeout> | undefined
     let cancelled = false
 
     const fire = async (r: Reminder, now: number) => {
       markFired(r.key) // before any await: StrictMode / a second tab cannot double-fire
-      if (await alreadyNotified(r.key)) return
+      if ((await alreadyNotified(r.key)) || (await firedInBackground(r.key))) return
       const onTime = now - r.at <= ON_TIME_MS
       if ((onTime || document.hidden) && (await showReminderNotification(r))) return
       if (!cancelled) setBanner(r)
@@ -63,7 +64,9 @@ export function useReminders(config: Config, sessions: readonly Session[], enabl
         const [due] = dueReminders(input, lastFired)
         if (due) void fire(due, now.getTime())
       }
-      const next = nextReminder(input, loadReminderPrefs().lastFired)
+      const fired = loadReminderPrefs().lastFired
+      void syncBackground(upcomingReminders(input, fired))
+      const next = nextReminder(input, fired)
       if (next) timer = setTimeout(check, Math.min(Math.max(next.at - Date.now(), 0) + 250, MAX_DELAY))
     }
 

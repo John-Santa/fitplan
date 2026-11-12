@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Config, DayPlan, Intention, Session, WeeklyIntentions, WeeklyRoutine } from '../../../lib/types'
 import { DEFAULT_CONFIG } from '../../../lib/plan'
-import { dueReminders, nextReminder, reminderKey } from './scheduler'
+import { dueReminders, nextReminder, reminderKey, upcomingReminders } from './scheduler'
 
 const train = (): DayPlan => ({ kind: 'training', routineId: 'r1', title: '', note: '' })
 const rest = (): DayPlan => ({ kind: 'rest', title: '', note: '' })
@@ -106,6 +106,18 @@ describe('dueReminders', () => {
     expect(dueReminders({ config: config(), sessions: [], now: at('2026-11-10', 9) }, null)).toEqual([])
     const c = config({ intentions: intentions({ 0: { time: '10:00', place: '' } }) })
     expect(dueReminders({ config: c, sessions: [], now: at('2026-11-15', 12) }, null)).toEqual([])
+  })
+})
+
+describe('upcomingReminders', () => {
+  it('lists today (even if its time passed) and the next planned days, in order', () => {
+    const keys = upcomingReminders({ config: config(), sessions: [], now: at('2026-11-09', 9) }, null).map(r => r.key)
+    expect(keys).toEqual(['2026-11-09@07:30', '2026-11-11@18:00', '2026-11-16@07:30'])
+  })
+
+  it('drops today when done and any fired key', () => {
+    const input = { config: config(), sessions: [session('2026-11-09')], now: at('2026-11-09', 9) }
+    expect(upcomingReminders(input, '2026-11-11@18:00').map(r => r.key)).toEqual(['2026-11-16@07:30'])
   })
 })
 
