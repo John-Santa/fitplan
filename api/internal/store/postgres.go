@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
+	"github.com/pressly/goose/v3/lock"
 
 	"github.com/John-Santa/fitplan/api/db"
 	"github.com/John-Santa/fitplan/api/internal/domain"
@@ -53,7 +54,13 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	sqlDB := stdlib.OpenDBFromPool(pool)
 	defer sqlDB.Close()
-	p, err := goose.NewProvider(goose.DialectPostgres, sqlDB, fsys)
+	// A session-level advisory lock makes concurrent boots migrate one at a time
+	// (retry every second, give up after a minute).
+	locker, err := lock.NewPostgresSessionLocker(lock.WithLockTimeout(1, 60))
+	if err != nil {
+		return fmt.Errorf("store: migration locker: %w", err)
+	}
+	p, err := goose.NewProvider(goose.DialectPostgres, sqlDB, fsys, goose.WithSessionLocker(locker))
 	if err != nil {
 		return fmt.Errorf("store: goose provider: %w", err)
 	}

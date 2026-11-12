@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -98,7 +99,7 @@ func (v V1) push(w http.ResponseWriter, r *http.Request) {
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, MaxPushBytes)
 	var in wireSet
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+	if err := decodeStrict(r.Body, &in); err != nil {
 		var tooBig *http.MaxBytesError
 		if errors.As(err, &tooBig) {
 			WriteError(w, http.StatusRequestEntityTooLarge, "request body too large (max 5 MB)")
@@ -113,6 +114,23 @@ func (v V1) push(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	WriteJSON(w, http.StatusOK, toWireResult(res))
+}
+
+// decodeStrict decodes exactly one JSON value, rejecting unknown fields and
+// any data after it.
+func decodeStrict(r io.Reader, v any) error {
+	dec := json.NewDecoder(r)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		return err
+	}
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("unexpected data after the JSON object")
+		}
+		return err
+	}
+	return nil
 }
 
 // fail maps service errors: validation → 400, anything else → logged 500.

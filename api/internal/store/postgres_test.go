@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	stdsync "sync"
 	"testing"
 	"time"
 
@@ -221,4 +222,52 @@ func revs(cs domain.ChangeSet) []int64 {
 		out = append(out, e.Rev)
 	}
 	return out
+}
+
+func TestPushClampsFutureTimestamp(t *testing.T) {
+	svc, _ := newService(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	svc.Now = func() time.Time { return now }
+	far := time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC)
+	set := func(at time.Time, body string) domain.ChangeSet {
+		return domain.ChangeSet{Measurements: []domain.Measurement{{Date: "2026-11-10", Body: json.RawMessage(body), UpdatedAt: at}}}
+	}
+	if _, err := svc.Push(ctx, "user_a", set(far, `{"weight":99}`)); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := svc.Pull(ctx, "user_a", 0, 10)
+	if want := now.Add(10 * time.Minute); len(got.Measurements) != 1 || !got.Measurements[0].UpdatedAt.Equal(want) {
+		t.Fatalf("stored = %+v, want updatedAt %v", got.Measurements, want)
+	}
+	now = now.Add(time.Hour)
+	res, err := svc.Push(ctx, "user_a", set(now, `{"weight":80}`))
+	if err != nil || res.Measurements[0].Status != domain.StatusApplied {
+		t.Fatalf("real edit = %+v, %v; want applied", res, err)
+	}
+}
+
+func TestConcurrentMigrateSerializes(t *testing.T) {
+	_, pool := newService(t)
+	ctx := context.Background()
+	// Start from an empty schema so every goroutine really has work to do.
+	if _, err := pool.Exec(ctx, `DROP SCHEMA public CASCADE; CREATE SCHEMA public`); err != nil {
+		t.Fatalf("reset schema: %v", err)
+	}
+	var wg stdsync.WaitGroup
+	errs := make(chan error, 8)
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs <- store.Migrate(ctx, pool)
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Errorf("concurrent Migrate: %v", err)
+		}
+	}
 }

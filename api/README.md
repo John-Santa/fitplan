@@ -17,14 +17,14 @@ make run
 curl localhost:8080/health   # {"status":"ok"}
 ```
 
-On boot the service connects to `DATABASE_URL`, applies pending migrations, and serves the `/v1` routes.
+On boot the service connects to `DATABASE_URL`, applies pending migrations (under a Postgres advisory lock, so concurrent boots serialize), and serves the `/v1` routes.
 
 ## Environment
 
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `PORT` | `8080` | Integer 1-65535 |
-| `ALLOWED_ORIGINS` | empty | Comma-separated CORS origins; also the accepted Clerk `azp` (authorized party) values when set |
+| `ALLOWED_ORIGINS` | empty | Comma-separated CORS origins; also the accepted Clerk `azp` (authorized party) values when set (then a token without `azp` is rejected too) |
 | `APP_ENV` | empty | `test` makes `DATABASE_URL` and `CLERK_SECRET_KEY` optional |
 | `DATABASE_URL` | empty | Postgres URL. Required unless `APP_ENV=test`; without it the `/v1` routes are disabled |
 | `CLERK_SECRET_KEY` | empty | Clerk backend secret key. Required unless `APP_ENV=test`; without it `/v1` answers 401 |
@@ -54,8 +54,9 @@ ChangeSet (timestamps are epoch milliseconds, like the front):
 
 - Pull: keep calling with `since=<cursor>` while `hasMore` is true. Tombstones (`deletedAt` set) are included.
 - Push: `rev`, `cursor` and `hasMore` are ignored. The whole push is validated first (400 with the failing field, e.g. `sessions[0].body.date: must be a valid YYYY-MM-DD date`) and then written in one transaction.
-- Rules: `kind` is `plan` or `config`; ids are 1-128 characters; dates are `YYYY-MM-DD`; `body` is a JSON object of at most 256 KB, required also on deletes; `updatedAt` is required. A session body must hold `kind` (`strength` or `swim`) and `date`; `finishedAt` (ms or null) is read from it too. When a body carries its own key (`id`, `date`, `exerciseId`) it must match the record key.
-- Last write wins per record: an `updatedAt` older than the stored one is not written. Push answer:
+- Strict decoding: unknown fields anywhere in the request and any data after the JSON object are rejected with 400.
+- Rules: `kind` is `plan` or `config`; ids are 1-128 characters without NUL; dates are `YYYY-MM-DD` with year 1 or later; `body` is a JSON object of at most 256 KB without the `\u0000` escape, required also on deletes; `updatedAt` is required. `updatedAt`, `deletedAt` and a session body's `startedAt`/`finishedAt` must be integers between 0 and 253402300799999 (year 9999), else 400. A session body must hold `kind` (`strength` or `swim`) and `date`; `finishedAt` (ms or null) is read from it too. When a body carries its own key (`id`, `date`, `exerciseId`) it must match the record key.
+- Last write wins per record: an `updatedAt` older than the stored one is not written. Future-skew guard: `updatedAt` and `deletedAt` later than the server clock plus 10 minutes are clamped to that limit before writing (not rejected, so offline clients with a wrong clock still sync), so one bad clock cannot pin a record forever. Push answer:
 
 ```json
 {"documents": [{"key": "plan", "status": "applied", "rev": 16}], "sessions": [], "measurements": [{"key": "2026-11-10", "status": "stale", "rev": 0}], "exerciseMeta": []}

@@ -176,3 +176,48 @@ func TestPushReportsStale(t *testing.T) {
 		t.Errorf("status = %q, want stale", res.Documents[0].Status)
 	}
 }
+
+func TestPushClampsFutureTimestampsSoLaterRealEditsApply(t *testing.T) {
+	store := newFake()
+	svc := sync.NewService(store)
+	now := time.Date(2026, 11, 11, 12, 0, 0, 0, time.UTC)
+	svc.Now = func() time.Time { return now }
+	ctx := context.Background()
+	doc := func(at time.Time) domain.ChangeSet {
+		return domain.ChangeSet{Documents: []domain.Document{{Kind: domain.DocumentConfig, Body: json.RawMessage(`{}`), UpdatedAt: at}}}
+	}
+	year2100 := time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC)
+	if _, err := svc.Push(ctx, "u1", doc(year2100)); err != nil {
+		t.Fatal(err)
+	}
+	want := now.Add(10 * time.Minute)
+	if got := store.docs["u1"][domain.DocumentConfig].UpdatedAt; !got.Equal(want) {
+		t.Fatalf("stored updatedAt = %v, want clamp %v", got, want)
+	}
+	// An hour later a real edit (current time) beats the clamped copy.
+	now = now.Add(time.Hour)
+	res, err := svc.Push(ctx, "u1", doc(now))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Documents[0].Status != domain.StatusApplied {
+		t.Errorf("real edit status = %q, want applied", res.Documents[0].Status)
+	}
+}
+
+func TestPushClampsDeletedAt(t *testing.T) {
+	store := newFake()
+	svc := sync.NewService(store)
+	now := time.Date(2026, 11, 11, 12, 0, 0, 0, time.UTC)
+	svc.Now = func() time.Time { return now }
+	far := time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC)
+	cs := domain.ChangeSet{Measurements: []domain.Measurement{{Date: "2026-11-10", Body: json.RawMessage(`{}`), UpdatedAt: far, DeletedAt: &far}}}
+	if _, err := svc.Push(context.Background(), "u1", cs); err != nil {
+		t.Fatal(err)
+	}
+	got := store.meas["u1"]["2026-11-10"]
+	want := now.Add(10 * time.Minute)
+	if !got.UpdatedAt.Equal(want) || got.DeletedAt == nil || !got.DeletedAt.Equal(want) {
+		t.Errorf("stored = %v / %v, want both %v", got.UpdatedAt, got.DeletedAt, want)
+	}
+}

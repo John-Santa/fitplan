@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/John-Santa/fitplan/api/internal/domain"
 )
@@ -17,6 +18,10 @@ const (
 	DefaultPullLimit = 200
 	// MaxPullLimit caps the records returned by one pull.
 	MaxPullLimit = 500
+	// MaxClockSkew is how far ahead of the server clock a pushed updatedAt or
+	// deletedAt may be; later values are clamped to now+MaxClockSkew so a wrong
+	// client clock cannot pin a record under last-write-wins.
+	MaxClockSkew = 10 * time.Minute
 )
 
 // ErrNoUser is returned when the caller has no authenticated user id.
@@ -25,10 +30,12 @@ var ErrNoUser = errors.New("sync: missing user id")
 // Service implements pull and push on top of a domain.Store.
 type Service struct {
 	store domain.Store
+	// Now is the server clock; tests replace it.
+	Now func() time.Time
 }
 
 // NewService builds a Service.
-func NewService(store domain.Store) *Service { return &Service{store: store} }
+func NewService(store domain.Store) *Service { return &Service{store: store, Now: time.Now} }
 
 // Pull returns up to limit records of userID with rev > since, across all
 // collections, ordered by rev. Cursor is the rev to pass as since next time;
@@ -58,6 +65,7 @@ func (s *Service) Push(ctx context.Context, userID string, cs domain.ChangeSet) 
 	if err := cs.Validate(); err != nil {
 		return domain.PushResult{}, err
 	}
+	cs.ClampFuture(s.Now().Add(MaxClockSkew))
 	res, err := s.store.Apply(ctx, userID, cs)
 	if err != nil {
 		return domain.PushResult{}, fmt.Errorf("sync push: %w", err)

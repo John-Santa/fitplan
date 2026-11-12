@@ -32,7 +32,7 @@ func UserID(ctx context.Context) (string, bool) {
 // NewClerk returns an Authenticator that verifies a Clerk session JWT sent as
 // "Authorization: Bearer <token>" and uses its subject (the Clerk user id) as
 // the user id. When authorizedParties is not empty, the token's azp claim must
-// be one of them (the front-end origins).
+// be present and one of them (the front-end origins).
 //
 // It uses clerkhttp.WithHeaderAuthorization plus its own claims check instead
 // of RequireHeaderAuthorization, because the latter answers a bodyless 403 when
@@ -42,8 +42,8 @@ func NewClerk(secretKey string, authorizedParties []string) Authenticator {
 	opts := []clerkhttp.AuthorizationOption{
 		clerkhttp.AuthorizationFailureHandler(http.HandlerFunc(unauthorized)),
 	}
-	if len(authorizedParties) > 0 {
-		opts = append(opts, clerkhttp.AuthorizedPartyMatches(authorizedParties...))
+	if check := authorizedParty(authorizedParties); check != nil {
+		opts = append(opts, clerkhttp.AuthorizedParty(check))
 	}
 	withClaims := clerkhttp.WithHeaderAuthorization(opts...)
 	return func(next http.Handler) http.Handler {
@@ -68,4 +68,24 @@ func unauthorized(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("WWW-Authenticate", `Bearer realm="magnifit"`)
 	w.WriteHeader(http.StatusUnauthorized)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
+}
+
+// authorizedParty returns the azp check for a configured party list, or nil
+// when none is configured (any azp accepted). Unlike the SDK's
+// AuthorizedPartyMatches, a missing azp is rejected when a list is set.
+func authorizedParty(allowed []string) func(string) bool {
+	if len(allowed) == 0 {
+		return nil
+	}
+	set := make(map[string]struct{}, len(allowed))
+	for _, p := range allowed {
+		set[p] = struct{}{}
+	}
+	return func(azp string) bool {
+		if azp == "" {
+			return false
+		}
+		_, ok := set[azp]
+		return ok
+	}
 }

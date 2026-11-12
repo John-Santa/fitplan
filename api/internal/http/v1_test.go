@@ -176,6 +176,11 @@ func TestPushErrors(t *testing.T) {
 		{"invalid json", `{"documents":`, nil, 400, "invalid JSON"},
 		{"validation", `{"documents":[{"kind":"habits","body":{},"updatedAt":1}]}`, nil, 400, "documents[0].kind"},
 		{"missing updatedAt", `{"documents":[{"kind":"plan","body":{}}]}`, nil, 400, "documents[0].updatedAt"},
+		{"unknown field", `{"documents":[],"extra":1}`, nil, 400, "invalid JSON"},
+		{"unknown nested field", `{"documents":[{"kind":"plan","body":{},"updatedAt":1,"bogus":true}]}`, nil, 400, "invalid JSON"},
+		{"trailing data", `{"documents":[]}{"documents":[]}`, nil, 400, "invalid JSON"},
+		{"trailing garbage", `{} x`, nil, 400, "invalid JSON"},
+		{"out of range updatedAt", `{"documents":[{"kind":"plan","body":{},"updatedAt":9000000000000000000}]}`, nil, 400, "documents[0].updatedAt"},
 		{"too large", big, nil, 413, "too large"},
 		{"store failure", `{}`, errors.New("db down"), 500, "internal server error"},
 	} {
