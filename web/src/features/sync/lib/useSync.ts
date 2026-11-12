@@ -1,7 +1,8 @@
 // Enganche de React con el motor: disparadores y estado para la pantalla.
-import { useEffect, useSyncExternalStore } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { useAuthState } from '../../account/lib/auth'
 import { getSyncStatus, refreshStatus, resumeAfterAuth, setRemoteChangeHandler, setSyncUser, subscribeSyncStatus, syncNow, type SyncStatus } from './engine'
+import { getRejected, type RejectedEntry } from './syncDb'
 
 export const PERIODIC_SYNC_MS = 5 * 60_000
 
@@ -54,4 +55,18 @@ export function useSyncStatus(): SyncStatus {
     void refreshStatus().catch(() => {})
   }, [])
   return useSyncExternalStore(subscribeSyncStatus, getSyncStatus, getSyncStatus)
+}
+
+/** Cambios que el servidor rechazó, para listarlos con Reintentar y Descartar.
+ *  Se relee cada vez que cambia el conteo del estado. */
+export function useRejectedEntries(): RejectedEntry[] {
+  const { rejected } = useSyncStatus()
+  const [entries, setEntries] = useState<RejectedEntry[]>([])
+  useEffect(() => {
+    let live = true
+    if (rejected === 0) setEntries([])
+    else getRejected().then(list => { if (live) setEntries(list) }, () => {})
+    return () => { live = false }
+  }, [rejected])
+  return entries
 }

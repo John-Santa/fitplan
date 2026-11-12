@@ -122,6 +122,20 @@ export async function refreshStatus() {
   })
 }
 
+/** "Reintentar" de un cambio rechazado: vuelve al outbox y se sube de nuevo. */
+export async function retryRejected(entity: Entity, key: string) {
+  await sdb.requeueRejected(entity, key)
+  await refreshStatus()
+  if (currentUser) await syncNow()
+}
+
+/** "Descartar" un cambio rechazado: solo quita el aviso; el dato sigue en
+ *  este dispositivo. */
+export async function discardRejected(entity: Entity, key: string) {
+  await sdb.removeRejected(entity, key)
+  await refreshStatus()
+}
+
 /** Aviso de escritura local: sincroniza 3 s después de la última. */
 export function noteLocalWrite() {
   void refreshStatus().catch(() => {})

@@ -5,10 +5,10 @@ import { Tile, useToast } from '../../../components/ui'
 import { daysSince, fmt, fmtDate } from '../../../lib/calc'
 import { authEnabled, useAuthState } from '../lib/auth'
 import { MEASUREMENT_KEYS, MEASUREMENT_LABELS, MEASUREMENT_UNITS } from '../../../lib/plan'
-import { enqueueAllLocalChanges, syncNow, type SyncStatus } from '../../sync/lib/engine'
-import { getPreBootstrapBackup, resetSyncState } from '../../sync/lib/syncDb'
-import { BACKUP_NOTICE, restoreHint, syncStatusLines, wipeConfirmTexts } from '../../sync/lib/statusText'
-import { useSyncStatus } from '../../sync/lib/useSync'
+import { discardRejected, enqueueAllLocalChanges, retryRejected, syncNow, type SyncStatus } from '../../sync/lib/engine'
+import { getPreBootstrapBackup, resetSyncState, type RejectedEntry } from '../../sync/lib/syncDb'
+import { BACKUP_NOTICE, REJECTED_DISCARD_HINT, rejectedLabel, restoreHint, syncStatusLines, wipeConfirmTexts } from '../../sync/lib/statusText'
+import { useRejectedEntries, useSyncStatus } from '../../sync/lib/useSync'
 
 // Clerk solo se carga si hay clave; sin ella este módulo nunca se importa.
 const AccountControls = lazy(() => import('../components/clerkAuth.tsx').then(m => ({ default: m.AccountControls })))
@@ -55,17 +55,30 @@ function SyncStatusView() {
     const saved = await getPreBootstrapBackup()
     if (saved) downloadBackupFile(saved.backup)
   }
-  return <SyncStatusLines status={useSyncStatus()} onSync={() => void syncNow()} onDownloadBackup={() => void downloadBackup()} />
+  return (
+    <SyncStatusLines
+      status={useSyncStatus()}
+      onSync={() => void syncNow()}
+      onDownloadBackup={() => void downloadBackup()}
+      rejectedEntries={useRejectedEntries()}
+      onRetryRejected={e => void retryRejected(e.entity, e.key)}
+      onDiscardRejected={e => void discardRejected(e.entity, e.key)}
+    />
+  )
 }
 
 /** Estado de sincronización, botón "Sincronizar ahora" y, si el primer
  *  ingreso guardó una copia de los datos anteriores, el botón para bajarla
  *  (presentacional). */
-export function SyncStatusLines({ status, onSync, onDownloadBackup, now }: {
+export function SyncStatusLines({ status, onSync, onDownloadBackup, now, rejectedEntries, onRetryRejected, onDiscardRejected }: {
   status: SyncStatus
   onSync: () => void
   onDownloadBackup?: () => void
   now?: number
+  /** Cambios que el servidor rechazó, cada uno con "Reintentar" y "Descartar". */
+  rejectedEntries?: RejectedEntry[]
+  onRetryRejected?: (e: RejectedEntry) => void
+  onDiscardRejected?: (e: RejectedEntry) => void
 }) {
   const alert = status.state === 'error' || status.state === 'blocked' || status.state === 'auth_expired'
   return (
@@ -73,6 +86,23 @@ export function SyncStatusLines({ status, onSync, onDownloadBackup, now }: {
       {syncStatusLines(status, now).map(line => (
         <p key={line} className="hint" style={{ marginBottom: 0, ...(alert ? { color: 'var(--alert)' } : {}) }}>{line}</p>
       ))}
+      {rejectedEntries && rejectedEntries.length > 0 && (
+        <ul className="rejected-list" aria-label="Cambios que no se pudieron subir">
+          {rejectedEntries.map(e => (
+            <li key={`${e.entity}:${e.key}`}>
+              <div>
+                <strong>{rejectedLabel(e)}</strong>
+                <span className="hint" style={{ display: 'block', margin: 0 }}>{e.error}</span>
+              </div>
+              <div className="btnrow">
+                <button onClick={() => onRetryRejected?.(e)}>Reintentar</button>
+                <button className="ghost" onClick={() => onDiscardRejected?.(e)}>Descartar</button>
+              </div>
+            </li>
+          ))}
+          <li className="hint">{REJECTED_DISCARD_HINT}</li>
+        </ul>
+      )}
       {status.backupAt != null && <p className="hint" style={{ marginBottom: 0 }}>{BACKUP_NOTICE}</p>}
       <div className="btnrow" style={{ marginTop: 12 }}>
         <button onClick={onSync} disabled={status.state === 'syncing'}>Sincronizar ahora</button>

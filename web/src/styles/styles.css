@@ -982,3 +982,8 @@ figcaption {
   .main:has(.session-head) { display: block; max-width: 760px; }
   .main:has(.session-head) > * { max-width: none; }
 }
+
+/* ---------- Cambios rechazados por el servidor (Ajustes) ---------- */
+.rejected-list { list-style: none; margin: var(--sp-4) 0 0; padding: 0; display: grid; gap: var(--sp-3); }
+.rejected-list > li { display: grid; gap: var(--sp-2); padding-top: var(--sp-3); border-top: 1px solid var(--fp-line); }
+.rejected-list > li.hint { border-top: none; padding-top: 0; margin: 0; }

@@ -1,4 +1,5 @@
 import { AUTH_EXPIRED_ERROR, type SyncStatus } from './engine'
+import type { RejectedEntry } from './syncDb'
 
 export const OFFLINE_TEXT = 'Sin conexión: se sincroniza al volver la señal'
 /** 401 de la API: la cola espera, nada se pierde. */
@@ -30,6 +31,19 @@ export function syncStatusLines(s: SyncStatus, now = Date.now()): string[] {
   }
   return lines
 }
+
+/** Nombre legible de un cambio rechazado, para la lista de Ajustes. */
+export function rejectedLabel(e: Pick<RejectedEntry, 'entity' | 'key' | 'body'>): string {
+  if (e.entity === 'session') {
+    const date = (e.body as { date?: unknown } | null)?.date
+    return `Sesión del ${typeof date === 'string' ? date : e.key}`
+  }
+  if (e.entity === 'measurement') return `Medición del ${e.key}`
+  if (e.entity === 'document') return e.key === 'plan' ? 'Plan de entrenamiento' : 'Configuración'
+  return 'Notas de un ejercicio'
+}
+
+export const REJECTED_DISCARD_HINT = 'Descartar solo quita el aviso: el dato sigue en este dispositivo.'
 
 export const BACKUP_NOTICE = 'Guardamos una copia de tus datos anteriores'
 

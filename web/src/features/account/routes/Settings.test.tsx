@@ -40,6 +40,24 @@ describe('estado de sincronización en la tarjeta Cuenta', () => {
     expect(html).not.toMatch(/<button[^>]*disabled[^>]*>Sincronizar ahora/)
   })
 
+  it('lista cada cambio rechazado con "Reintentar" y "Descartar"', () => {
+    const entries = [
+      { entity: 'session' as const, key: 'a', body: { date: '2026-11-01' }, updatedAt: 1, deletedAt: null, error: 'body contains NUL', rejectedAt: 2 },
+      { entity: 'measurement' as const, key: '2026-10-05', body: {}, updatedAt: 1, deletedAt: null, error: 'bad date', rejectedAt: 2 },
+    ]
+    const html = renderToString(<SyncStatusLines status={{ ...status, rejected: 2 }} onSync={() => {}} rejectedEntries={entries} />)
+    expect(html).toContain('Sesión del 2026-11-01')
+    expect(html).toContain('Medición del 2026-10-05')
+    expect(html).toContain('body contains NUL')
+    expect(html.match(/Reintentar/g)).toHaveLength(2)
+    expect(html.match(/Descartar/g)).toHaveLength(3) // dos botones y la nota
+  })
+
+  it('sin rechazados no muestra la lista', () => {
+    const html = renderToString(<SyncStatusLines status={status} onSync={() => {}} rejectedEntries={[]} />)
+    expect(html).not.toContain('Reintentar')
+  })
+
   it('sin copia previa no muestra el aviso ni el botón de descarga', () => {
     const html = renderToString(<SyncStatusLines status={status} onSync={() => {}} />)
     expect(html).not.toContain('Guardamos una copia de tus datos anteriores')

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { AUTH_EXPIRED_TEXT, OFFLINE_TEXT, restoreHint, syncStatusLines, wipeConfirmTexts } from './statusText'
+import { AUTH_EXPIRED_TEXT, OFFLINE_TEXT, rejectedLabel, restoreHint, syncStatusLines, wipeConfirmTexts } from './statusText'
 
 const base = { state: 'idle' as const, pending: 0, lastSyncAt: null, lastError: null, rejected: 0, rejectedError: null, backupAt: null }
 const NOW = 1_800_000_000_000
@@ -53,5 +53,16 @@ describe('textos de restaurar y borrar', () => {
       'Esto borra todas las sesiones y mediciones de este dispositivo. ¿Seguro?',
       'Última confirmación: no hay forma de deshacerlo sin un respaldo.',
     ])
+  })
+})
+
+describe('rejectedLabel', () => {
+  it('nombra cada tipo de registro rechazado', () => {
+    expect(rejectedLabel({ entity: 'session', key: 'abc', body: { date: '2026-11-01' } })).toBe('Sesión del 2026-11-01')
+    expect(rejectedLabel({ entity: 'session', key: 'abc', body: null })).toBe('Sesión del abc')
+    expect(rejectedLabel({ entity: 'measurement', key: '2026-10-05', body: {} })).toBe('Medición del 2026-10-05')
+    expect(rejectedLabel({ entity: 'document', key: 'plan', body: {} })).toBe('Plan de entrenamiento')
+    expect(rejectedLabel({ entity: 'document', key: 'config', body: {} })).toBe('Configuración')
+    expect(rejectedLabel({ entity: 'exerciseMeta', key: 'leg-press', body: {} })).toBe('Notas de un ejercicio')
   })
 })

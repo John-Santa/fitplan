@@ -682,3 +682,60 @@ describe('reintentos y estados de error (F23)', () => {
     expect(mods.engine.getSyncStatus().state).toBe('offline')
   })
 })
+
+describe('cambios rechazados: Reintentar y Descartar (F28)', () => {
+  /** Un teléfono con la sesión 'bad' rechazada por el servidor (400). */
+  async function withRejected() {
+    await asKnownUser()
+    await mods.local.saveSession(session('bad', 'x') as never)
+    server.setFailWith(400)
+    await mods.engine.syncNow()
+    expect(mods.engine.getSyncStatus().rejected).toBe(1)
+    expect(outbox().size).toBe(0)
+  }
+  const rejected = () => idb.dump('rejected', 'magnifit-sync')
+
+  it('Reintentar vuelve a subir el registro y lo quita de los rechazados', async () => {
+    await withRejected()
+    server.setFailWith(null)
+    await mods.engine.retryRejected('session', 'bad')
+    expect(liveServerSessions()).toEqual(['bad'])
+    expect(rejected().size).toBe(0)
+    expect(outbox().size).toBe(0)
+    expect(mods.engine.getSyncStatus()).toMatchObject({ rejected: 0, rejectedError: null, state: 'idle' })
+  })
+
+  it('Reintentar con el servidor aún rechazando lo deja en rechazados, sin perderlo', async () => {
+    await withRejected()
+    await mods.engine.retryRejected('session', 'bad')
+    expect([...rejected().keys()]).toEqual(['session:bad'])
+    expect(outbox().size).toBe(0)
+    expect(mods.engine.getSyncStatus().rejected).toBe(1)
+    expect(sessionsOnDisk().has('bad')).toBe(true)
+  })
+
+  it('Reintentar no pisa una versión más nueva del registro que ya espera en el outbox', async () => {
+    await withRejected()
+    server.setFailWith(null)
+    await mods.syncDb.enqueueUpsert('session', 'bad', session('bad', 'corregida'), Date.now() + 10)
+    await mods.engine.retryRejected('session', 'bad')
+    const row = server.rows.get('sessions:bad')
+    expect((row?.body as { notes: string }).notes).toBe('corregida')
+    expect(rejected().size).toBe(0)
+  })
+
+  it('Descartar quita el registro de los rechazados sin tocar el outbox ni los datos locales', async () => {
+    await withRejected()
+    await mods.engine.discardRejected('session', 'bad')
+    expect(rejected().size).toBe(0)
+    expect(outbox().size).toBe(0)
+    expect(sessionsOnDisk().has('bad')).toBe(true)
+    expect(mods.engine.getSyncStatus()).toMatchObject({ rejected: 0, rejectedError: null })
+  })
+
+  it('getRejected devuelve los registros con su mensaje para mostrarlos', async () => {
+    await withRejected()
+    const list = await mods.syncDb.getRejected()
+    expect(list.map(r => [r.entity, r.key, r.error])).toEqual([['session', 'bad', 'fake 400']])
+  })
+})
