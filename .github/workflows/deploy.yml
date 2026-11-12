@@ -19,6 +19,10 @@ concurrency:
 
 jobs:
   build:
+    # configure-pages reads the Pages settings of the repository.
+    permissions:
+      contents: read
+      pages: read
     runs-on: ubuntu-latest
     defaults:
       run:
