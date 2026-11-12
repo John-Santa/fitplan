@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 )
@@ -57,7 +58,40 @@ func Load(getenv func(string) string) (Config, error) {
 			return Config{}, fmt.Errorf("config: CLERK_SECRET_KEY is required (set APP_ENV=test to run without it)")
 		}
 	}
+	if cfg.IsProduction() {
+		// An empty list disables the token's azp check, so production must name its origins.
+		if len(cfg.AllowedOrigins) == 0 {
+			return Config{}, fmt.Errorf("config: ALLOWED_ORIGINS is required when APP_ENV=production")
+		}
+		if mode := sslMode(cfg.DatabaseURL); !secureSSLModes[mode] {
+			return Config{}, fmt.Errorf("config: DATABASE_URL must set sslmode=require, verify-ca or verify-full when APP_ENV=production (got %q)", mode)
+		}
+	}
 	return cfg, nil
+}
+
+// IsProduction reports whether the service runs in production, where the
+// origin list and database TLS are mandatory.
+func (c Config) IsProduction() bool { return c.AppEnv == "production" }
+
+var secureSSLModes = map[string]bool{"require": true, "verify-ca": true, "verify-full": true}
+
+// sslMode extracts the sslmode setting from a Postgres URL or keyword/value
+// connection string; it returns "" when the setting is absent or unparsable.
+func sslMode(dsn string) string {
+	if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {
+		u, err := url.Parse(dsn)
+		if err != nil {
+			return ""
+		}
+		return u.Query().Get("sslmode")
+	}
+	for _, field := range strings.Fields(dsn) {
+		if v, ok := strings.CutPrefix(field, "sslmode="); ok {
+			return v
+		}
+	}
+	return ""
 }
 
 func splitList(raw string) []string {
