@@ -33,6 +33,8 @@ function fakeServer(pageSize = 500) {
       if (init?.method === 'POST') {
         const cs = JSON.parse(String(init.body)) as Record<Coll, Record<string, unknown>[]>
         pushes.push(cs)
+        // Como la API real: un NUL en cualquier texto rechaza el lote entero.
+        if (String(init.body).includes('\\u0000')) return json({ error: 'body contains NUL' }, 400)
         if (Object.keys(cs).some(k => !COLLS.includes(k as Coll))) return json({ error: 'unknown field' }, 400)
         const out: Record<string, unknown[]> = {}
         for (const coll of COLLS) {
@@ -105,6 +107,57 @@ async function fresh(pageSize?: number) {
 }
 
 let mods: Awaited<ReturnType<typeof fresh>>
+
+/** Otro teléfono contra el mismo servidor falso: módulos nuevos y su propio
+ *  IndexedDB en memoria. Abre las dos bases de inmediato para que cada módulo
+ *  quede atado a su IndexedDB aunque después se instale otro. */
+type Device = Awaited<ReturnType<typeof fresh>> & { idb: MemoryIdb }
+const devices: Device[] = []
+async function device(): Promise<Device> {
+  vi.resetModules()
+  const memory = installMemoryIdb()
+  const auth = await import('../auth')
+  auth.setTokenGetter(async () => 'tok')
+  const engine = await import('./engine')
+  const syncDb = await import('./syncDb')
+  const local = await import('./localWrites')
+  const db = await import('../db')
+  local.setTrackingForTests(true)
+  await db.getConfig()
+  await syncDb.getMeta()
+  const d = { engine, syncDb, local, db, idb: memory }
+  devices.push(d)
+  return d
+}
+
+/** Lo mismo que siembra store.tsx en la primera apertura. */
+async function seedFirstOpen(d: Device) {
+  const { BASELINE, DEFAULT_CONFIG } = await import('../plan')
+  const { planMigration } = await import('../migration')
+  await d.db.saveConfig(DEFAULT_CONFIG)
+  await d.db.saveMeasurement(BASELINE)
+  // applyPlanMigration usa el db.ts del último teléfono cargado: se replica
+  // con su parte pura.
+  const r = planMigration(undefined, DEFAULT_CONFIG)
+  if (r.config) await d.db.saveConfig(r.config)
+  if (r.plan) await d.db.savePlan(r.plan)
+}
+
+/** Datos de 'fitplan' comparables entre teléfonos. */
+function fitplanState(d: Device) {
+  const config = d.idb.dump('config', 'fitplan')
+  const sorted = (m: Map<unknown, unknown>) => [...m.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+  return {
+    sessions: sorted(d.idb.dump('sessions', 'fitplan')),
+    measurements: sorted(d.idb.dump('measurements', 'fitplan')),
+    exerciseMeta: sorted(d.idb.dump('exerciseMeta', 'fitplan')),
+    config: config.get('config'),
+    plan: config.get('plan'),
+  }
+}
+
+const liveServerSessions = () =>
+  [...server.rows.values()].filter(r => r.coll === 'sessions' && r.deletedAt == null).map(r => r.key).sort()
 const outbox = () => idb.dump('outbox', 'magnifit-sync')
 const sessionsOnDisk = () => idb.dump('sessions', 'fitplan')
 
@@ -113,6 +166,8 @@ beforeEach(async () => {
 })
 afterEach(() => {
   mods.engine.resetSyncEngineForTests()
+  for (const d of devices.splice(0)) d.engine.resetSyncEngineForTests()
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
   vi.unstubAllEnvs()
 })
@@ -363,5 +418,146 @@ describe('primer ingreso (S7)', () => {
     mods.engine.setSyncUser('u1')
     await mods.engine.syncNow()
     expect(server.rows.has('sessions:s2')).toBe(true)
+  })
+})
+
+describe('primer ingreso con semillas (B1)', () => {
+  it('el teléfono viejo con plan, config y medida propios no los pierde ante las semillas de uno nuevo', async () => {
+    const fresh1 = await device()
+    await seedFirstOpen(fresh1)
+    fresh1.engine.setSyncUser('u1')
+    await fresh1.engine.syncNow()
+    expect(server.rows.has('documents:plan')).toBe(true)
+
+    const old = await device()
+    await seedFirstOpen(old)
+    const { BASELINE } = await import('../plan')
+    const cfg = old.idb.dump('config', 'fitplan').get('config') as Record<string, unknown>
+    const plan = old.idb.dump('config', 'fitplan').get('plan') as Record<string, unknown>
+    await old.db.saveConfig({ ...cfg, heightCm: 181 } as never)
+    await old.db.savePlan({ ...plan, name: 'Mi plan' } as never)
+    await old.db.saveMeasurement({ ...BASELINE, weight: 79 } as never)
+    old.engine.setSyncUser('u1')
+    await old.engine.syncNow()
+
+    const mine = fitplanState(old)
+    expect((mine.config as { heightCm: number }).heightCm).toBe(181)
+    expect((mine.plan as { name: string }).name).toBe('Mi plan')
+    expect((old.idb.dump('measurements', 'fitplan').get(BASELINE.date) as { weight: number }).weight).toBe(79)
+    expect((server.rows.get('documents:config')?.body as { heightCm: number }).heightCm).toBe(181)
+    expect((server.rows.get('documents:plan')?.body as { name: string }).name).toBe('Mi plan')
+    expect((server.rows.get(`measurements:${BASELINE.date}`)?.body as { weight: number }).weight).toBe(79)
+    expect(await old.syncDb.getPreBootstrapBackup()).toBeUndefined()
+    expect(old.idb.dump('outbox', 'magnifit-sync').size).toBe(0)
+
+    // El nuevo recibe lo del viejo, y un tercero recién instalado también.
+    await fresh1.engine.syncNow()
+    expect(fitplanState(fresh1)).toEqual(mine)
+    const third = await device()
+    await seedFirstOpen(third)
+    third.engine.setSyncUser('u1')
+    await third.engine.syncNow()
+    expect(fitplanState(third)).toEqual(mine)
+    expect(await third.syncDb.getPreBootstrapBackup()).toBeUndefined()
+  })
+
+  it('si ambos lados difieren de la semilla gana el servidor, pero antes guarda una copia de todo lo local', async () => {
+    const { BASELINE, DEFAULT_CONFIG } = await import('../plan')
+    server.seed('documents', 'config', { ...DEFAULT_CONFIG, heightCm: 190 })
+    server.seed('measurements', BASELINE.date, { ...BASELINE, weight: 82 })
+    const d = await device()
+    await seedFirstOpen(d)
+    await d.db.saveConfig({ ...DEFAULT_CONFIG, heightCm: 170 })
+    await d.db.saveMeasurement({ ...BASELINE, weight: 80 } as never)
+    await d.db.saveSession(session('mine') as never)
+    d.engine.setSyncUser('u1')
+    const before = Date.now()
+    await d.engine.syncNow()
+
+    expect((d.idb.dump('config', 'fitplan').get('config') as { heightCm: number }).heightCm).toBe(190)
+    expect((d.idb.dump('measurements', 'fitplan').get(BASELINE.date) as { weight: number }).weight).toBe(82)
+    const saved = await d.syncDb.getPreBootstrapBackup()
+    expect(saved?.savedAt).toBeGreaterThanOrEqual(before)
+    expect(saved?.backup).toMatchObject({ app: 'fitplan', version: 3, config: { heightCm: 170 } })
+    expect(saved?.backup.measurements.find(m => m.date === BASELINE.date)?.weight).toBe(80)
+    expect(saved?.backup.sessions.map(s => s.id)).toEqual(['mine'])
+    expect(d.engine.getSyncStatus().backupAt).toBe(saved?.savedAt)
+    // Sesiones: unión.
+    expect(liveServerSessions()).toEqual(['mine'])
+  })
+})
+
+describe('convergencia (B2, B3, A1)', () => {
+  it('C3: con un reloj adelantado, el stale vuelve a bajar todo y ambos teléfonos convergen', async () => {
+    const { DEFAULT_CONFIG } = await import('../plan')
+    const a = await device()
+    const b = await device()
+    a.engine.setSyncUser('u1')
+    b.engine.setSyncUser('u1')
+    await a.engine.syncNow()
+    await b.engine.syncNow()
+    const t = Date.now()
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(t + 3 * 60_000)
+    await a.local.saveConfig({ ...DEFAULT_CONFIG, heightCm: 170 })
+    await a.engine.syncNow()
+    clock.mockReturnValue(t)
+    await b.engine.syncNow()
+    clock.mockReturnValue(t + 60_000)
+    await b.local.saveConfig({ ...DEFAULT_CONFIG, heightCm: 185 })
+    await b.engine.syncNow()
+    clock.mockRestore()
+
+    expect((server.rows.get('documents:config')?.body as { heightCm: number }).heightCm).toBe(170)
+    expect((fitplanState(b).config as { heightCm: number }).heightCm).toBe(170)
+    await a.engine.syncNow()
+    expect(fitplanState(b)).toEqual(fitplanState(a))
+    expect(b.engine.getSyncStatus()).toMatchObject({ state: 'idle', lastError: null, pending: 0, rejected: 0 })
+  })
+
+  it('C7: restaurar un respaldo combina con la cuenta y vuelve a bajar lo que falta', async () => {
+    const d = await device()
+    d.engine.setSyncUser('u1')
+    await d.local.saveSession(session('old') as never)
+    await d.engine.syncNow()
+    const backup = await d.db.exportBackup()
+    await d.local.saveSession(session('newer') as never)
+    await d.engine.syncNow()
+
+    await d.db.importBackup(backup, 'replace')
+    await d.engine.enqueueAllLocalChanges()
+    await d.engine.syncNow()
+
+    expect([...d.idb.dump('sessions', 'fitplan').keys()].sort()).toEqual(['newer', 'old'])
+    expect(liveServerSessions()).toEqual(['newer', 'old'])
+    expect((await d.syncDb.getMeta()).fullPullAt).toBeNull()
+  })
+
+  it('C6: un registro rechazado no bloquea el resto ni la bajada', async () => {
+    const a = await device()
+    const b = await device()
+    a.engine.setSyncUser('u1')
+    b.engine.setSyncUser('u1')
+    await a.engine.syncNow()
+    await b.engine.syncNow()
+    await b.local.saveSession(session('fromB') as never)
+    await b.engine.syncNow()
+
+    await a.local.saveSession(session('bad', 'x\u0000y') as never)
+    await a.local.saveSession(session('good') as never)
+    await a.engine.syncNow()
+
+    expect(liveServerSessions()).toEqual(['fromB', 'good'])
+    expect(a.idb.dump('sessions', 'fitplan').has('fromB')).toBe(true)
+    expect(a.idb.dump('outbox', 'magnifit-sync').size).toBe(0)
+    const rejected = a.idb.dump('rejected', 'magnifit-sync')
+    expect([...rejected.keys()]).toEqual(['session:bad'])
+    expect((rejected.get('session:bad') as { error: string }).error).toBe('body contains NUL')
+    expect(a.engine.getSyncStatus()).toMatchObject({ state: 'idle', lastError: null, rejected: 1, rejectedError: 'body contains NUL' })
+
+    // Corregido el registro, se sube y deja de figurar como rechazado.
+    await a.local.saveSession(session('bad', 'ok') as never)
+    await a.engine.syncNow()
+    expect(liveServerSessions()).toEqual(['bad', 'fromB', 'good'])
+    expect(a.engine.getSyncStatus().rejected).toBe(0)
   })
 })

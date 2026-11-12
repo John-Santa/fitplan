@@ -4,11 +4,19 @@
 //   (`${entity}:${key}`), así que escribir dos veces el mismo registro
 //   coalesce en una sola entrada con lo último.
 // - meta: cursor de bajada, última sincronización, usuario dueño de los datos
-//   locales y último error.
+//   locales y último error; además, bajo la llave 'preBootstrapBackup', la
+//   copia de los datos locales que el primer ingreso guardó antes de que el
+//   servidor ganara en un conflicto.
+// - rejected: registros que el servidor rechazó uno por uno (400), con su
+//   mensaje. Salieron del outbox para no bloquear al resto.
+import type { Backup } from '../../types'
+
 const DB_NAME = 'magnifit-sync'
-const DB_VERSION = 1
+const DB_VERSION = 2
 const STORE_OUTBOX = 'outbox'
 const STORE_META = 'meta'
+const STORE_REJECTED = 'rejected'
+const BACKUP_KEY = 'preBootstrapBackup'
 
 export type Entity = 'document' | 'session' | 'measurement' | 'exerciseMeta'
 
@@ -28,9 +36,17 @@ export type SyncMeta = {
   /** Usuario de Clerk dueño de los datos locales; null = nunca se sincronizó. */
   userId: string | null
   lastError: string | null
+  /** Pedido de bajar todo desde 0 en la próxima vuelta (tras restaurar un
+   *  respaldo). Es la hora del pedido: solo se limpia si sigue siendo el
+   *  mismo al terminar la bajada. */
+  fullPullAt: number | null
 }
 
-export const EMPTY_META: SyncMeta = { cursor: 0, lastSyncAt: null, userId: null, lastError: null }
+export const EMPTY_META: SyncMeta = { cursor: 0, lastSyncAt: null, userId: null, lastError: null, fullPullAt: null }
+
+export type RejectedEntry = OutboxEntry & { error: string; rejectedAt: number }
+
+export type PreBootstrapBackup = { savedAt: number; backup: Backup }
 
 export const outboxId = (entity: Entity, key: string) => `${entity}:${key}`
 
@@ -44,6 +60,7 @@ function openDb(): Promise<IDBDatabase> {
       const db = req.result
       if (!db.objectStoreNames.contains(STORE_OUTBOX)) db.createObjectStore(STORE_OUTBOX)
       if (!db.objectStoreNames.contains(STORE_META)) db.createObjectStore(STORE_META)
+      if (!db.objectStoreNames.contains(STORE_REJECTED)) db.createObjectStore(STORE_REJECTED)
     }
     req.onsuccess = () => {
       const db = req.result
@@ -98,6 +115,35 @@ export async function enqueueDelete(entity: Entity, key: string, lastBody?: unkn
   await putOutboxEntry({ entity, key, body: structuredClone(body), updatedAt: now, deletedAt: now })
 }
 
+/* ---------- rechazados ---------- */
+
+export const getRejected = () => tx<RejectedEntry[]>(STORE_REJECTED, 'readonly', s => s.getAll() as IDBRequest<RejectedEntry[]>)
+
+export const removeRejected = (entity: Entity, key: string) =>
+  tx(STORE_REJECTED, 'readwrite', s => s.delete(outboxId(entity, key)))
+
+/** Pasa una entrada del outbox a 'rejected'. Si el registro cambió mientras
+ *  se subía, la entrada nueva se queda en el outbox para otro intento. */
+export async function rejectOutboxEntry(sent: OutboxEntry, error: string, now = Date.now()) {
+  await tx(STORE_REJECTED, 'readwrite', s => s.put({ ...sent, error, rejectedAt: now }, outboxId(sent.entity, sent.key)))
+  const current = await getOutboxEntry(sent.entity, sent.key)
+  if (current && current.updatedAt === sent.updatedAt && current.deletedAt === sent.deletedAt) {
+    await removeOutboxEntry(sent.entity, sent.key)
+  }
+}
+
+/* ---------- copia previa al primer ingreso ---------- */
+
+export const getPreBootstrapBackup = () =>
+  tx<PreBootstrapBackup | undefined>(STORE_META, 'readonly', s => s.get(BACKUP_KEY) as IDBRequest<PreBootstrapBackup | undefined>)
+
+/** Guarda la copia solo si no hay otra: si el primer ingreso se corta y se
+ *  repite, la primera copia es la que tiene los datos originales. */
+export async function savePreBootstrapBackup(backup: Backup, now = Date.now()) {
+  if (await getPreBootstrapBackup()) return
+  await tx(STORE_META, 'readwrite', s => s.put({ savedAt: now, backup } satisfies PreBootstrapBackup, BACKUP_KEY))
+}
+
 /* ---------- meta ---------- */
 
 export async function getMeta(): Promise<SyncMeta> {
@@ -113,12 +159,13 @@ export async function updateMeta(patch: Partial<SyncMeta>): Promise<SyncMeta> {
   return next
 }
 
-/** Olvida outbox y meta. Lo usa "Borrar todos los datos": con el teléfono
+/** Olvida outbox, meta (con la copia previa) y rechazados. Lo usa "Borrar todos los datos": con el teléfono
  *  vacío, la próxima cuenta que entre empieza de cero (sin el bloqueo de
  *  "datos de otra cuenta"). */
 export async function resetSyncState() {
   await Promise.all([
     tx(STORE_OUTBOX, 'readwrite', s => s.clear()),
     tx(STORE_META, 'readwrite', s => s.clear()),
+    tx(STORE_REJECTED, 'readwrite', s => s.clear()),
   ])
 }

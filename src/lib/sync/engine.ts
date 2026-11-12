@@ -4,22 +4,29 @@
 // local deja una entrada en el outbox ('magnifit-sync', ver syncDb.ts) y
 // syncNow():
 //  1. sube el outbox en lotes (≤ 200 registros, ≤ 4 MB) y quita lo que el
-//     servidor respondió applied o stale (stale = el servidor tiene algo más
-//     nuevo y la bajada lo trae);
+//     servidor respondió applied o stale. Si un lote vuelve 400, lo reintenta
+//     registro por registro: los que el servidor rechaza solos pasan a
+//     'rejected' (con su mensaje) y el resto sigue;
 //  2. baja desde el cursor hasta !hasMore y aplica cada registro remoto en
 //     IndexedDB, salvo los que siguen pendientes en el outbox (lo local gana
-//     hasta que se sube). Guarda el cursor después de cada página.
+//     hasta que se sube). Guarda el cursor después de cada página. Si hubo
+//     algún stale, o se restauró un respaldo, baja desde 0: con relojes
+//     desfasados el cursor ya puede estar más allá de la copia más nueva del
+//     servidor, y sin esto el teléfono quedaría distinto para siempre.
 // Lo que se baja se escribe directo con db.ts, nunca con las funciones de
 // localWrites.ts: así no se vuelve a encolar (sin eco).
 //
-// Primer ingreso (meta.userId vacío): baja todo desde 0 (el servidor gana en
-// las llaves que existen en ambos lados), encola cada registro local que el
-// servidor no tiene y lo sube. Nunca borra datos locales. Si meta.userId es
+// Primer ingreso (meta.userId vacío): baja todo desde 0 y decide llave por
+// llave (ver bootstrap): si un lado es la semilla de una instalación nueva,
+// gana el otro; si ambos difieren, gana el servidor pero antes se guarda una
+// copia de todos los datos locales. Encola y sube lo que el servidor no tiene
+// (o lo que gana localmente). Nunca borra datos locales. Si meta.userId es
 // OTRA cuenta, no mezcla: se detiene con OTHER_ACCOUNT_ERROR hasta que se
 // vuelva a entrar con la cuenta original o se borren los datos del teléfono.
 import { ApiError, pullChanges, pushChanges } from '../api'
 import * as db from '../db'
-import { mergeConfig, normalizeSession } from '../plan'
+import { planMigration } from '../migration'
+import { BASELINE, DEFAULT_CONFIG, mergeConfig, normalizeSession } from '../plan'
 import { normalizePlan } from '../planStorage'
 import type { ChangeSet, ItemResult, PushChangeSet } from '../syncTypes'
 import type { ExerciseMeta, Measurement } from '../../types'
@@ -45,7 +52,15 @@ export type SyncStatus = {
   pending: number
   lastSyncAt: number | null
   lastError: string | null
+  /** Registros que el servidor rechazó y salieron del outbox. */
+  rejected: number
+  /** Mensaje del primer rechazado. */
+  rejectedError: string | null
+  /** Hora de la copia que guardó el primer ingreso, o null si no hay. */
+  backupAt: number | null
 }
+
+const IDLE: SyncStatus = { state: 'idle', pending: 0, lastSyncAt: null, lastError: null, rejected: 0, rejectedError: null, backupAt: null }
 
 /* ---------- estado del módulo ---------- */
 
@@ -56,7 +71,7 @@ let runAgain = false
 let failures = 0
 let retryTimer: ReturnType<typeof setTimeout> | null = null
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
-let status: SyncStatus = { state: 'idle', pending: 0, lastSyncAt: null, lastError: null }
+let status: SyncStatus = IDLE
 const listeners = new Set<(s: SyncStatus) => void>()
 
 function setStatus(patch: Partial<SyncStatus>) {
@@ -90,8 +105,20 @@ function clearTimers() {
 
 /** Relee cuántos cambios esperan subir y el último estado guardado. */
 export async function refreshStatus() {
-  const [outbox, meta] = await Promise.all([sdb.getOutbox(), sdb.getMeta()])
-  setStatus({ pending: outbox.length, lastSyncAt: meta.lastSyncAt, lastError: meta.lastError })
+  const [outbox, meta, rejected, backup] = await Promise.all([
+    sdb.getOutbox(),
+    sdb.getMeta(),
+    sdb.getRejected(),
+    sdb.getPreBootstrapBackup(),
+  ])
+  setStatus({
+    pending: outbox.length,
+    lastSyncAt: meta.lastSyncAt,
+    lastError: meta.lastError,
+    rejected: rejected.length,
+    rejectedError: rejected[0]?.error ?? null,
+    backupAt: backup?.savedAt ?? null,
+  })
 }
 
 /** Aviso de escritura local: sincroniza 3 s después de la última. */
@@ -143,8 +170,14 @@ async function runOnce(): Promise<boolean> {
   try {
     if (!meta.userId) await bootstrap(uid, changed)
     else {
-      await pushOutbox()
-      await pullFrom(meta.cursor, changed)
+      const { stale } = await pushOutbox()
+      const full = stale || meta.fullPullAt != null
+      await pullFrom(full ? 0 : meta.cursor, changed)
+      // Solo se limpia el pedido que se atendió: uno nuevo hecho durante esta
+      // vuelta se queda para la próxima.
+      if (meta.fullPullAt != null && (await sdb.getMeta()).fullPullAt === meta.fullPullAt) {
+        await sdb.updateMeta({ fullPullAt: null })
+      }
     }
     failures = 0
     const saved = await sdb.updateMeta({ lastSyncAt: Date.now(), lastError: null })
@@ -219,28 +252,66 @@ function toPushSet(entries: OutboxEntry[]): PushChangeSet {
   return cs
 }
 
-async function pushOutbox() {
-  const entries = await sdb.getOutbox()
-  for (const batch of batches(entries)) {
-    const res = await pushChanges(toPushSet(batch))
-    const answered = new Set<string>()
-    const mark = (entity: Entity, items: ItemResult[] | null | undefined) => {
-      for (const r of items ?? []) if (r.status === 'applied' || r.status === 'stale') answered.add(sdb.outboxId(entity, r.key))
+const isBadRequest = (e: unknown) => e instanceof ApiError && e.status === 400
+
+/** Sube el outbox. Devuelve si algún registro volvió stale (el servidor tiene
+ *  algo más nuevo): quien llama entonces baja desde 0. */
+async function pushOutbox(): Promise<{ stale: boolean }> {
+  let stale = false
+  for (const batch of batches(await sdb.getOutbox())) {
+    let res: PushResult
+    try {
+      res = await pushChanges(toPushSet(batch))
+    } catch (e) {
+      if (!isBadRequest(e)) throw e
+      // El servidor rechaza el lote entero por un solo registro malo: se
+      // reintenta de a uno para que ese no bloquee a los demás.
+      for (const item of batch) if (await pushOne(item)) stale = true
+      continue
     }
-    mark('document', res.documents)
-    mark('session', res.sessions)
-    mark('measurement', res.measurements)
-    mark('exerciseMeta', res.exerciseMeta)
-    for (const sent of batch) {
-      if (!answered.has(sdb.outboxId(sent.entity, sent.key))) continue
-      // Si el registro cambió otra vez mientras se subía, la entrada nueva
-      // se queda para la próxima vuelta.
-      const now = await sdb.getOutboxEntry(sent.entity, sent.key)
-      if (now && now.updatedAt === sent.updatedAt && now.deletedAt === sent.deletedAt) {
-        await sdb.removeOutboxEntry(sent.entity, sent.key)
-      }
+    if (await settle(batch, res)) stale = true
+  }
+  return { stale }
+}
+
+async function pushOne(item: OutboxEntry): Promise<boolean> {
+  try {
+    return await settle([item], await pushChanges(toPushSet([item])))
+  } catch (e) {
+    if (!isBadRequest(e)) throw e
+    await sdb.rejectOutboxEntry(item, (e as Error).message)
+    return false
+  }
+}
+
+type PushResult = Awaited<ReturnType<typeof pushChanges>>
+
+/** Quita del outbox lo que el servidor respondió applied o stale. Devuelve si
+ *  hubo algún stale. */
+async function settle(batch: OutboxEntry[], res: PushResult): Promise<boolean> {
+  const answered = new Set<string>()
+  let stale = false
+  const mark = (entity: Entity, items: ItemResult[] | null | undefined) => {
+    for (const r of items ?? []) {
+      if (r.status === 'stale') stale = true
+      if (r.status === 'applied' || r.status === 'stale') answered.add(sdb.outboxId(entity, r.key))
     }
   }
+  mark('document', res.documents)
+  mark('session', res.sessions)
+  mark('measurement', res.measurements)
+  mark('exerciseMeta', res.exerciseMeta)
+  for (const sent of batch) {
+    if (!answered.has(sdb.outboxId(sent.entity, sent.key))) continue
+    await sdb.removeRejected(sent.entity, sent.key)
+    // Si el registro cambió otra vez mientras se subía, la entrada nueva
+    // se queda para la próxima vuelta.
+    const now = await sdb.getOutboxEntry(sent.entity, sent.key)
+    if (now && now.updatedAt === sent.updatedAt && now.deletedAt === sent.deletedAt) {
+      await sdb.removeOutboxEntry(sent.entity, sent.key)
+    }
+  }
+  return stale
 }
 
 /* ---------- bajada ---------- */
@@ -316,29 +387,120 @@ async function pullFrom(since: number, changed: { value: boolean }) {
 
 /* ---------- primer ingreso (S7) ---------- */
 
+/** Forma comparable de un valor: JSON con las llaves ordenadas. */
+function canonical(v: unknown): string {
+  return JSON.stringify(v, (_k, val: unknown) =>
+    isObject(val) ? Object.fromEntries(Object.keys(val).sort().map(k => [k, val[k]])) : val,
+  )
+}
+
+/** Lo normaliza igual que applyRemote al escribirlo. null = ilegible. */
+function normalized(entity: Entity, key: string, body: unknown): unknown {
+  if (entity === 'session') {
+    const s = normalizeSession(body)
+    return s && s.id === key ? s : null
+  }
+  if (entity === 'document') {
+    if (key === 'config') return isObject(body) ? mergeConfig(body) : null
+    if (key === 'plan') return normalizePlan(body)
+    return null
+  }
+  return isObject(body) ? body : null
+}
+
+/** Lo que store.tsx siembra en la primera apertura (config, plan y la medida
+ *  BASELINE), normalizado como cualquier otro registro. */
+function seeds(): Map<string, string> {
+  const migration = planMigration(undefined, DEFAULT_CONFIG)
+  const plan = migration.plan ? normalizePlan(migration.plan) : null
+  const out = new Map<string, string>([
+    [sdb.outboxId('document', 'config'), canonical(mergeConfig(migration.config ?? DEFAULT_CONFIG))],
+    [sdb.outboxId('measurement', BASELINE.date), canonical(BASELINE)],
+  ])
+  if (plan) out.set(sdb.outboxId('document', 'plan'), canonical(plan))
+  return out
+}
+
+/** Todos los registros locales, normalizados, por llave del outbox. */
+async function localRecords(): Promise<Map<string, { entity: Entity; key: string; body: unknown }>> {
+  const [{ sessions }, measurements, metas, config, storedPlan] = await Promise.all([
+    db.getSessions(),
+    db.getMeasurements(),
+    db.getExerciseMeta(),
+    db.getConfig(),
+    db.getPlan(),
+  ])
+  const out = new Map<string, { entity: Entity; key: string; body: unknown }>()
+  const add = (entity: Entity, key: string, body: unknown) => out.set(sdb.outboxId(entity, key), { entity, key, body })
+  for (const s of sessions) add('session', s.id, s)
+  for (const m of measurements) add('measurement', m.date, m)
+  for (const m of metas) add('exerciseMeta', m.exerciseId, m)
+  if (config) add('document', 'config', mergeConfig(config))
+  const plan = normalizePlan(storedPlan)
+  if (plan) add('document', 'plan', plan)
+  return out
+}
+
 async function bootstrap(uid: string, changed: { value: boolean }) {
   await sdb.updateMeta({ cursor: 0 })
-  const remoteLive = new Set<string>()
+  // Primero se baja todo a memoria (son pocos datos): la copia de seguridad,
+  // si hace falta, tiene que hacerse antes de escribir nada remoto.
+  const remote = new Map<string, Remote>()
   await pullPages(0, async r => {
-    const id = sdb.outboxId(r.entity, r.key)
-    // Una lápida remota no borra nada local en el primer ingreso: si el
-    // registro sigue aquí, se vuelve a subir como solo-local.
-    if (r.deletedAt != null) {
-      remoteLive.delete(id)
-      return
-    }
-    remoteLive.add(id)
-    // En las llaves que existen en ambos lados gana el servidor.
-    await sdb.removeOutboxEntry(r.entity, r.key)
-    if (await applyRemote(r, false)) changed.value = true
+    remote.set(sdb.outboxId(r.entity, r.key), r)
   })
 
-  await enqueueLocal(remoteLive)
+  const local = await localRecords()
+  const seeded = seeds()
+  // Llaves donde queda la copia del servidor: no se encolan.
+  const serverKeeps = new Set<string>()
+  const toApply: Remote[] = []
+  let conflict = false
+  for (const [id, r] of remote) {
+    // Una lápida remota no borra nada local en el primer ingreso: si el
+    // registro sigue aquí, se vuelve a subir como solo-local.
+    if (r.deletedAt != null) continue
+    const theirs = normalized(r.entity, r.key, r.body)
+    // Ilegible en el servidor: si hay copia local, se sube la local.
+    if (theirs === null) continue
+    const mine = local.get(id)
+    serverKeeps.add(id)
+    if (!mine) {
+      toApply.push(r)
+      continue
+    }
+    const m = canonical(mine.body)
+    const t = canonical(theirs)
+    if (m === t) {
+      await sdb.removeOutboxEntry(r.entity, r.key)
+      continue
+    }
+    const seed = seeded.get(id)
+    if (seed === t) {
+      // El servidor solo tiene la semilla de otro teléfono: gana lo local,
+      // que se encola con updatedAt = ahora para pisarla.
+      serverKeeps.delete(id)
+      continue
+    }
+    // Si lo local es la semilla gana el servidor sin más; si no, también gana
+    // el servidor, pero antes se guarda una copia de lo local.
+    if (seed !== m) conflict = true
+    toApply.push(r)
+  }
+
+  if (conflict) await sdb.savePreBootstrapBackup(await db.exportBackup())
+  for (const r of toApply) {
+    await sdb.removeOutboxEntry(r.entity, r.key)
+    if (await applyRemote(r, false)) changed.value = true
+  }
+
+  await enqueueLocal(serverKeeps)
 
   // Desde aquí los datos locales son de esta cuenta: si la subida falla, el
   // outbox ya tiene todo y la próxima vuelta es una sincronización normal.
   await sdb.updateMeta({ userId: uid })
-  await pushOutbox()
+  const { stale } = await pushOutbox()
+  if (stale) await pullFrom(0, changed)
 }
 
 /** Encola cada registro local cuya llave no esté en `skip`, con
@@ -363,10 +525,12 @@ async function enqueueLocal(skip: Set<string>) {
   if (plan) await enqueue('document', 'plan', plan)
 }
 
-/** Tras restaurar un respaldo: todo lo local pasa a ser lo más nuevo y se
- *  sube. Lo que solo existe en el servidor no se borra allá. */
+/** Tras restaurar un respaldo: se combina con la cuenta. Todo lo restaurado
+ *  pasa a ser lo más nuevo y se sube, y la próxima vuelta baja desde 0 para
+ *  recuperar lo que el respaldo no traía. Nada se borra en el servidor. */
 export async function enqueueAllLocalChanges() {
   await enqueueLocal(new Set())
+  await sdb.updateMeta({ fullPullAt: Date.now() })
   noteLocalWrite()
 }
 
@@ -380,6 +544,6 @@ export function resetSyncEngineForTests() {
   inflight = null
   runAgain = false
   failures = 0
-  status = { state: 'idle', pending: 0, lastSyncAt: null, lastError: null }
+  status = IDLE
   listeners.clear()
 }

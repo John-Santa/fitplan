@@ -21,5 +21,29 @@ export function syncStatusLines(s: SyncStatus, now = Date.now()): string[] {
   else if (s.lastSyncAt != null) lines.push(`Sincronizado ${ago(now - s.lastSyncAt)}`)
   else lines.push('Todavía no se sincroniza')
   if (s.pending > 0) lines.push(s.pending === 1 ? '1 cambio pendiente' : `${s.pending} cambios pendientes`)
+  if (s.rejected > 0) {
+    const head = s.rejected === 1 ? '1 cambio no se pudo subir' : `${s.rejected} cambios no se pudieron subir`
+    lines.push(s.rejectedError ? `${head}: ${s.rejectedError}` : head)
+  }
   return lines
 }
+
+export const BACKUP_NOTICE = 'Guardamos una copia de tus datos anteriores'
+
+/** Texto bajo "Restaurar" en Ajustes. */
+export const restoreHint = (signedIn: boolean) =>
+  signedIn
+    ? 'Se restaurará el respaldo en este teléfono y se combinará con tu cuenta; no se borra nada de la nube.'
+    : 'Restaurar reemplaza todo lo que haya en este dispositivo.'
+
+/** Las dos confirmaciones de "Borrar todos los datos". */
+export const wipeConfirmTexts = (signedIn: boolean): [string, string] =>
+  signedIn
+    ? [
+        'Esto borra todas las sesiones y mediciones de este teléfono. Tu cuenta las conserva y vuelven a este teléfono la próxima vez que inicies sesión. ¿Seguro?',
+        'Última confirmación: lo que todavía no se haya sincronizado se pierde.',
+      ]
+    : [
+        'Esto borra todas las sesiones y mediciones de este dispositivo. ¿Seguro?',
+        'Última confirmación: no hay forma de deshacerlo sin un respaldo.',
+      ]

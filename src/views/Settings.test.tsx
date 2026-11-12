@@ -18,7 +18,7 @@ describe('AccountCard sin Clerk configurado', () => {
 })
 
 describe('estado de sincronización en la tarjeta Cuenta', () => {
-  const status = { state: 'idle' as const, pending: 2, lastSyncAt: 1_000, lastError: null }
+  const status = { state: 'idle' as const, pending: 2, lastSyncAt: 1_000, lastError: null, rejected: 0, rejectedError: null, backupAt: null }
 
   it('muestra el estado y el botón "Sincronizar ahora" en vez de "próximamente"', () => {
     const html = renderToString(<SyncStatusLines status={status} onSync={() => {}} now={1_000 + 3 * 60_000} />)
@@ -31,5 +31,22 @@ describe('estado de sincronización en la tarjeta Cuenta', () => {
   it('sin conexión avisa que se sincroniza al volver la señal', () => {
     const html = renderToString(<SyncStatusLines status={{ ...status, state: 'offline', lastError: 'Sin conexión' }} onSync={() => {}} />)
     expect(html).toContain('Sin conexión: se sincroniza al volver la señal')
+  })
+
+  it('sin copia previa no muestra el aviso ni el botón de descarga', () => {
+    const html = renderToString(<SyncStatusLines status={status} onSync={() => {}} />)
+    expect(html).not.toContain('Guardamos una copia de tus datos anteriores')
+    expect(html).not.toContain('Descargar copia')
+  })
+
+  it('con copia previa del primer ingreso avisa y ofrece descargarla', () => {
+    const html = renderToString(<SyncStatusLines status={{ ...status, backupAt: 5_000 }} onSync={() => {}} onDownloadBackup={() => {}} />)
+    expect(html).toContain('Guardamos una copia de tus datos anteriores')
+    expect(html).toContain('Descargar copia')
+  })
+
+  it('muestra cuántos cambios no se pudieron subir y el primer error', () => {
+    const html = renderToString(<SyncStatusLines status={{ ...status, pending: 0, rejected: 3, rejectedError: 'body contains NUL' }} onSync={() => {}} now={1_000} />)
+    expect(html).toContain('3 cambios no se pudieron subir: body contains NUL')
   })
 })

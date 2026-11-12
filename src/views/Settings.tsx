@@ -6,8 +6,8 @@ import { daysSince, fmt, fmtDate } from '../lib/calc'
 import { authEnabled, useAuthState } from '../lib/auth'
 import { MEASUREMENT_KEYS, MEASUREMENT_LABELS, MEASUREMENT_UNITS } from '../lib/plan'
 import { enqueueAllLocalChanges, syncNow, type SyncStatus } from '../lib/sync/engine'
-import { resetSyncState } from '../lib/sync/syncDb'
-import { syncStatusLines } from '../lib/sync/statusText'
+import { getPreBootstrapBackup, resetSyncState } from '../lib/sync/syncDb'
+import { BACKUP_NOTICE, restoreHint, syncStatusLines, wipeConfirmTexts } from '../lib/sync/statusText'
 import { useSyncStatus } from '../lib/sync/useSync'
 
 // Clerk solo se carga si hay clave; sin ella este módulo nunca se importa.
@@ -51,19 +51,32 @@ export function AccountCard() {
 }
 
 function SyncStatusView() {
-  return <SyncStatusLines status={useSyncStatus()} onSync={() => void syncNow()} />
+  const downloadBackup = async () => {
+    const saved = await getPreBootstrapBackup()
+    if (saved) downloadBackupFile(saved.backup)
+  }
+  return <SyncStatusLines status={useSyncStatus()} onSync={() => void syncNow()} onDownloadBackup={() => void downloadBackup()} />
 }
 
-/** Estado de sincronización y botón "Sincronizar ahora" (presentacional). */
-export function SyncStatusLines({ status, onSync, now }: { status: SyncStatus; onSync: () => void; now?: number }) {
+/** Estado de sincronización, botón "Sincronizar ahora" y, si el primer
+ *  ingreso guardó una copia de los datos anteriores, el botón para bajarla
+ *  (presentacional). */
+export function SyncStatusLines({ status, onSync, onDownloadBackup, now }: {
+  status: SyncStatus
+  onSync: () => void
+  onDownloadBackup?: () => void
+  now?: number
+}) {
   const alert = status.state === 'error' || status.state === 'blocked'
   return (
     <>
       {syncStatusLines(status, now).map(line => (
         <p key={line} className="hint" style={{ marginBottom: 0, ...(alert ? { color: 'var(--alert)' } : {}) }}>{line}</p>
       ))}
+      {status.backupAt != null && <p className="hint" style={{ marginBottom: 0 }}>{BACKUP_NOTICE}</p>}
       <div className="btnrow" style={{ marginTop: 12 }}>
         <button onClick={onSync} disabled={status.state === 'syncing'}>Sincronizar ahora</button>
+        {status.backupAt != null && <button onClick={onDownloadBackup}>Descargar copia</button>}
       </div>
     </>
   )
@@ -71,6 +84,8 @@ export function SyncStatusLines({ status, onSync, now }: { status: SyncStatus; o
 
 export default function Settings() {
   const { config, saveConfig, reload, sessions, droppedSessionCount, measurements } = useStore()
+  const auth = useAuthState()
+  const signedIn = authEnabled && auth.enabled && auth.isSignedIn
   const toast = useToast()
   const fileRef = useRef<HTMLInputElement>(null)
   const [height, setHeight] = useState(String(config.heightCm))
@@ -93,7 +108,8 @@ export default function Settings() {
     try {
       const data = JSON.parse(await file.text())
       await importBackup(data, 'replace')
-      // Lo restaurado pasa a ser lo más nuevo y se sube en la próxima vuelta.
+      // Se combina con la cuenta: lo restaurado pasa a ser lo más nuevo y se
+      // sube, y la próxima vuelta baja de nuevo lo que el respaldo no traía.
       if (authEnabled) await enqueueAllLocalChanges()
       await reload()
       toast.show('Datos restaurados')
@@ -145,7 +161,7 @@ export default function Settings() {
           </div>
           <p className="hint">
             {lastBackup != null && `La última fue hace ${daysSince(lastBackup)} días. `}
-            Restaurar reemplaza todo lo que haya en este dispositivo.
+            {restoreHint(signedIn)}
           </p>
         </div>
 
@@ -212,8 +228,9 @@ export default function Settings() {
           <button
             className="danger block"
             onClick={async () => {
-              if (!confirm('Esto borra todas las sesiones y mediciones de este dispositivo. ¿Seguro?')) return
-              if (!confirm('Última confirmación: no hay forma de deshacerlo sin un respaldo.')) return
+              const [first, last] = wipeConfirmTexts(signedIn)
+              if (!confirm(first)) return
+              if (!confirm(last)) return
               await wipeAll()
               // Sin datos locales tampoco hay dueño: la próxima cuenta empieza de cero.
               if (authEnabled) await resetSyncState()
