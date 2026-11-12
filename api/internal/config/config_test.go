@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/John-Santa/fitplan/api/internal/config"
@@ -12,7 +13,7 @@ func env(m map[string]string) func(string) string {
 }
 
 func TestLoadDefaults(t *testing.T) {
-	cfg, err := config.Load(env(nil))
+	cfg, err := config.Load(env(map[string]string{"APP_ENV": "test"}))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -51,8 +52,30 @@ func TestLoadValues(t *testing.T) {
 
 func TestLoadInvalidPort(t *testing.T) {
 	for _, p := range []string{"abc", "0", "70000", "-1"} {
-		if _, err := config.Load(env(map[string]string{"PORT": p})); err == nil {
+		if _, err := config.Load(env(map[string]string{"PORT": p, "APP_ENV": "test"})); err == nil {
 			t.Errorf("PORT=%q: expected error", p)
 		}
+	}
+}
+
+func TestLoadRequiresDatabaseAndClerkOutsideTest(t *testing.T) {
+	full := map[string]string{"DATABASE_URL": "postgres://example", "CLERK_SECRET_KEY": "placeholder"}
+	for _, missing := range []string{"DATABASE_URL", "CLERK_SECRET_KEY"} {
+		for _, appEnv := range []string{"", "production"} {
+			m := map[string]string{"APP_ENV": appEnv}
+			for k, v := range full {
+				if k != missing {
+					m[k] = v
+				}
+			}
+			_, err := config.Load(env(m))
+			if err == nil || !strings.Contains(err.Error(), missing) {
+				t.Errorf("APP_ENV=%q without %s: err = %v, want it to name %s", appEnv, missing, err, missing)
+			}
+		}
+	}
+	cfg, err := config.Load(env(map[string]string{"APP_ENV": "test"}))
+	if err != nil || cfg.AppEnv != "test" {
+		t.Errorf("APP_ENV=test without secrets: cfg=%+v err=%v, want ok", cfg, err)
 	}
 }

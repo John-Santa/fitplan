@@ -12,11 +12,17 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/John-Santa/fitplan/api/internal/auth"
 	"github.com/John-Santa/fitplan/api/internal/config"
 	httpapi "github.com/John-Santa/fitplan/api/internal/http"
+	"github.com/John-Santa/fitplan/api/internal/store"
+	"github.com/John-Santa/fitplan/api/internal/sync"
 )
 
-const shutdownTimeout = 15 * time.Second
+const (
+	shutdownTimeout = 15 * time.Second
+	migrateTimeout  = 60 * time.Second
+)
 
 func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -34,11 +40,48 @@ func run(log *slog.Logger) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	var extra func(*http.ServeMux)
+	if cfg.DatabaseURL != "" {
+		pool, err := store.Open(ctx, cfg.DatabaseURL)
+		if err != nil {
+			return err
+		}
+		// Deferred before the server starts, so it runs after graceful shutdown.
+		defer pool.Close()
+
+		migrateCtx, cancel := context.WithTimeout(ctx, migrateTimeout)
+		err = store.Migrate(migrateCtx, pool)
+		cancel()
+		if err != nil {
+			return err
+		}
+		log.Info("migrations applied")
+
+		authn := auth.DenyAll()
+		if cfg.ClerkSecretKey != "" {
+			authn = auth.NewClerk(cfg.ClerkSecretKey, cfg.AllowedOrigins)
+		} else {
+			log.Warn("CLERK_SECRET_KEY not set; /v1 routes reject every request")
+		}
+		extra = httpapi.V1{
+			Auth:   authn,
+			UserID: auth.UserID,
+			Sync:   sync.NewService(store.NewPostgres(pool)),
+			Logger: log,
+		}.Register
+	} else {
+		log.Warn("DATABASE_URL not set; /v1 routes disabled")
+	}
+
 	srv := &http.Server{
 		Addr: cfg.Addr(),
 		Handler: httpapi.NewHandler(httpapi.Options{
 			Logger:         log,
 			AllowedOrigins: cfg.AllowedOrigins,
+			Extra:          extra,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
@@ -46,9 +89,6 @@ func run(log *slog.Logger) error {
 		IdleTimeout:       60 * time.Second,
 		ErrorLog:          slog.NewLogLogger(log.Handler(), slog.LevelError),
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	serveErr := make(chan error, 1)
 	go func() {
