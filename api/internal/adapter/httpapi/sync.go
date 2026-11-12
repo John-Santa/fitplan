@@ -18,6 +18,11 @@ import (
 // MaxPushBytes caps the body of POST /v1/sync.
 const MaxPushBytes = 5 << 20
 
+// MaxPushRecords caps the records (all collections together) in one push. The
+// client uploads in batches of at most 200 records, so 500 leaves room for
+// older or other clients while bounding the work one request can cause.
+const MaxPushRecords = 500
+
 const (
 	defaultPullLimit = 200
 	maxPullLimit     = 500
@@ -98,6 +103,10 @@ func (v syncHandlers) push(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		WriteProblem(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if n := len(in.Documents) + len(in.Sessions) + len(in.Measurements) + len(in.ExerciseMeta); n > MaxPushRecords {
+		WriteProblem(w, http.StatusRequestEntityTooLarge, "too many records in one push (max "+strconv.Itoa(MaxPushRecords)+")")
 		return
 	}
 	res, err := v.svc.Push(r.Context(), id, in.toDomain())

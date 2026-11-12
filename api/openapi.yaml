@@ -98,6 +98,10 @@ paths:
     post:
       operationId: pushChanges
       summary: Push changed records (last write wins per record)
+      description: |
+        At most 500 records in total across all four collections, and 5 MB of
+        body; beyond either the answer is 413 and nothing is applied. The
+        web client sends batches of at most 200 records.
       requestBody:
         required: true
         content:
