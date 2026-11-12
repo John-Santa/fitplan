@@ -19,6 +19,8 @@ function fakeServer(pageSize = 500) {
   let active = 0
   let maxActive = 0
   let offline = false
+  let failWith: number | null = null
+  let delay = 2
 
   function seed(coll: Coll, key: string, body: unknown, updatedAt = 1000, deletedAt: number | null = null) {
     rows.set(`${coll}:${key}`, { coll, key, body, updatedAt, deletedAt, rev: ++rev })
@@ -29,7 +31,8 @@ function fakeServer(pageSize = 500) {
     active++
     maxActive = Math.max(maxActive, active)
     try {
-      await new Promise(r => setTimeout(r, 2))
+      await new Promise(r => setTimeout(r, delay))
+      if (failWith) return json({ detail: `fake ${failWith}` }, failWith)
       if (init?.method === 'POST') {
         const cs = JSON.parse(String(init.body)) as Record<Coll, Record<string, unknown>[]>
         pushes.push(cs)
@@ -77,6 +80,9 @@ function fakeServer(pageSize = 500) {
     seed,
     get maxActive() { return maxActive },
     setOffline(v: boolean) { offline = v },
+    /** Todas las respuestas pasan a ser este estado HTTP (null: normal). */
+    setFailWith(v: number | null) { failWith = v },
+    setDelay(ms: number) { delay = ms },
     gets: () => fetch.mock.calls.filter(c => !c[1] || c[1].method !== 'POST').length,
   }
 }
@@ -559,5 +565,120 @@ describe('convergencia (B2, B3, A1)', () => {
     await a.engine.syncNow()
     expect(liveServerSessions()).toEqual(['bad', 'fromB', 'good'])
     expect(a.engine.getSyncStatus().rejected).toBe(0)
+  })
+})
+
+/** Intercepta los temporizadores largos del motor (reintento 5 s+, debounce
+ *  3 s, arranque en frío 4 s) para verlos y dispararlos a mano; los cortos
+ *  (IndexedDB y servidor falsos) siguen siendo reales. */
+function captureEngineTimers() {
+  const real = globalThis.setTimeout
+  const scheduled: { fn: () => void; ms: number; cleared: boolean }[] = []
+  vi.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void, ms?: number) => {
+    if ((ms ?? 0) < 1000) return real(fn, ms)
+    const entry = { fn, ms: ms as number, cleared: false }
+    scheduled.push(entry)
+    return entry as never
+  }) as never)
+  vi.spyOn(globalThis, 'clearTimeout').mockImplementation(((t: unknown) => {
+    const e = scheduled.find(x => x === t)
+    if (e) e.cleared = true
+  }) as never)
+  return {
+    /** Temporizadores largos vivos (programados y no cancelados). */
+    live: () => scheduled.filter(e => !e.cleared),
+    fire: (ms: number) => {
+      const e = scheduled.find(x => x.ms === ms && !x.cleared)
+      if (!e) throw new Error(`no hay temporizador de ${ms} ms`)
+      e.cleared = true
+      e.fn()
+    },
+  }
+}
+
+describe('reintentos y estados de error (F23)', () => {
+  it('sin conexión: programa un reintento y se recupera al volver la red', async () => {
+    const timers = captureEngineTimers()
+    await asKnownUser()
+    await mods.local.saveSession(session('s1') as never)
+    server.setOffline(true)
+    await mods.engine.syncNow()
+    expect(mods.engine.getSyncStatus().state).toBe('offline')
+    expect(timers.live().map(t => t.ms)).toContain(5_000)
+    server.setOffline(false)
+    timers.fire(5_000)
+    await vi.waitFor(() => expect(mods.engine.getSyncStatus().state).toBe('idle'))
+    expect(outbox().size).toBe(0)
+  })
+
+  it('error genérico (500): queda en error con el mensaje, conserva el outbox y se reintenta', async () => {
+    const timers = captureEngineTimers()
+    await asKnownUser()
+    await mods.local.saveSession(session('s1') as never)
+    server.setFailWith(500)
+    await mods.engine.syncNow()
+    expect(mods.engine.getSyncStatus()).toMatchObject({ state: 'error', lastError: 'No se pudo sincronizar: fake 500', pending: 1 })
+    expect(timers.live().map(t => t.ms)).toContain(5_000)
+    server.setFailWith(null)
+    timers.fire(5_000)
+    await vi.waitFor(() => expect(mods.engine.getSyncStatus().state).toBe('idle'))
+    expect(outbox().size).toBe(0)
+  })
+
+  it('un 401 pasa a auth_expired: no programa reintentos y conserva el outbox', async () => {
+    const timers = captureEngineTimers()
+    await asKnownUser()
+    await mods.local.saveSession(session('s1') as never)
+    // Quita el debounce de la escritura: solo importa lo que programa el 401.
+    for (const t of timers.live()) t.cleared = true
+    server.setFailWith(401)
+    await mods.engine.syncNow()
+    expect(mods.engine.getSyncStatus()).toMatchObject({ state: 'auth_expired', pending: 1, lastError: mods.engine.AUTH_EXPIRED_ERROR })
+    expect(mods.engine.AUTH_EXPIRED_ERROR).toBe('Tu sesión expiró, vuelve a iniciar sesión')
+    expect((await mods.syncDb.getMeta()).lastError).toBe(mods.engine.AUTH_EXPIRED_ERROR)
+    expect(timers.live()).toEqual([])
+    expect(outbox().has('session:s1')).toBe(true)
+  })
+
+  it('en auth_expired una escritura local no programa la sincronización automática', async () => {
+    const timers = captureEngineTimers()
+    await asKnownUser()
+    server.setFailWith(401)
+    await mods.engine.syncNow()
+    await mods.local.saveSession(session('s2') as never)
+    expect(timers.live()).toEqual([])
+    expect(outbox().has('session:s2')).toBe(true)
+    await vi.waitFor(() => expect(mods.engine.getSyncStatus().pending).toBe(1))
+  })
+
+  it('al llegar un token nuevo reanuda con la cola intacta', async () => {
+    await asKnownUser()
+    await mods.local.saveSession(session('s1') as never)
+    server.setFailWith(401)
+    await mods.engine.syncNow()
+    expect(mods.engine.getSyncStatus().state).toBe('auth_expired')
+
+    server.setFailWith(null)
+    mods.engine.resumeAfterAuth()
+    await vi.waitFor(() => expect(mods.engine.getSyncStatus()).toMatchObject({ state: 'idle', lastError: null, pending: 0 }))
+    expect(liveServerSessions()).toEqual(['s1'])
+    expect(outbox().size).toBe(0)
+  })
+
+  it('resumeAfterAuth no hace nada si la sesión no estaba expirada', async () => {
+    await asKnownUser()
+    mods.engine.resumeAfterAuth()
+    await new Promise(r => setTimeout(r, 20))
+    expect(server.fetch).not.toHaveBeenCalled()
+  })
+
+  it('Clerk sin conexión sigue contando como sin conexión, no como sesión expirada', async () => {
+    await asKnownUser()
+    const auth = await import('../../account/lib/auth')
+    auth.setTokenGetter(async () => {
+      throw Object.assign(new Error('offline'), { code: 'clerk_offline' })
+    })
+    await mods.engine.syncNow()
+    expect(mods.engine.getSyncStatus().state).toBe('offline')
   })
 })

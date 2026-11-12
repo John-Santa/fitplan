@@ -37,6 +37,7 @@ export const OTHER_ACCOUNT_ERROR =
   'Esta app tiene datos de otra cuenta. Para no mezclarlos, la sincronización está en pausa: vuelve a iniciar ' +
   'sesión con la cuenta original, o exporta un respaldo y borra los datos de este dispositivo.'
 export const OFFLINE_ERROR = 'Sin conexión'
+export const AUTH_EXPIRED_ERROR = 'Tu sesión expiró, vuelve a iniciar sesión'
 
 export const PUSH_MAX_ITEMS = 200
 export const PUSH_MAX_BYTES = 4 * 1024 * 1024
@@ -45,7 +46,7 @@ const WRITE_DEBOUNCE_MS = 3_000
 const RETRY_BASE_MS = 5_000
 const RETRY_MAX_MS = 5 * 60_000
 
-export type SyncState = 'idle' | 'syncing' | 'offline' | 'error' | 'blocked'
+export type SyncState = 'idle' | 'syncing' | 'offline' | 'error' | 'blocked' | 'auth_expired'
 
 export type SyncStatus = {
   state: SyncState
@@ -124,7 +125,9 @@ export async function refreshStatus() {
 /** Aviso de escritura local: sincroniza 3 s después de la última. */
 export function noteLocalWrite() {
   void refreshStatus().catch(() => {})
-  if (!currentUser) return
+  // Con la sesión expirada no se insiste solo: la cola espera a que vuelva
+  // un token (resumeAfterAuth) o a que la persona pida sincronizar.
+  if (!currentUser || status.state === 'auth_expired') return
   if (debounceTimer) clearTimeout(debounceTimer)
   debounceTimer = setTimeout(() => {
     debounceTimer = null
@@ -184,6 +187,15 @@ async function runOnce(): Promise<boolean> {
     setStatus({ state: 'idle', lastSyncAt: saved.lastSyncAt, lastError: null })
     return true
   } catch (e) {
+    if (!isOffline(e) && isUnauthorized(e)) {
+      // El servidor no acepta el token: reintentar solo repetiría el 401. El
+      // outbox y el cursor quedan como están hasta que llegue un token nuevo.
+      await sdb.updateMeta({ lastError: AUTH_EXPIRED_ERROR }).catch(() => {})
+      setStatus({ state: 'auth_expired', lastError: AUTH_EXPIRED_ERROR })
+      clearTimers()
+      failures = 0
+      return false
+    }
     const offline = isOffline(e)
     const message = offline ? OFFLINE_ERROR : `No se pudo sincronizar: ${e instanceof Error ? e.message : String(e)}`
     await sdb.updateMeta({ lastError: message }).catch(() => {})
@@ -203,6 +215,15 @@ function isOffline(e: unknown): boolean {
   // fetch sin red lanza TypeError; Clerk sin red lanza ClerkOfflineError.
   const err = e as { name?: unknown; code?: unknown } | null
   return e instanceof TypeError || err?.code === 'clerk_offline' || err?.name === 'ClerkOfflineError'
+}
+
+const isUnauthorized = (e: unknown) => e instanceof ApiError && e.status === 401
+
+/** Lo llama la app cuando Clerk entrega un token nuevo (o vuelve a iniciar
+ *  sesión): si la sincronización estaba detenida por un 401, reanuda con el
+ *  outbox intacto. Con cualquier otro estado no hace nada. */
+export function resumeAfterAuth() {
+  if (status.state === 'auth_expired' && currentUser) void syncNow()
 }
 
 function scheduleRetry() {

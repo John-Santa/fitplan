@@ -1,6 +1,8 @@
-import type { SyncStatus } from './engine'
+import { AUTH_EXPIRED_ERROR, type SyncStatus } from './engine'
 
 export const OFFLINE_TEXT = 'Sin conexión: se sincroniza al volver la señal'
+/** 401 de la API: la cola espera, nada se pierde. */
+export const AUTH_EXPIRED_TEXT = AUTH_EXPIRED_ERROR
 
 function ago(ms: number): string {
   const min = Math.floor(ms / 60_000)
@@ -17,6 +19,7 @@ export function syncStatusLines(s: SyncStatus, now = Date.now()): string[] {
   const lines: string[] = []
   if (s.state === 'syncing') lines.push('Sincronizando…')
   else if (s.state === 'offline') lines.push(OFFLINE_TEXT)
+  else if (s.state === 'auth_expired') lines.push(AUTH_EXPIRED_TEXT)
   else if ((s.state === 'error' || s.state === 'blocked') && s.lastError) lines.push(s.lastError)
   else if (s.lastSyncAt != null) lines.push(`Sincronizado ${ago(now - s.lastSyncAt)}`)
   else lines.push('Todavía no se sincroniza')

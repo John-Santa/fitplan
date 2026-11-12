@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { OFFLINE_TEXT, restoreHint, syncStatusLines, wipeConfirmTexts } from './statusText'
+import { AUTH_EXPIRED_TEXT, OFFLINE_TEXT, restoreHint, syncStatusLines, wipeConfirmTexts } from './statusText'
 
 const base = { state: 'idle' as const, pending: 0, lastSyncAt: null, lastError: null, rejected: 0, rejectedError: null, backupAt: null }
 const NOW = 1_800_000_000_000
@@ -20,6 +20,14 @@ describe('syncStatusLines', () => {
     expect(syncStatusLines({ ...base, state: 'offline', lastError: 'Sin conexión', pending: 2 }, NOW)).toEqual([OFFLINE_TEXT, '2 cambios pendientes'])
     expect(OFFLINE_TEXT).toBe('Sin conexión: se sincroniza al volver la señal')
     expect(syncStatusLines({ ...base, state: 'blocked', lastError: 'Esta app tiene datos de otra cuenta.' }, NOW)).toEqual(['Esta app tiene datos de otra cuenta.'])
+  })
+
+  it('sesión expirada: texto propio y la cola pendiente sigue contada', () => {
+    expect(AUTH_EXPIRED_TEXT).toBe('Tu sesión expiró, vuelve a iniciar sesión')
+    expect(syncStatusLines({ ...base, state: 'auth_expired', lastError: AUTH_EXPIRED_TEXT, pending: 2 }, NOW)).toEqual([
+      'Tu sesión expiró, vuelve a iniciar sesión',
+      '2 cambios pendientes',
+    ])
   })
 
   it('cuenta los cambios que el servidor rechazó, con el primer error', () => {

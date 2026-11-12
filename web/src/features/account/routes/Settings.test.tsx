@@ -33,6 +33,13 @@ describe('estado de sincronización en la tarjeta Cuenta', () => {
     expect(html).toContain('Sin conexión: se sincroniza al volver la señal')
   })
 
+  it('con la sesión expirada muestra el aviso y deja "Sincronizar ahora" disponible', () => {
+    const html = renderToString(<SyncStatusLines status={{ ...status, state: 'auth_expired', lastError: 'Tu sesión expiró, vuelve a iniciar sesión' }} onSync={() => {}} />)
+    expect(html).toContain('Tu sesión expiró, vuelve a iniciar sesión')
+    expect(html).toContain('2 cambios pendientes')
+    expect(html).not.toMatch(/<button[^>]*disabled[^>]*>Sincronizar ahora/)
+  })
+
   it('sin copia previa no muestra el aviso ni el botón de descarga', () => {
     const html = renderToString(<SyncStatusLines status={status} onSync={() => {}} />)
     expect(html).not.toContain('Guardamos una copia de tus datos anteriores')

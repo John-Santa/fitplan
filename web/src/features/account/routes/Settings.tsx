@@ -67,7 +67,7 @@ export function SyncStatusLines({ status, onSync, onDownloadBackup, now }: {
   onDownloadBackup?: () => void
   now?: number
 }) {
-  const alert = status.state === 'error' || status.state === 'blocked'
+  const alert = status.state === 'error' || status.state === 'blocked' || status.state === 'auth_expired'
   return (
     <>
       {syncStatusLines(status, now).map(line => (
