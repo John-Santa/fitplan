@@ -1,14 +1,19 @@
-import { useState, type ReactNode } from 'react'
+import { lazy, Suspense, useState, type ReactNode } from 'react'
 import { StoreProvider, useStore } from '../lib/store'
 import { ErrorScreen } from '../components/ErrorScreen'
 import Home from '../features/today/routes/Home'
-import Train from '../features/session/routes/Train'
-import Measure from '../features/progress/routes/Measure'
 import Habit from '../features/habit/routes/Habit'
 import Settings from '../features/account/routes/Settings'
-import PlanEditor from '../features/plan/routes/PlanEditor'
 import { loadActiveDraft } from '../features/session/lib/activeSession'
-import Guide from '../features/guide/routes/Guide'
+
+const Train = lazy(() => import('../features/session/routes/Train'))
+const Measure = lazy(() => import('../features/progress/routes/Measure'))
+const PlanEditor = lazy(() => import('../features/plan/routes/PlanEditor'))
+const Guide = lazy(() => import('../features/guide/routes/Guide'))
+
+function ScreenFallback() {
+  return <p className="muted" style={{ textAlign: 'center', marginTop: 60 }}>Cargando…</p>
+}
 
 type Tab = 'home' | 'plan' | 'progreso' | 'perfil'
 type ProgressView = 'habit' | 'train' | 'measure'
@@ -58,6 +63,7 @@ function Shell() {
   return (
     <div className="app">
       <main className="main">
+        <Suspense fallback={<ScreenFallback />}>
         {guideOpen ? (
           <Guide onBack={() => setGuideOpen(false)} />
         ) : (
@@ -102,6 +108,7 @@ function Shell() {
             {tab === 'perfil' && <Settings />}
           </>
         )}
+        </Suspense>
       </main>
       <nav className="tabbar" aria-label="Secciones">
         {TABS.map(t => (
