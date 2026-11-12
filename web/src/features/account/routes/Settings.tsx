@@ -105,7 +105,7 @@ export function SyncStatusLines({ status, onSync, onDownloadBackup, now, rejecte
       )}
       {status.backupAt != null && <p className="hint" style={{ marginBottom: 0 }}>{BACKUP_NOTICE}</p>}
       <div className="btnrow" style={{ marginTop: 12 }}>
-        <button onClick={onSync} disabled={status.state === 'syncing'}>Sincronizar ahora</button>
+        <button onClick={onSync} disabled={status.state === 'syncing' || status.state === 'connecting'}>Sincronizar ahora</button>
         {status.backupAt != null && <button onClick={onDownloadBackup}>Descargar copia</button>}
       </div>
     </>

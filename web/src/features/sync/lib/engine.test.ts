@@ -739,3 +739,38 @@ describe('cambios rechazados: Reintentar y Descartar (F28)', () => {
     expect(list.map(r => [r.entity, r.key, r.error])).toEqual([['session', 'bad', 'fake 400']])
   })
 })
+
+describe('arranque en frío del servidor (F34)', () => {
+  it('si el servidor tarda en responder pasa a connecting y vuelve a idle al terminar', async () => {
+    const timers = captureEngineTimers()
+    await asKnownUser()
+    server.setDelay(120)
+    const done = mods.engine.syncNow()
+    await vi.waitFor(() => expect(mods.engine.getSyncStatus().state).toBe('syncing'))
+    expect(timers.live().map(t => t.ms)).toContain(4_000)
+    timers.fire(4_000)
+    expect(mods.engine.getSyncStatus().state).toBe('connecting')
+    await done
+    expect(mods.engine.getSyncStatus()).toMatchObject({ state: 'idle', lastError: null })
+  })
+
+  it('si responde a tiempo no queda ningún aviso de arranque en frío pendiente', async () => {
+    const timers = captureEngineTimers()
+    await asKnownUser()
+    await mods.engine.syncNow()
+    expect(mods.engine.getSyncStatus().state).toBe('idle')
+    expect(timers.live().filter(t => t.ms === 4_000)).toEqual([])
+  })
+
+  it('un 401 durante el arranque en frío termina en auth_expired, no en connecting', async () => {
+    const timers = captureEngineTimers()
+    await asKnownUser()
+    server.setDelay(120)
+    server.setFailWith(401)
+    const done = mods.engine.syncNow()
+    await vi.waitFor(() => expect(mods.engine.getSyncStatus().state).toBe('syncing'))
+    timers.fire(4_000)
+    await done
+    expect(mods.engine.getSyncStatus().state).toBe('auth_expired')
+  })
+})

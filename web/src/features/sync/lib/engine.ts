@@ -45,8 +45,12 @@ export const PULL_PAGE = 200
 const WRITE_DEBOUNCE_MS = 3_000
 const RETRY_BASE_MS = 5_000
 const RETRY_MAX_MS = 5 * 60_000
+/** Pasado este tiempo sin respuesta, la API del plan gratuito está arrancando. */
+export const COLD_START_MS = 4_000
 
-export type SyncState = 'idle' | 'syncing' | 'offline' | 'error' | 'blocked' | 'auth_expired'
+/** 'connecting': la vuelta lleva más de COLD_START_MS sin terminar (arranque
+ *  en frío del servidor). */
+export type SyncState = 'idle' | 'syncing' | 'connecting' | 'offline' | 'error' | 'blocked' | 'auth_expired'
 
 export type SyncStatus = {
   state: SyncState
@@ -72,6 +76,7 @@ let runAgain = false
 let failures = 0
 let retryTimer: ReturnType<typeof setTimeout> | null = null
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
+let coldStartTimer: ReturnType<typeof setTimeout> | null = null
 let status: SyncStatus = IDLE
 const listeners = new Set<(s: SyncStatus) => void>()
 
@@ -183,6 +188,10 @@ async function runOnce(): Promise<boolean> {
     return false
   }
   setStatus({ state: 'syncing' })
+  coldStartTimer = setTimeout(() => {
+    coldStartTimer = null
+    if (status.state === 'syncing') setStatus({ state: 'connecting' })
+  }, COLD_START_MS)
   const changed = { value: false }
   try {
     if (!meta.userId) await bootstrap(uid, changed)
@@ -217,9 +226,11 @@ async function runOnce(): Promise<boolean> {
     scheduleRetry()
     return false
   } finally {
+    if (coldStartTimer) clearTimeout(coldStartTimer)
+    coldStartTimer = null
     if (changed.value) await Promise.resolve(onRemoteChange?.()).catch(() => {})
     await refreshStatus().catch(() => {})
-    if (status.state === 'syncing') setStatus({ state: 'idle' })
+    if (status.state === 'syncing' || status.state === 'connecting') setStatus({ state: 'idle' })
   }
 }
 
@@ -574,6 +585,8 @@ export async function enqueueAllLocalChanges() {
 /** Solo para pruebas: olvida el estado del módulo. */
 export function resetSyncEngineForTests() {
   clearTimers()
+  if (coldStartTimer) clearTimeout(coldStartTimer)
+  coldStartTimer = null
   currentUser = null
   onRemoteChange = null
   inflight = null
