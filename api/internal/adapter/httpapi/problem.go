@@ -62,6 +62,8 @@ func writeError(w http.ResponseWriter, r *http.Request, log *slog.Logger, err er
 		writeUnauthorized(w, r)
 	case errors.Is(err, port.ErrNotFound):
 		WriteProblem(w, http.StatusNotFound, "not found")
+	case errors.Is(err, port.ErrGone):
+		WriteProblem(w, http.StatusGone, "account deleted")
 	case errors.Is(err, port.ErrUnavailable):
 		WriteProblem(w, http.StatusServiceUnavailable, "service unavailable")
 	default:

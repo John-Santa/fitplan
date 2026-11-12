@@ -21,6 +21,7 @@ import (
 
 	"github.com/John-Santa/fitplan/api/internal/adapter/httpapi"
 	domain "github.com/John-Santa/fitplan/api/internal/domain/sync"
+	"github.com/John-Santa/fitplan/api/internal/port"
 )
 
 func contractPath(t *testing.T) string {
@@ -76,6 +77,7 @@ func TestContractConformance(t *testing.T) {
 	cases := []struct {
 		name, method, path, body, user string
 		svc                            *fakeSync
+		account                        *fakeAccount
 		ready                          pinger
 		status                         int
 	}{
@@ -93,6 +95,14 @@ func TestContractConformance(t *testing.T) {
 		{name: "push validation", method: http.MethodPost, path: "/v1/sync", body: `{"documents":[{"kind":"plan","body":{}}]}`, user: "user_a", status: 400},
 		{name: "push unauthorized", method: http.MethodPost, path: "/v1/sync", body: validPush, status: 401},
 		{name: "push failure", method: http.MethodPost, path: "/v1/sync", body: `{}`, user: "user_a", svc: &fakeSync{err: errors.New("db down")}, status: 500},
+		{name: "pull deleted account", method: http.MethodGet, path: "/v1/sync", user: "user_a", svc: &fakeSync{err: port.ErrGone}, status: 410},
+		{name: "push deleted account", method: http.MethodPost, path: "/v1/sync", body: validPush, user: "user_a", svc: &fakeSync{err: port.ErrGone}, status: 410},
+		{name: "delete me", method: http.MethodDelete, path: "/v1/me", user: "user_a", status: 204},
+		{name: "delete me unauthorized", method: http.MethodDelete, path: "/v1/me", status: 401},
+		{name: "delete me failure", method: http.MethodDelete, path: "/v1/me", user: "user_a", account: &fakeAccount{err: errors.New("clerk down")}, status: 500},
+		{name: "delete data", method: http.MethodDelete, path: "/v1/data", user: "user_a", status: 204},
+		{name: "delete data unauthorized", method: http.MethodDelete, path: "/v1/data", status: 401},
+		{name: "delete data failure", method: http.MethodDelete, path: "/v1/data", user: "user_a", account: &fakeAccount{err: errors.New("db down")}, status: 500},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -100,7 +110,11 @@ func TestContractConformance(t *testing.T) {
 			if svc == nil {
 				svc = &fakeSync{}
 			}
-			h := newRouter(httpapi.RouterConfig{Authenticator: fakeAuth{}, Sync: svc, Readiness: tc.ready})
+			account := tc.account
+			if account == nil {
+				account = &fakeAccount{}
+			}
+			h := newRouter(httpapi.RouterConfig{Authenticator: fakeAuth{}, Sync: svc, Account: account, Readiness: tc.ready})
 			req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
 			if tc.body != "" {
 				req.Header.Set("Content-Type", "application/json")
@@ -148,7 +162,7 @@ func TestContractCoversEveryRoute(t *testing.T) {
 			inContract = append(inContract, strings.ToUpper(method)+" "+path)
 		}
 	}
-	routes, ok := newRouter(httpapi.RouterConfig{Sync: &fakeSync{}}).(chi.Routes)
+	routes, ok := newRouter(httpapi.RouterConfig{Sync: &fakeSync{}, Account: &fakeAccount{}}).(chi.Routes)
 	if !ok {
 		t.Fatal("router is not chi.Routes")
 	}

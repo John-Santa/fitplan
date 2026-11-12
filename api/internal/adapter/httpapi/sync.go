@@ -34,9 +34,14 @@ type syncHandlers struct {
 	log *slog.Logger
 }
 
-// user reads the id the auth middleware stored; it answers 401 itself when
-// missing, as a second line of defense.
+// user reads the id the auth middleware stored (see requireUser).
 func (v syncHandlers) user(w http.ResponseWriter, r *http.Request) (shared.UserID, bool) {
+	return requireUser(w, r)
+}
+
+// requireUser reads the id the auth middleware stored; it answers 401 itself
+// when missing, as a second line of defense.
+func requireUser(w http.ResponseWriter, r *http.Request) (shared.UserID, bool) {
 	id, ok := port.UserIDFrom(r.Context())
 	if !ok {
 		writeUnauthorized(w, r)

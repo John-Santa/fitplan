@@ -23,6 +23,9 @@ var (
 	ErrNotFound = errors.New("not found")
 	// ErrUnavailable marks a dependency that is down, e.g. the database (HTTP 503).
 	ErrUnavailable = errors.New("service unavailable")
+	// ErrGone marks a user whose account was deleted: nothing of theirs is
+	// read or written again (HTTP 410).
+	ErrGone = errors.New("account deleted")
 )
 
 // Clock is the server time source; tests inject a fixed one.
@@ -46,6 +49,13 @@ var SystemClock Clock = ClockFunc(time.Now)
 // owns the unauthorized response format.
 type Authenticator interface {
 	Authenticate(next, unauthorized http.Handler) http.Handler
+}
+
+// IdentityDeleter deletes a user at the identity provider (Clerk), which ends
+// every session of that user. Deleting a user that no longer exists succeeds,
+// so an interrupted account deletion can be retried.
+type IdentityDeleter interface {
+	DeleteUser(ctx context.Context, userID shared.UserID) error
 }
 
 type userIDKey struct{}
