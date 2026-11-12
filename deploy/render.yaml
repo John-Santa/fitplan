@@ -12,7 +12,7 @@ services:
     healthCheckPath: /readyz
     # Region alternatives: oregon, ohio, virginia, frankfurt, singapore.
     # Keep it close to the Neon project region to cut query latency.
-    region: oregon
+    region: ohio
     plan: free
     branch: main
     autoDeploy: true
@@ -25,7 +25,9 @@ services:
         value: "8080"
       - key: ALLOWED_ORIGINS
         value: https://app.magnifit.co
-      # Neon POOLED connection string (host contains -pooler). Set in the dashboard.
+      # Neon DIRECT connection string (pooling off, host without -pooler): migrations
+      # on boot take a session advisory lock the pooled connection does not support.
+      # Set in the dashboard.
       - key: DATABASE_URL
         sync: false
       # Clerk production secret key (sk_live_...). Set in the dashboard.
