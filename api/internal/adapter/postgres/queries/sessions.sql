@@ -22,3 +22,7 @@ SELECT * FROM sessions
 WHERE user_id = $1 AND rev > $2
 ORDER BY rev
 LIMIT $3;
+
+-- name: DeleteSessions :exec
+-- Deletes every row of one user, tombstones included (DELETE /v1/data).
+DELETE FROM sessions WHERE user_id = $1;

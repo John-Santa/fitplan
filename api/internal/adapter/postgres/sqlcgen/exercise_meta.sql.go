@@ -11,6 +11,16 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const deleteExerciseMeta = `-- name: DeleteExerciseMeta :exec
+DELETE FROM exercise_meta WHERE user_id = $1
+`
+
+// Deletes every row of one user, tombstones included (DELETE /v1/data).
+func (q *Queries) DeleteExerciseMeta(ctx context.Context, userID string) error {
+	_, err := q.db.Exec(ctx, deleteExerciseMeta, userID)
+	return err
+}
+
 const getExerciseMeta = `-- name: GetExerciseMeta :one
 SELECT user_id, exercise_id, body, rev, updated_at, deleted_at, server_updated_at FROM exercise_meta WHERE user_id = $1 AND exercise_id = $2
 `
