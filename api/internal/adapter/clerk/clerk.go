@@ -4,7 +4,9 @@
 package clerk
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/clerk/clerk-sdk-go/v2"
 	clerkhttp "github.com/clerk/clerk-sdk-go/v2/http"
@@ -16,6 +18,8 @@ import (
 // Authenticator implements port.Authenticator with Clerk.
 type Authenticator struct {
 	authorizedParties []string
+	// jwtKey, when set, verifies tokens without calling the Clerk API.
+	jwtKey string
 }
 
 var _ port.Authenticator = (*Authenticator)(nil)
@@ -28,6 +32,29 @@ func New(secretKey string, authorizedParties []string) *Authenticator {
 	return &Authenticator{authorizedParties: authorizedParties}
 }
 
+// WithJWTKey makes the authenticator verify session tokens with the instance's
+// JWT public key (CLERK_JWT_KEY) instead of fetching the signing key from the
+// Clerk Backend API. Without it, every token carrying an unknown key id costs
+// one outbound request before its signature is checked, which lets
+// unauthenticated callers spend the instance's Clerk API quota. The key is
+// parsed here so a wrong value fails at startup, not on the first request.
+func (a *Authenticator) WithJWTKey(key string) (*Authenticator, error) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return nil, fmt.Errorf("clerk: empty JWT key")
+	}
+	// Same normalization as clerkhttp.JSONWebKey: the dashboard also offers
+	// the key as one line without the PEM header and footer.
+	pem := key
+	if !strings.HasPrefix(pem, "-----BEGIN") {
+		pem = "-----BEGIN PUBLIC KEY-----\n" + pem + "\n-----END PUBLIC KEY-----"
+	}
+	if _, err := clerk.JSONWebKeyFromPEM(pem); err != nil {
+		return nil, fmt.Errorf("clerk: invalid JWT key: %w", err)
+	}
+	return &Authenticator{authorizedParties: a.authorizedParties, jwtKey: key}, nil
+}
+
 // Authenticate uses clerkhttp.WithHeaderAuthorization plus its own claims
 // check instead of RequireHeaderAuthorization, because the latter answers a
 // bodyless 403 when the token is missing or malformed; the API contract is a
@@ -36,6 +63,9 @@ func (a *Authenticator) Authenticate(next, unauthorized http.Handler) http.Handl
 	opts := []clerkhttp.AuthorizationOption{clerkhttp.AuthorizationFailureHandler(unauthorized)}
 	if check := authorizedParty(a.authorizedParties); check != nil {
 		opts = append(opts, clerkhttp.AuthorizedParty(check))
+	}
+	if a.jwtKey != "" {
+		opts = append(opts, clerkhttp.JSONWebKey(a.jwtKey))
 	}
 	return clerkhttp.WithHeaderAuthorization(opts...)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		claims, ok := clerk.SessionClaimsFromContext(r.Context())

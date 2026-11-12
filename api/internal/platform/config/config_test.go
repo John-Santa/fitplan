@@ -37,9 +37,13 @@ func TestLoadValues(t *testing.T) {
 		"ALLOWED_ORIGINS":  " https://app.magnifit.co , http://localhost:5173,,",
 		"DATABASE_URL":     "postgres://example",
 		"CLERK_SECRET_KEY": "placeholder",
+		"CLERK_JWT_KEY":    " jwt-key ",
 	}))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ClerkJWTKey != "jwt-key" {
+		t.Errorf("ClerkJWTKey = %q, want jwt-key", cfg.ClerkJWTKey)
 	}
 	if cfg.Port != "9090" || cfg.DatabaseURL != "postgres://example" || cfg.ClerkSecretKey != "placeholder" {
 		t.Errorf("unexpected config: %+v", cfg)

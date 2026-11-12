@@ -35,7 +35,7 @@ type RouterConfig struct {
 }
 
 // NewRouter builds the router. Middleware order, outermost first:
-// RequestID → Logger → Recover → CORS → Auth. The logger sees the final
+// RequestID → SecurityHeaders → Logger → Recover → CORS → Auth → Timeout. The logger sees the final
 // status of recovered panics; CORS headers are set before Auth and the
 // handlers run, so 401 and 500 answers still carry them and preflights are
 // answered without credentials.
@@ -46,10 +46,12 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	}
 	r := chi.NewRouter()
 	r.Use(requestID)
+	r.Use(securityHeaders)
 	r.Use(requestLogger(log))
 	r.Use(recoverer(log))
 	r.Use(cors(cfg.AllowedOrigins))
 	r.Use(authenticate(cfg.Authenticator, r))
+	r.Use(middleware.Timeout(handlerTimeout))
 	r.Use(middleware.GetHead)
 
 	r.NotFound(func(w http.ResponseWriter, _ *http.Request) {

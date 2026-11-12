@@ -21,12 +21,47 @@ const requestIDHeader = "X-Request-ID"
 // requires a valid Bearer token; unrouted requests fall through to 404/405.
 var publicPaths = []string{"/health", "/readyz"}
 
-// requestID reuses an incoming X-Request-ID (up to 128 chars) or generates
-// one, echoes it back, and stores it in the context for the logger.
+// handlerTimeout bounds the work of one request. It stays below the server
+// WriteTimeout so database calls are cancelled before the connection is cut.
+const handlerTimeout = 25 * time.Second
+
+// securityHeaders sets the response headers every API answer carries. The API
+// serves JSON only, so the policy forbids loading or framing anything, and
+// personal data must not be kept by browser or intermediary caches.
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		h.Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
+		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("Cache-Control", "no-store")
+		next.ServeHTTP(w, r)
+	})
+}
+
+// safeRequestID reports whether id is 1 to 128 characters of [A-Za-z0-9._-],
+// the only incoming values echoed back and written to the logs.
+func safeRequestID(id string) bool {
+	if id == "" || len(id) > 128 {
+		return false
+	}
+	for _, c := range []byte(id) {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '.', c == '_', c == '-':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// requestID reuses a safe incoming X-Request-ID or generates one, echoes it
+// back, and stores it in the context for the logger.
 func requestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := r.Header.Get(requestIDHeader)
-		if id == "" || len(id) > 128 {
+		if !safeRequestID(id) {
 			id = newID()
 			r.Header.Set(requestIDHeader, id)
 		}

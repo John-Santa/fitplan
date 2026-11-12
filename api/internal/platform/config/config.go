@@ -22,6 +22,9 @@ type Config struct {
 	DatabaseURL string
 	// ClerkSecretKey is the Clerk backend API key. Required unless AppEnv is "test".
 	ClerkSecretKey string
+	// ClerkJWTKey is the Clerk instance's JWT public key. Optional: when set,
+	// session tokens are verified without calling the Clerk API.
+	ClerkJWTKey string
 }
 
 // IsTest reports whether the service runs in the test environment.
@@ -38,6 +41,7 @@ func Load(getenv func(string) string) (Config, error) {
 		AllowedOrigins: splitList(getenv("ALLOWED_ORIGINS")),
 		DatabaseURL:    strings.TrimSpace(getenv("DATABASE_URL")),
 		ClerkSecretKey: strings.TrimSpace(getenv("CLERK_SECRET_KEY")),
+		ClerkJWTKey:    strings.TrimSpace(getenv("CLERK_JWT_KEY")),
 	}
 	if cfg.Port == "" {
 		cfg.Port = defaultPort

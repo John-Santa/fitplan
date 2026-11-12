@@ -43,6 +43,7 @@ On boot the service connects to `DATABASE_URL`, applies pending migrations (unde
 | `APP_ENV` | empty | `test` makes `DATABASE_URL` and `CLERK_SECRET_KEY` optional |
 | `DATABASE_URL` | empty | Postgres URL. Required unless `APP_ENV=test`; without it the `/v1` routes are disabled |
 | `CLERK_SECRET_KEY` | empty | Clerk backend secret key. Required unless `APP_ENV=test`; without it `/v1` answers 401 |
+| `CLERK_JWT_KEY` | empty | Clerk JWT public key (PEM or single line). Optional: when set, tokens are verified without calling the Clerk API; an invalid value stops the service at startup |
 
 ## Endpoints
 

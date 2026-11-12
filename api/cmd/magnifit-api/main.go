@@ -45,7 +45,15 @@ func run(log *slog.Logger) error {
 	routes := httpapi.RouterConfig{Logger: log, AllowedOrigins: cfg.AllowedOrigins}
 
 	if cfg.ClerkSecretKey != "" {
-		routes.Authenticator = clerk.New(cfg.ClerkSecretKey, cfg.AllowedOrigins)
+		auth := clerk.New(cfg.ClerkSecretKey, cfg.AllowedOrigins)
+		if cfg.ClerkJWTKey != "" {
+			if auth, err = auth.WithJWTKey(cfg.ClerkJWTKey); err != nil {
+				return err
+			}
+		} else {
+			log.WarnContext(ctx, "CLERK_JWT_KEY not set; token verification fetches signing keys from the Clerk API")
+		}
+		routes.Authenticator = auth
 	} else {
 		log.WarnContext(ctx, "CLERK_SECRET_KEY not set; protected routes reject every request")
 	}
