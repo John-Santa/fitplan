@@ -33,6 +33,10 @@ services:
       # Clerk production secret key (sk_live_...). Set in the dashboard.
       - key: CLERK_SECRET_KEY
         sync: false
+      # Clerk JWT public key (dashboard > API keys > JWKS public key). Optional but
+      # recommended: tokens are then verified without calling the Clerk API.
+      - key: CLERK_JWT_KEY
+        sync: false
 
   # React PWA, built with Vite and served as a static site.
   - type: web
@@ -62,6 +66,39 @@ services:
       - path: /index.html
         name: Cache-Control
         value: no-cache
+      - path: /registerSW.js
+        name: Cache-Control
+        value: no-cache
+      - path: /manifest.webmanifest
+        name: Cache-Control
+        value: no-cache
+      # Security headers for every response of the static site.
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: Permissions-Policy
+        value: camera=(), microphone=(), geolocation=(), payment=()
+      - path: /*
+        name: Strict-Transport-Security
+        value: max-age=31536000
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      # Enforced: directives that cannot break the app or the Clerk sign-in.
+      - path: /*
+        name: Content-Security-Policy
+        value: "frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
+      # Full policy in report-only mode: violations show in the browser console
+      # and nothing is blocked. Move it into Content-Security-Policy once sign-in
+      # and sync run clean in production. The Clerk hosts follow Clerk's CSP guide
+      # for a production instance on clerk.magnifit.co.
+      - path: /*
+        name: Content-Security-Policy-Report-Only
+        value: "default-src 'self'; script-src 'self' https://clerk.magnifit.co https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://img.clerk.com; connect-src 'self' https://api.magnifit.co https://clerk.magnifit.co https://clerk-telemetry.com; frame-src https://challenges.cloudflare.com; worker-src 'self' blob:; manifest-src 'self'; form-action 'self'"
     envVars:
       - key: NODE_VERSION
         value: "22"

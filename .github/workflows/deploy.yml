@@ -8,10 +8,10 @@ on:
       - ".github/workflows/deploy.yml"
   workflow_dispatch:
 
+# Least privilege: only the deploy job may publish to Pages and mint an OIDC
+# token; the build job runs third-party install scripts with read access only.
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
@@ -53,6 +53,9 @@ jobs:
 
   deploy:
     needs: build
+    permissions:
+      pages: write
+      id-token: write
     runs-on: ubuntu-latest
     environment:
       name: github-pages
