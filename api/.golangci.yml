@@ -1,0 +1,56 @@
+version: "2"
+run:
+  timeout: 5m
+linters:
+  default: standard # errcheck govet ineffassign staticcheck unused
+  enable:
+    - misspell
+    - errorlint
+    - bodyclose
+    - gosec
+    - depguard
+    - sloglint
+  settings:
+    sloglint:
+      # Every non-test slog call must pass the context, so the logging handler
+      # can add request_id.
+      context: "all"
+    depguard:
+      rules:
+        domain-purity:
+          list-mode: strict
+          files:
+            - "**/internal/domain/**"
+            - "!$test"
+          allow:
+            - "github.com/John-Santa/fitplan/api/internal/domain/"
+            - "bytes$"
+            - "encoding/json$"
+            - "errors$"
+            - "fmt$"
+            - "math$"
+            - "regexp$"
+            - "strings$"
+            - "time$"
+        domain-purity-tests:
+          list-mode: strict
+          files:
+            - "**/internal/domain/**_test.go"
+          allow:
+            - "github.com/John-Santa/fitplan/api/internal/domain/"
+            - "bytes$"
+            - "encoding/json$"
+            - "errors$"
+            - "fmt$"
+            - "math$"
+            - "strings$"
+            - "testing$"
+            - "time$"
+  exclusions:
+    generated: strict
+    rules:
+      - path: _test\.go
+        linters: [gosec, sloglint]
+formatters:
+  enable:
+    - gofmt

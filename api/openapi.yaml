@@ -1,0 +1,293 @@
+openapi: 3.1.0
+info:
+  title: MagniFit API
+  version: 1.0.0
+  description: |
+    Offline-first sync API of MagniFit. Authenticated routes take a Clerk
+    session token as `Authorization: Bearer <token>`. Timestamps are epoch
+    milliseconds. Every error is an RFC 7807 problem (`application/problem+json`).
+servers:
+  - url: https://api.magnifit.co
+security:
+  - bearerAuth: []
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Liveness probe
+      security: []
+      responses:
+        "200":
+          description: The process is up.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Status"
+  /readyz:
+    get:
+      operationId: getReadyz
+      summary: Readiness probe (pings the database)
+      security: []
+      responses:
+        "200":
+          description: The database answers.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Status"
+        "503":
+          $ref: "#/components/responses/Problem"
+  /v1/me:
+    get:
+      operationId: getMe
+      summary: The authenticated user id
+      responses:
+        "200":
+          description: The Clerk user id of the caller.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [userId]
+                properties:
+                  userId:
+                    type: string
+        "401":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /v1/sync:
+    get:
+      operationId: pullChanges
+      summary: Pull records changed since a cursor
+      parameters:
+        - name: since
+          in: query
+          description: Cursor returned by the previous pull (server rev); 0 for everything.
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          description: Maximum number of records across all collections.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 200
+      responses:
+        "200":
+          description: Records with rev > since, ordered by rev, tombstones included.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PullResponse"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: pushChanges
+      summary: Push changed records (last write wins per record)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushRequest"
+      responses:
+        "200":
+          description: One result per pushed record, in input order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PushResponse"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "413":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    Problem:
+      description: RFC 7807 problem details.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+  schemas:
+    Problem:
+      type: object
+      required: [type, title, status, detail]
+      properties:
+        type:
+          type: string
+          description: Always "about:blank"; title is then the HTTP status text.
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+          description: >-
+            Human-readable reason. Validation errors carry the field path,
+            e.g. 'documents[0].kind: must be plan or config, got "habits"'.
+    Status:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+    Body:
+      type: object
+      description: The record as the front stores it (opaque JSON object, max 256 KiB).
+    Millis:
+      type: integer
+      format: int64
+      description: Epoch milliseconds.
+    NullableMillis:
+      type: [integer, "null"]
+      format: int64
+      description: Epoch milliseconds of the tombstone, or null.
+    DocumentKind:
+      type: string
+      enum: [plan, config]
+    # Records as pushed: updatedAt is required by validation, rev is ignored.
+    PushDocument:
+      type: object
+      additionalProperties: false
+      required: [kind, body]
+      properties:
+        kind: { $ref: "#/components/schemas/DocumentKind" }
+        body: { $ref: "#/components/schemas/Body" }
+        updatedAt: { $ref: "#/components/schemas/NullableMillis" }
+        deletedAt: { $ref: "#/components/schemas/NullableMillis" }
+        rev: { type: integer, format: int64 }
+    PushSession:
+      type: object
+      additionalProperties: false
+      required: [id, body]
+      properties:
+        id: { type: string, maxLength: 128 }
+        body: { $ref: "#/components/schemas/Body" }
+        updatedAt: { $ref: "#/components/schemas/NullableMillis" }
+        deletedAt: { $ref: "#/components/schemas/NullableMillis" }
+        rev: { type: integer, format: int64 }
+    PushMeasurement:
+      type: object
+      additionalProperties: false
+      required: [date, body]
+      properties:
+        date: { type: string, description: "Local day, YYYY-MM-DD." }
+        body: { $ref: "#/components/schemas/Body" }
+        updatedAt: { $ref: "#/components/schemas/NullableMillis" }
+        deletedAt: { $ref: "#/components/schemas/NullableMillis" }
+        rev: { type: integer, format: int64 }
+    PushExerciseMeta:
+      type: object
+      additionalProperties: false
+      required: [exerciseId, body]
+      properties:
+        exerciseId: { type: string, maxLength: 128 }
+        body: { $ref: "#/components/schemas/Body" }
+        updatedAt: { $ref: "#/components/schemas/NullableMillis" }
+        deletedAt: { $ref: "#/components/schemas/NullableMillis" }
+        rev: { type: integer, format: int64 }
+    PushRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        documents: { type: [array, "null"], items: { $ref: "#/components/schemas/PushDocument" } }
+        sessions: { type: [array, "null"], items: { $ref: "#/components/schemas/PushSession" } }
+        measurements: { type: [array, "null"], items: { $ref: "#/components/schemas/PushMeasurement" } }
+        exerciseMeta: { type: [array, "null"], items: { $ref: "#/components/schemas/PushExerciseMeta" } }
+        cursor: { type: integer, format: int64, description: Ignored on push. }
+        hasMore: { type: boolean, description: Ignored on push. }
+    # Records as pulled: every field is always present.
+    Document:
+      type: object
+      additionalProperties: false
+      required: [kind, body, updatedAt, deletedAt, rev]
+      properties:
+        kind: { $ref: "#/components/schemas/DocumentKind" }
+        body: { $ref: "#/components/schemas/Body" }
+        updatedAt: { $ref: "#/components/schemas/Millis" }
+        deletedAt: { $ref: "#/components/schemas/NullableMillis" }
+        rev: { type: integer, format: int64 }
+    Session:
+      type: object
+      additionalProperties: false
+      required: [id, body, updatedAt, deletedAt, rev]
+      properties:
+        id: { type: string }
+        body: { $ref: "#/components/schemas/Body" }
+        updatedAt: { $ref: "#/components/schemas/Millis" }
+        deletedAt: { $ref: "#/components/schemas/NullableMillis" }
+        rev: { type: integer, format: int64 }
+    Measurement:
+      type: object
+      additionalProperties: false
+      required: [date, body, updatedAt, deletedAt, rev]
+      properties:
+        date: { type: string }
+        body: { $ref: "#/components/schemas/Body" }
+        updatedAt: { $ref: "#/components/schemas/Millis" }
+        deletedAt: { $ref: "#/components/schemas/NullableMillis" }
+        rev: { type: integer, format: int64 }
+    ExerciseMeta:
+      type: object
+      additionalProperties: false
+      required: [exerciseId, body, updatedAt, deletedAt, rev]
+      properties:
+        exerciseId: { type: string }
+        body: { $ref: "#/components/schemas/Body" }
+        updatedAt: { $ref: "#/components/schemas/Millis" }
+        deletedAt: { $ref: "#/components/schemas/NullableMillis" }
+        rev: { type: integer, format: int64 }
+    PullResponse:
+      type: object
+      additionalProperties: false
+      required: [documents, sessions, measurements, exerciseMeta, cursor, hasMore]
+      properties:
+        documents: { type: array, items: { $ref: "#/components/schemas/Document" } }
+        sessions: { type: array, items: { $ref: "#/components/schemas/Session" } }
+        measurements: { type: array, items: { $ref: "#/components/schemas/Measurement" } }
+        exerciseMeta: { type: array, items: { $ref: "#/components/schemas/ExerciseMeta" } }
+        cursor:
+          type: integer
+          format: int64
+          description: Rev to send as `since` next time.
+        hasMore:
+          type: boolean
+          description: True when more records are waiting; pull again.
+    ItemResult:
+      type: object
+      additionalProperties: false
+      required: [key, status, rev]
+      properties:
+        key: { type: string, description: "Natural key: kind, id, date or exerciseId." }
+        status: { type: string, enum: [applied, stale] }
+        rev: { type: integer, format: int64, description: New server rev; 0 when stale. }
+    PushResponse:
+      type: object
+      additionalProperties: false
+      required: [documents, sessions, measurements, exerciseMeta]
+      properties:
+        documents: { type: array, items: { $ref: "#/components/schemas/ItemResult" } }
+        sessions: { type: array, items: { $ref: "#/components/schemas/ItemResult" } }
+        measurements: { type: array, items: { $ref: "#/components/schemas/ItemResult" } }
+        exerciseMeta: { type: array, items: { $ref: "#/components/schemas/ItemResult" } }

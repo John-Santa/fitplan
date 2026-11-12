@@ -1,0 +1,287 @@
+// Pruebas de mergeConfig (A8/A10). Cubren la regresion de 53590ef: una
+// config guardada a la que le falta un campo (de primer nivel o anidado
+// dentro de goal) debia repararse en silencio, no propagar undefined.
+// Co-ubicadas junto al codigo (no en test/) porque tsconfig.json solo
+// incluye "src" y "vite.config.ts": todo lo que este bajo test/ nunca lo
+// verifica tsc -b.
+import { describe, expect, it } from 'vitest'
+import type { Config } from './types'
+import { DEFAULT_CONFIG, DEFAULT_WEEKLY_ROUTINE, mergeConfig, normalizeSession } from './plan'
+import { DEFAULT_PLAN } from './defaultPlan'
+
+describe('mergeConfig', () => {
+  it('rellena un campo de primer nivel faltante (regresion 53590ef)', () => {
+    const stored = {
+      blockStart: '2020-01-01',
+      blockEnd: '2020-02-01',
+      goal: DEFAULT_CONFIG.goal,
+      weeklyRoutine: DEFAULT_CONFIG.weeklyRoutine,
+      // heightCm falta por completo: es exactamente la forma del bug
+      // desplegado en 53590ef, donde el objeto guardado no tenia el campo
+      // nuevo y el spread lo dejaba pasar sin avisar.
+    }
+    const merged = mergeConfig(stored)
+    expect(merged.heightCm).toBe(DEFAULT_CONFIG.heightCm)
+    expect(merged.blockStart).toBe('2020-01-01')
+    expect(merged.blockEnd).toBe('2020-02-01')
+  })
+
+  it('rellena un campo anidado faltante dentro de goal', () => {
+    const stored = { goal: { weight: 70 } }
+    const merged = mergeConfig(stored)
+    expect(merged.goal.weight).toBe(70)
+    expect(merged.goal.fatPct).toBe(DEFAULT_CONFIG.goal.fatPct)
+    expect(merged.goal.fatMass).toBe(DEFAULT_CONFIG.goal.fatMass)
+    expect(merged.goal.muscle).toBe(DEFAULT_CONFIG.goal.muscle)
+    expect(merged.goal.water).toBe(DEFAULT_CONFIG.goal.water)
+    expect(merged.goal.waist).toBe(DEFAULT_CONFIG.goal.waist)
+    expect(merged.goal.hip).toBe(DEFAULT_CONFIG.goal.hip)
+    expect(merged.goal.chest).toBe(DEFAULT_CONFIG.goal.chest)
+    expect(merged.goal.neck).toBe(DEFAULT_CONFIG.goal.neck)
+  })
+
+  it('goal ausente por completo se llena entero con los valores por defecto', () => {
+    const merged = mergeConfig({})
+    expect(merged.goal).toEqual(DEFAULT_CONFIG.goal)
+  })
+
+  it('repara dia por dia: un dia invalido vuelve al default de ESE dia, el resto sobrevive', () => {
+    const week = DEFAULT_CONFIG.weeklyRoutine.map((d, i) => (i === 2 ? { kind: 'bogus' } : d))
+    const merged = mergeConfig({ weeklyRoutine: week })
+    expect(merged.weeklyRoutine[2]).toEqual(DEFAULT_CONFIG.weeklyRoutine[2])
+    expect(merged.weeklyRoutine[0]).toEqual(DEFAULT_CONFIG.weeklyRoutine[0])
+    expect(merged.weeklyRoutine[1]).toEqual(DEFAULT_CONFIG.weeklyRoutine[1])
+    expect(merged.weeklyRoutine[3]).toEqual(DEFAULT_CONFIG.weeklyRoutine[3])
+    expect(merged.weeklyRoutine[4]).toEqual(DEFAULT_CONFIG.weeklyRoutine[4])
+    expect(merged.weeklyRoutine[5]).toEqual(DEFAULT_CONFIG.weeklyRoutine[5])
+    expect(merged.weeklyRoutine[6]).toEqual(DEFAULT_CONFIG.weeklyRoutine[6])
+  })
+
+  it('un dia de entreno con routineId invalido (no es texto) tambien se repara', () => {
+    const week = DEFAULT_CONFIG.weeklyRoutine.map((d, i) =>
+      i === 1 ? { kind: 'training', routineId: 7, title: '', note: '' } : d,
+    )
+    const merged = mergeConfig({ weeklyRoutine: week })
+    expect(merged.weeklyRoutine[1]).toEqual(DEFAULT_CONFIG.weeklyRoutine[1])
+  })
+
+  it('weeklyRoutine ausente o con forma invalida repara la semana entera', () => {
+    expect(mergeConfig({ weeklyRoutine: undefined }).weeklyRoutine).toEqual(DEFAULT_CONFIG.weeklyRoutine)
+    expect(mergeConfig({ weeklyRoutine: 'no-es-un-arreglo' }).weeklyRoutine).toEqual(DEFAULT_CONFIG.weeklyRoutine)
+  })
+
+  it('stored undefined devuelve la config por defecto completa', () => {
+    expect(mergeConfig(undefined)).toEqual(DEFAULT_CONFIG)
+  })
+
+  it('stored null devuelve la config por defecto completa', () => {
+    expect(mergeConfig(null)).toEqual(DEFAULT_CONFIG)
+  })
+
+  it('stored que no es un objeto no revienta y devuelve la config por defecto', () => {
+    expect(mergeConfig('no-es-config')).toEqual(DEFAULT_CONFIG)
+    expect(mergeConfig(42)).toEqual(DEFAULT_CONFIG)
+    expect(mergeConfig([])).toEqual(DEFAULT_CONFIG)
+  })
+
+  it('conserva un valor guardado valido sin tocarlo', () => {
+    const stored: Config = {
+      ...DEFAULT_CONFIG,
+      heightCm: 190,
+      goal: { ...DEFAULT_CONFIG.goal, weight: 80 },
+    }
+    const merged = mergeConfig(stored)
+    expect(merged).toEqual(stored)
+  })
+
+  it('es idempotente, incluido el orden de las claves que store.tsx compara con JSON.stringify', () => {
+    const stored = { heightCm: 180, goal: { weight: 70 } }
+    const once = mergeConfig(stored)
+    const twice = mergeConfig(once)
+    expect(twice).toEqual(once)
+    expect(JSON.stringify(twice)).toBe(JSON.stringify(once))
+  })
+
+  it('mergeConfig(DEFAULT_CONFIG) es un no-op, tambien en el orden de claves', () => {
+    const merged = mergeConfig(DEFAULT_CONFIG)
+    expect(merged).toEqual(DEFAULT_CONFIG)
+    expect(JSON.stringify(merged)).toBe(JSON.stringify(DEFAULT_CONFIG))
+  })
+
+  it('rellena poolLengthM faltante (A1: Config gana un escalar plano nuevo)', () => {
+    const merged = mergeConfig({ heightCm: 180 })
+    expect(merged.poolLengthM).toBe(DEFAULT_CONFIG.poolLengthM)
+  })
+})
+
+// Pruebas de normalizeSession (A1/A10). Cubren la migracion de la unica
+// disciplina anterior al motor (fuerza, sin `kind`) y la representabilidad
+// de la nueva (natacion). Es la funcion mas importante de todo el cambio:
+// segun A10 es la unica que ni tsc ni el arnes de navegador pueden alcanzar
+// por si solos.
+describe('normalizeSession', () => {
+  const legacyStrengthRow = {
+    id: 'dia1-1',
+    routineId: 'dia1',
+    date: '2026-08-04',
+    startedAt: 1000,
+    finishedAt: 2000,
+    sets: [{ exerciseId: 'leg-press', setIndex: 0, weight: 80, reps: 12, done: true }],
+    notes: '',
+  }
+
+  it('una fila sin kind (el byte exacto anterior al motor) se normaliza como sesion de fuerza', () => {
+    const s = normalizeSession(legacyStrengthRow)
+    expect(s).not.toBeNull()
+    expect(s?.kind).toBe('strength')
+    expect(s).toMatchObject({ kind: 'strength', id: 'dia1-1', routineId: 'dia1', date: '2026-08-04' })
+  })
+
+  it('un kind desconocido descarta la fila (se cuenta y se descarta de memoria, nunca del disco)', () => {
+    expect(normalizeSession({ ...legacyStrengthRow, kind: 'running' })).toBeNull()
+  })
+
+  it('un routineId que no es texto, o es vacio, descarta la fila de fuerza', () => {
+    expect(normalizeSession({ ...legacyStrengthRow, routineId: 7 })).toBeNull()
+    expect(normalizeSession({ ...legacyStrengthRow, routineId: '' })).toBeNull()
+    expect(normalizeSession({ ...legacyStrengthRow, routineId: undefined })).toBeNull()
+  })
+
+  it('conserva sesiones de una rutina del plan nuevo y de una rutina desconocida (S4)', () => {
+    expect(normalizeSession({ ...legacyStrengthRow, routineId: 'espalda-d3' })).toMatchObject({ routineId: 'espalda-d3' })
+    expect(normalizeSession({ ...legacyStrengthRow, routineId: 'diaX' })).toMatchObject({ routineId: 'diaX' })
+  })
+
+  it('una sesion legacy dia1 normaliza igual que antes (sin pain ni campos nuevos)', () => {
+    expect(normalizeSession(legacyStrengthRow)).toEqual({ kind: 'strength', ...legacyStrengthRow })
+  })
+
+  it('conserva durationSec y distanceM de una serie y omite los no finitos sin perder la serie', () => {
+    const s = normalizeSession({
+      ...legacyStrengthRow,
+      sets: [
+        { exerciseId: 'plank', setIndex: 0, weight: null, reps: null, done: true, durationSec: 30, distanceM: null },
+        { exerciseId: 'carry', setIndex: 0, weight: 10, reps: null, done: true, distanceM: 30 },
+        { exerciseId: 'bad', setIndex: 0, weight: null, reps: null, done: true, durationSec: Number.NaN },
+      ],
+    })
+    expect(s?.kind === 'strength' && s.sets).toEqual([
+      { exerciseId: 'plank', setIndex: 0, weight: null, reps: null, done: true, durationSec: 30, distanceM: null },
+      { exerciseId: 'carry', setIndex: 0, weight: 10, reps: null, done: true, distanceM: 30 },
+      { exerciseId: 'bad', setIndex: 0, weight: null, reps: null, done: true },
+    ])
+  })
+
+  it('conserva pain y descarta lo invalido; acota a 0-10', () => {
+    const s = normalizeSession({ ...legacyStrengthRow, pain: { a: 3, b: 14, c: -2, d: 'x', e: Number.NaN } })
+    expect(s?.kind === 'strength' && s.pain).toEqual({ a: 3, b: 10, c: 0 })
+  })
+
+  it('un pain que no es objeto se ignora sin descartar la sesion', () => {
+    const s = normalizeSession({ ...legacyStrengthRow, pain: 'mucho' })
+    expect(s).not.toBeNull()
+    expect(s?.kind === 'strength' && s.pain).toBeUndefined()
+  })
+
+  it('valores que no son objeto, o son null, devuelven null sin reventar', () => {
+    expect(normalizeSession(null)).toBeNull()
+    expect(normalizeSession(undefined)).toBeNull()
+    expect(normalizeSession('no-es-una-sesion')).toBeNull()
+    expect(normalizeSession(42)).toBeNull()
+    expect(normalizeSession([])).toBeNull()
+  })
+
+  it('una fila con forma corrupta (falta id) devuelve null', () => {
+    const { id: _id, ...withoutId } = legacyStrengthRow
+    expect(normalizeSession(withoutId)).toBeNull()
+  })
+
+  it('es idempotente: normalizar una sesion ya normalizada devuelve el mismo resultado', () => {
+    const once = normalizeSession(legacyStrengthRow)
+    const twice = normalizeSession(once)
+    expect(twice).toEqual(once)
+  })
+
+  it('una fila de natacion valida hace round-trip sin cambios', () => {
+    const swimRow = {
+      kind: 'swim',
+      id: 'swim-1',
+      date: '2026-08-05',
+      startedAt: 1000,
+      finishedAt: 2000,
+      poolLengthM: 25,
+      blocks: [{ index: 0, distanceM: 400, timeSec: 480, stroke: 'freestyle', done: true }],
+      rpe: 6,
+      notes: 'buena sesion',
+    }
+    expect(normalizeSession(swimRow)).toEqual(swimRow)
+  })
+
+  it('una fila de natacion sin poolLengthM (forma corrupta) devuelve null', () => {
+    expect(
+      normalizeSession({
+        kind: 'swim', id: 'swim-1', date: '2026-08-05', startedAt: 1000, finishedAt: null, blocks: [], rpe: null, notes: '',
+      }),
+    ).toBeNull()
+  })
+})
+
+describe('semana por defecto y rutinas del plan', () => {
+  it('DEFAULT_CONFIG usa la semana del plan y las fechas de 12 semanas (A2)', () => {
+    expect(DEFAULT_CONFIG.weeklyRoutine).toEqual(DEFAULT_PLAN.weekTemplate)
+    expect(DEFAULT_CONFIG.blockStart).toBe('2026-11-16')
+    expect(DEFAULT_CONFIG.blockEnd).toBe('2027-02-07')
+  })
+
+  it('DEFAULT_WEEKLY_ROUTINE sigue siendo la semana anterior (dia1..dia3 y natacion)', () => {
+    const ids = DEFAULT_WEEKLY_ROUTINE.flatMap(d => (d.kind === 'training' ? [d.routineId] : []))
+    expect(ids).toEqual(['dia1', 'dia2', 'dia3'])
+  })
+
+  it('un dia de entreno con un id de rutina del plan o desconocido se conserva tal cual', () => {
+    const week = DEFAULT_CONFIG.weeklyRoutine.map((d, i) =>
+      i === 1 ? { kind: 'training', routineId: 'espalda-d1', title: '', note: 'x' } : i === 2 ? { kind: 'training', routineId: 'borrada', title: '', note: '' } : d,
+    )
+    const merged = mergeConfig({ weeklyRoutine: week })
+    expect(merged.weeklyRoutine[1]).toMatchObject({ kind: 'training', routineId: 'espalda-d1', note: 'x' })
+    expect(merged.weeklyRoutine[2]).toMatchObject({ kind: 'training', routineId: 'borrada' })
+  })
+
+  it('un dia de entreno con routineId vacio se repara', () => {
+    const week = DEFAULT_CONFIG.weeklyRoutine.map((d, i) =>
+      i === 1 ? { kind: 'training', routineId: '', title: '', note: '' } : d,
+    )
+    expect(mergeConfig({ weeklyRoutine: week }).weeklyRoutine[1]).toEqual(DEFAULT_CONFIG.weeklyRoutine[1])
+  })
+})
+
+// routineExercises lo escribia el editor de rutinas anterior al plan editable
+// (PR #1). Ya no se edita, pero mergeConfig lo conserva: es el dato que la
+// migracion lleva al plan (rutinas archivadas y ejercicios propios).
+describe('routineExercises heredado', () => {
+  const custom = {
+    id: 'custom-abc123', name: 'Sentadilla búlgara',
+    sets: 4, repsLow: 10, repsHigh: 12, restSec: 90, cue: '', mwSlug: '',
+  }
+
+  it('mergeConfig conserva ejercicios personalizados validos', () => {
+    const merged = mergeConfig({ routineExercises: { dia1: [custom] } })
+    expect(merged.routineExercises.dia1).toEqual([custom])
+    expect(merged.routineExercises.dia2).toBeUndefined()
+  })
+
+  it('mergeConfig descarta listas invalidas, vacias o con ids repetidos', () => {
+    const merged = mergeConfig({
+      routineExercises: {
+        dia1: [],
+        dia2: [{ ...custom, sets: 0 }],
+        dia3: [custom, custom],
+      },
+    })
+    expect(merged.routineExercises).toEqual({})
+  })
+
+  it('una config sin routineExercises queda con un objeto vacio', () => {
+    expect(mergeConfig({ heightCm: 170 }).routineExercises).toEqual({})
+  })
+})
