@@ -22,7 +22,9 @@ Quoted fragments come verbatim from the audit artifact the user asked to impleme
 - S16 — M2, rate limiting (decided, L5): "Sin límite de peticiones ni tope de registros por envío", library "x/time/rate (Recomendada)": golang.org/x/time/rate, per-user limiter keyed by the verified JWT sub with an own middleware. The per-push record cap needs the first-login upload chunking checked first ("el tope necesita revisar la subida inicial").
 - S17 — F29, reminders (decided, L6): "Solo locales (Recomendada)": "Recordar a la hora planeada usando las intenciones guardadas. Locales: service worker y permiso, en iOS con la app instalada." No new API.
 - S18 — L1 and L2 (decided, L12): "Solo en producción (Recomendada)": with `APP_ENV=production` the API does not start without `ALLOWED_ORIGINS` or with an `sslmode` other than require or verify-full; local runs unchanged.
-- S14 — Pending user decisions, not implemented until decided: F11 warm-up; L1 and L2 moved to S18;, L2, L3, L8; og:locale market; Pages retirement date; new image assets.
+- S19 — L8 (decided, L14): "Archivo propio (Recomendada)": Inter served from the app's own origin, no npm dependency, no Google host in the CSP, works offline.
+- S20 — L3 (decided, L15): "Separar con 2 URLs (Recomendada)": optional `MIGRATION_DATABASE_URL`; when set, migrations use that role and the API serves with `DATABASE_URL` of a least-privilege `magnifit_app` role (SELECT/INSERT/UPDATE/DELETE); SQL to create the role in Neon documented; without the variable, behavior is unchanged.
+- S14 — Pending user decisions, not implemented until decided: F11 warm-up; L1 and L2 moved to S18; L3 moved to S20; L8 moved to S19;, L2, L3, L8; og:locale market; Pages retirement date; new image assets.
 
 ## Tasks
 - [ ] W1 — S4: delete account (API + web). Route: delegated, parallel writer (Opus, high). Risk items 1 and 2: independent verifier + native review. Branch `feat/delete-account`.
@@ -37,6 +39,8 @@ Quoted fragments come verbatim from the audit artifact the user asked to impleme
 - [ ] W11 — S17: local training reminders. Route: delegated, parallel writer (Sonnet, high). Branch `feat/local-reminders`.
 - [ ] W10 — S16: per-user rate limit and per-push record cap. Route: delegated, parallel writer (Sonnet, high). Risk items 2 (guard) and 5 (new dependency): independent verifier. Branch `feat/api-rate-limit`.
 - [ ] W12 — S18: production guards for origins and database TLS. Route: inline (small, understood). Branch `feat/prod-config-guards`, commit f33140e. RED observed (2 new tests failed), GREEN: go vet clean, go test all ok. `render.yaml` already sets `APP_ENV=production` and `ALLOWED_ORIGINS`, so it is unchanged. Risk: item 2 (startup guard) and item 5 (a production `DATABASE_URL` without `sslmode=require` stops the API from starting): independent verifier pending; the user must confirm the Render `DATABASE_URL` carries `sslmode=require` before merging.
+- [x] W14 — S19: self-hosted Inter. Route: inline. Branch `feat/self-hosted-inter`, commit 7d211d9. Latin-subset variable woff2 (48 KB) from Google Fonts with its OFL license; Google links removed from `index.html`; CSP `style-src`/`font-src` back to `'self'`. Build ok: font emitted with hash, referenced by the CSS, present in `sw.js` precache (15 entries). Not checked in a browser. Risk: item 5 (CSP in `render.yaml`), low: removing hosts only narrows the policy.
+- [ ] W13 — S20: separate migration role. Route: delegated when load allows (Sonnet, high). Risk items 1, 2 and 5: independent verifier. Branch `feat/migration-role`.
 - [ ] W3 — verification pending: Risk item 1 (erase device, atomic import) needs an independent verifier.
 - [ ] D1 — S14: decisions requested from the user, one at a time, starting with F26.
 
@@ -54,3 +58,5 @@ Quoted fragments come verbatim from the audit artifact the user asked to impleme
 - L11 — 2026-11-12, runtime: load average reached ~160 with eight agents running web suites at once; W3 and W10 stalled after 600 s without progress. W3 resumed; W10 could not be resumed (its worktree could not be verified) and stays paused at d192a82 until load drops.
 - L12 — 2026-11-12, user decision on L1/L2: "Solo en producción (Recomendada)". S18 added; W12 implemented inline. `verify-ca` is also accepted (stronger than `require`).
 - L13 — 2026-11-12, W3 result: commits f42fd25, cad3558, 0b68c94 on `feat/sign-out-erase`; typecheck ok; 407/408 with one `engine.test.ts` timeout that also fails on the base under load; differential of `importBackup`/`wipeAll` byte-identical except the intended draft removal. Writer extended the test fake `web/src/lib/testing/memoryIdb.ts` with multi-store transactions (authorized). Open: Clerk `UserButton` built-in sign-out hiding unverified in a browser; "Exportar y cambiar" keeps the new account and erases the old local data.
+- L14 — 2026-11-12, user decision on L8: "Archivo propio (Recomendada)". W14 implemented inline (7d211d9).
+- L15 — 2026-11-12, user decision on L3: "Separar con 2 URLs (Recomendada)". S20 added; W13 queued with W10 until load drops (load average ~110-130).
