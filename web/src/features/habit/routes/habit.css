@@ -91,3 +91,17 @@
 .hab-save:hover:not(:disabled) { background: var(--fp-primary-press); }
 .hab-save:disabled { opacity: .6; cursor: default; }
 @media (max-width: 360px) { .hab-edit { grid-template-columns: 1fr; } }
+
+/* Recordatorios: interruptor y notas de estado. */
+.hab-switch {
+  position: relative; width: 52px; min-width: 52px; height: 32px; padding: 0; border: 1px solid var(--fp-line); border-radius: 999px;
+  background: var(--fp-s2); cursor: pointer; flex-shrink: 0;
+}
+.hab-switch span {
+  position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: var(--fp-ink2);
+  transition: transform .15s ease, background .15s ease;
+}
+.hab-switch.on { background: var(--fp-primary); border-color: var(--fp-primary); }
+.hab-switch.on span { transform: translateX(20px); background: var(--fp-on-primary); }
+.hab-switch:disabled { opacity: .6; cursor: default; }
+.hab-note { color: var(--fp-ink); }

@@ -9,6 +9,7 @@ import Settings from '../features/account/routes/Settings'
 import PlanEditor from '../features/plan/routes/PlanEditor'
 import { loadActiveDraft } from '../features/session/lib/activeSession'
 import Guide from '../features/guide/routes/Guide'
+import { ReminderRunner } from '../features/reminders/components/ReminderRunner'
 
 type Tab = 'home' | 'plan' | 'progreso' | 'perfil'
 type ProgressView = 'habit' | 'train' | 'measure'
@@ -58,6 +59,7 @@ function Shell() {
   return (
     <div className="app">
       <main className="main">
+        <ReminderRunner onOpen={() => selectTab('home')} />
         {guideOpen ? (
           <Guide onBack={() => setGuideOpen(false)} />
         ) : (
