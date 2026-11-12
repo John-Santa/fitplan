@@ -44,6 +44,18 @@ El login y la sincronización son opcionales. Se activan con dos variables de en
 
 Sin ellas la app es solo local: no se carga Clerk, no hay cuenta y todo vive en el dispositivo (IndexedDB), igual que hoy. El despliegue en GitHub Pages funciona sin configurar nada.
 
+### Sincronización (offline-first)
+
+IndexedDB sigue siendo la fuente de verdad local; el código vive en `src/lib/sync/`.
+
+- **Outbox.** Cada escritura de la tienda (`store.tsx` → `sync/localWrites.ts`) guarda en IndexedDB y deja el cambio en una base aparte, `magnifit-sync` (almacenes `outbox` y `meta`), sin tocar la versión de `fitplan`. Dos escrituras del mismo registro quedan como una sola entrada; un borrado viaja como lápida con el último body conocido. Con el login deshabilitado no se encola nada; con login pero sin sesión sí, para subirlo al entrar.
+- **`syncNow()`** (`sync/engine.ts`, una a la vez): sube el outbox en lotes (≤ 200 registros, ≤ 4 MB) y quita lo que vuelve `applied` o `stale`; luego baja desde el cursor hasta `hasMore: false`, guardando el cursor por página. Un registro todavía pendiente en el outbox no se pisa con la copia remota. Lo bajado se escribe directo con `db.ts` y no se vuelve a encolar. Sin red (o `ClerkOfflineError`) se conserva el outbox, se anota el error y se reintenta con espera creciente (5 s a 5 min).
+- **Cuándo corre** (solo con sesión iniciada): al abrir la app o entrar, al volver la red, al volver a primer plano, 3 s después de una escritura y cada 5 min con la app visible. Ajustes → Cuenta muestra el estado y el botón *Sincronizar ahora*.
+- **Primer ingreso.** Si este teléfono nunca sincronizó, baja todo desde 0 (en las llaves que existen en ambos lados gana el servidor), sube lo que solo está aquí y recién ahí queda asociado a la cuenta. Nunca borra datos locales.
+- **Otra cuenta en el mismo teléfono.** Si entra una cuenta distinta a la que ya sincronizó, no se mezclan datos: la sincronización se pausa con el aviso "Esta app tiene datos de otra cuenta…" hasta volver a la cuenta original. Para usar el teléfono con otra cuenta: exporta un respaldo y usa *Borrar todos los datos* (también olvida el estado de sincronización).
+- **Restaurar un respaldo** con login habilitado marca todo lo restaurado como lo más nuevo y lo sube. Lo que solo existe en el servidor no se borra allá.
+- **Límites conocidos.** Las notas por ejercicio, el plan y la config no tienen borrado local, así que sus lápidas remotas se ignoran. Un registro que el servidor rechaza por validación (400) bloquea su lote hasta corregirlo; el error queda visible en Ajustes.
+
 ## Publicar en GitHub Pages
 
 1. Crea el repo y sube esto.
@@ -57,7 +69,7 @@ Sin ellas la app es solo local: no se carga Clerk, no hay cuenta y todo vive en 
 
 Todo está en IndexedDB de **ese** navegador. Si borras los datos del sitio, cambias de teléfono o desinstalas la app, se pierden. **Exporta el respaldo una vez al mes** desde Ajustes y guárdalo donde tengas copia.
 
-Si más adelante quieres sincronizar entre dispositivos, el punto de entrada es `src/lib/db.ts`: toda la persistencia pasa por ahí y por `exportBackup()` / `importBackup()`. Reemplazar esa capa por una API remota no toca ninguna vista.
+Con la cuenta y la API configuradas, los datos además se sincronizan con el servidor (ver *Sincronización* arriba). Igual conviene exportar: el respaldo no depende de ninguna cuenta.
 
 **Compatibilidad de respaldos hacia atrás, no hacia adelante.** Desde que existe el motor de disciplinas (`Session` como unión de fuerza y natación), los respaldos llevan `version: 2`. Restaurar un respaldo v2 en una versión de FitPlan **anterior** a este cambio falla: esa build no sabe leer el campo `kind` y revienta al calcular el volumen de una sesión. Restaura siempre con la versión de la app que generó el respaldo, o una más nueva — nunca una más vieja. Desde el plan editable los respaldos llevan `version: 3` e incluyen el plan; importar un respaldo v1 o v2 (sin plan) sigue funcionando y conserva el plan actual.
 

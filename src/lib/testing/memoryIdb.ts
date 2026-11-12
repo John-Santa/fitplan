@@ -11,7 +11,7 @@ interface Store {
 
 export interface MemoryIdb {
   /** Contenido actual de un almacen (copia), para inspeccionar en pruebas. */
-  dump(store: string): Map<unknown, Row>
+  dump(store: string, dbName?: string): Map<unknown, Row>
   /** Hace fallar cada `put` para el que `predicate(almacen, llave)` sea true
    *  (simula cuota llena o escritura interrumpida). null = sin fallos. */
   failPuts(predicate: ((store: string, key: unknown) => boolean) | null): void
@@ -28,7 +28,9 @@ interface FakeRequest<T> {
  *  de importar db.ts (que guarda la conexion en una variable de modulo) y
  *  combinarlo con vi.resetModules() para empezar de cero en cada prueba. */
 export function installMemoryIdb(): MemoryIdb {
-  const stores: Record<string, Store> = {}
+  // Una coleccion de almacenes por nombre de base: 'fitplan' y
+  // 'magnifit-sync' no se pisan aunque compartan nombres de almacen.
+  const databases: Record<string, Record<string, Store>> = {}
   let shouldFail: ((store: string, key: unknown) => boolean) | null = null
 
   // Resuelve en una microtarea diferida, como el IndexedDB real: el llamador
@@ -47,7 +49,7 @@ export function installMemoryIdb(): MemoryIdb {
     return r
   }
 
-  const database = {
+  const makeDatabase = (stores: Record<string, Store>) => ({
     objectStoreNames: { contains: (name: string) => name in stores },
     createObjectStore(name: string, opts?: { keyPath?: string }) {
       stores[name] = { keyPath: opts?.keyPath, rows: new Map() }
@@ -74,13 +76,13 @@ export function installMemoryIdb(): MemoryIdb {
         },
       }
     },
-  }
+  })
 
   ;(globalThis as Record<string, unknown>).indexedDB = {
-    open() {
+    open(name: string) {
       const r: Record<string, unknown> = {}
       setTimeout(() => {
-        r.result = database
+        r.result = makeDatabase((databases[name] ??= {}))
         ;(r.onupgradeneeded as (() => void) | undefined)?.()
         ;(r.onsuccess as () => void)()
       })
@@ -89,7 +91,10 @@ export function installMemoryIdb(): MemoryIdb {
   }
 
   return {
-    dump: name => new Map(stores[name]?.rows ?? []),
+    dump: (name, dbName) => {
+      const owner = dbName ? databases[dbName] : Object.values(databases).find(d => name in d)
+      return new Map(owner?.[name]?.rows ?? [])
+    },
     failPuts: predicate => {
       shouldFail = predicate
     },

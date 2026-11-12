@@ -6,6 +6,9 @@ import { derive } from './calc'
 import { defaultPlanWithLegacy } from './defaultPlan'
 import { applyPlanMigration } from './migration'
 import { normalizePlan } from './planStorage'
+import { authEnabled, useAuthState } from './auth'
+import * as local from './sync/localWrites'
+import { useSyncTriggers } from './sync/useSync'
 
 interface Store {
   ready: boolean
@@ -99,6 +102,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     })()
   }, [reload])
 
+  // Sincronización (S6/S7): solo con login habilitado y sesión iniciada, y
+  // después del arranque local (seed + migración) para no subir a medias.
+  const auth = useAuthState()
+  useSyncTriggers(authEnabled && auth.isSignedIn ? auth.userId : null, ready, reload)
+
   const value = useMemo<Store>(
     () => ({
       ready,
@@ -109,14 +117,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       meta: Object.fromEntries(metaList.map(m => [m.exerciseId, m])),
       config,
       reload,
-      saveSession: async s => { await db.saveSession(s); await reload() },
-      deleteSession: async id => { await db.deleteSession(id); await reload() },
-      saveMeasurement: async m => { await db.saveMeasurement(m); await reload() },
-      deleteMeasurement: async d => { await db.deleteMeasurement(d); await reload() },
-      saveMeta: async m => { await db.saveExerciseMeta(m); await reload() },
-      saveConfig: async c => { await db.saveConfig(c); await reload() },
+      // localWrites guarda en IndexedDB y además deja el cambio en el outbox
+      // de sincronización (no hace nada extra con el login deshabilitado).
+      saveSession: async s => { await local.saveSession(s); await reload() },
+      deleteSession: async id => { await local.deleteSession(id); await reload() },
+      saveMeasurement: async m => { await local.saveMeasurement(m); await reload() },
+      deleteMeasurement: async d => { await local.deleteMeasurement(d); await reload() },
+      saveMeta: async m => { await local.saveExerciseMeta(m); await reload() },
+      saveConfig: async c => { await local.saveConfig(c); await reload() },
       plan,
-      savePlan: async p => { await db.savePlan(p); setPlan(p) },
+      savePlan: async p => { await local.savePlan(p); setPlan(p) },
     }),
     [ready, dbError, sessions, droppedSessionCount, measurements, metaList, config, reload, plan],
   )

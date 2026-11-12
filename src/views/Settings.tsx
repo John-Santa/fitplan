@@ -5,6 +5,10 @@ import { Tile, useToast } from '../components/ui'
 import { daysSince, fmt, fmtDate } from '../lib/calc'
 import { authEnabled, useAuthState } from '../lib/auth'
 import { MEASUREMENT_KEYS, MEASUREMENT_LABELS, MEASUREMENT_UNITS } from '../lib/plan'
+import { enqueueAllLocalChanges, syncNow, type SyncStatus } from '../lib/sync/engine'
+import { resetSyncState } from '../lib/sync/syncDb'
+import { syncStatusLines } from '../lib/sync/statusText'
+import { useSyncStatus } from '../lib/sync/useSync'
 
 // Clerk solo se carga si hay clave; sin ella este módulo nunca se importa.
 const AccountControls = lazy(() => import('../lib/clerkAuth.tsx').then(m => ({ default: m.AccountControls })))
@@ -41,8 +45,27 @@ export function AccountCard() {
           </Suspense>
         </>
       )}
-      {auth.isSignedIn && <p className="hint" style={{ marginBottom: 0 }}>Sincronización: próximamente</p>}
+      {auth.isSignedIn && <SyncStatusView />}
     </div>
+  )
+}
+
+function SyncStatusView() {
+  return <SyncStatusLines status={useSyncStatus()} onSync={() => void syncNow()} />
+}
+
+/** Estado de sincronización y botón "Sincronizar ahora" (presentacional). */
+export function SyncStatusLines({ status, onSync, now }: { status: SyncStatus; onSync: () => void; now?: number }) {
+  const alert = status.state === 'error' || status.state === 'blocked'
+  return (
+    <>
+      {syncStatusLines(status, now).map(line => (
+        <p key={line} className="hint" style={{ marginBottom: 0, ...(alert ? { color: 'var(--alert)' } : {}) }}>{line}</p>
+      ))}
+      <div className="btnrow" style={{ marginTop: 12 }}>
+        <button onClick={onSync} disabled={status.state === 'syncing'}>Sincronizar ahora</button>
+      </div>
+    </>
   )
 }
 
@@ -70,6 +93,8 @@ export default function Settings() {
     try {
       const data = JSON.parse(await file.text())
       await importBackup(data, 'replace')
+      // Lo restaurado pasa a ser lo más nuevo y se sube en la próxima vuelta.
+      if (authEnabled) await enqueueAllLocalChanges()
       await reload()
       toast.show('Datos restaurados')
     } catch (e) {
@@ -190,6 +215,8 @@ export default function Settings() {
               if (!confirm('Esto borra todas las sesiones y mediciones de este dispositivo. ¿Seguro?')) return
               if (!confirm('Última confirmación: no hay forma de deshacerlo sin un respaldo.')) return
               await wipeAll()
+              // Sin datos locales tampoco hay dueño: la próxima cuenta empieza de cero.
+              if (authEnabled) await resetSyncState()
               location.reload()
             }}
           >

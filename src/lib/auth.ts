@@ -14,6 +14,8 @@ export type AuthState = {
   /** Clerk terminó de cargar (false mientras carga o si no hay red). */
   isLoaded: boolean
   isSignedIn: boolean
+  /** Id de usuario de Clerk (el mismo `sub` que usa la API); null sin sesión. */
+  userId: string | null
   user: AuthUser | null
   /** Lanza si Clerk no puede dar token (p. ej. sin conexión). */
   getToken: () => Promise<string | null>
@@ -23,6 +25,7 @@ export const DISABLED_AUTH: AuthState = {
   enabled: false,
   isLoaded: true,
   isSignedIn: false,
+  userId: null,
   user: null,
   getToken: async () => null,
 }

@@ -5,7 +5,7 @@ import { ClerkProvider, SignInButton, UserButton, useAuth, useUser } from '@cler
 import { AuthContext, setTokenGetter, type AuthState } from './auth'
 
 function Bridge({ children }: { children: ReactNode }) {
-  const { isLoaded, isSignedIn, getToken } = useAuth()
+  const { isLoaded, isSignedIn, userId, getToken } = useAuth()
   const { user } = useUser()
 
   useEffect(() => {
@@ -18,12 +18,13 @@ function Bridge({ children }: { children: ReactNode }) {
       enabled: true,
       isLoaded,
       isSignedIn: Boolean(isSignedIn),
+      userId: isSignedIn ? (userId ?? null) : null,
       user: user
         ? { name: user.fullName ?? user.username ?? null, email: user.primaryEmailAddress?.emailAddress ?? null }
         : null,
       getToken: () => getToken(),
     }),
-    [isLoaded, isSignedIn, user, getToken],
+    [isLoaded, isSignedIn, userId, user, getToken],
   )
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
