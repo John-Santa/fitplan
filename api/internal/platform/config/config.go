@@ -3,9 +3,10 @@ package config
 
 import (
 	"fmt"
-	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 const defaultPort = "8080"
@@ -63,8 +64,8 @@ func Load(getenv func(string) string) (Config, error) {
 		if len(cfg.AllowedOrigins) == 0 {
 			return Config{}, fmt.Errorf("config: ALLOWED_ORIGINS is required when APP_ENV=production")
 		}
-		if mode := sslMode(cfg.DatabaseURL); !secureSSLModes[mode] {
-			return Config{}, fmt.Errorf("config: DATABASE_URL must set sslmode=require, verify-ca or verify-full when APP_ENV=production (got %q)", mode)
+		if !requiresTLS(cfg.DatabaseURL) {
+			return Config{}, fmt.Errorf("config: DATABASE_URL must set sslmode=require, verify-ca or verify-full when APP_ENV=production")
 		}
 	}
 	return cfg, nil
@@ -74,24 +75,22 @@ func Load(getenv func(string) string) (Config, error) {
 // origin list and database TLS are mandatory.
 func (c Config) IsProduction() bool { return c.AppEnv == "production" }
 
-var secureSSLModes = map[string]bool{"require": true, "verify-ca": true, "verify-full": true}
-
-// sslMode extracts the sslmode setting from a Postgres URL or keyword/value
-// connection string; it returns "" when the setting is absent or unparsable.
-func sslMode(dsn string) string {
-	if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {
-		u, err := url.Parse(dsn)
-		if err != nil {
-			return ""
-		}
-		return u.Query().Get("sslmode")
+// requiresTLS reports whether pgx would connect to the database only over TLS.
+// It parses the string with pgconn, the same parser the pool uses, so repeated
+// or oddly written sslmode settings are judged exactly as they will be applied:
+// the primary config and every fallback must carry a TLS config (sslmode
+// require, verify-ca or verify-full; prefer and allow fall back to plaintext).
+func requiresTLS(dsn string) bool {
+	pc, err := pgconn.ParseConfig(dsn)
+	if err != nil || pc.TLSConfig == nil {
+		return false
 	}
-	for _, field := range strings.Fields(dsn) {
-		if v, ok := strings.CutPrefix(field, "sslmode="); ok {
-			return v
+	for _, fb := range pc.Fallbacks {
+		if fb.TLSConfig == nil {
+			return false
 		}
 	}
-	return ""
+	return true
 }
 
 func splitList(raw string) []string {

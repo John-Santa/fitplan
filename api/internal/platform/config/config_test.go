@@ -110,6 +110,9 @@ func TestLoadProductionRequiresDatabaseTLS(t *testing.T) {
 		"postgresql://u:p@db.example/app?sslmode=prefer",
 		"host=db.example dbname=app sslmode=allow",
 		"host=db.example dbname=app",
+		// pgx applies the last sslmode, so a later insecure value must not slip through.
+		"postgres://u:p@db.example/app?sslmode=require&sslmode=disable",
+		"host=db.example dbname=app sslmode=require sslmode=disable",
 	} {
 		_, err := config.Load(env(production("DATABASE_URL", url)))
 		if err == nil || !strings.Contains(err.Error(), "sslmode") {
