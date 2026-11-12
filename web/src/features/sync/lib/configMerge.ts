@@ -25,7 +25,9 @@
 //   later updatedAt, which is what whole-document last-write-wins did.
 //
 // `discarded` lists the labels of every unit where a local value lost, for
-// the "esto cambió en otro dispositivo" notice.
+// the "esto cambió en otro dispositivo" notice. `remoteDiscarded` lists the
+// units where the remote value lost: the device that wrote it never runs
+// this merge, so configSync.ts sends it these labels in the synced document.
 //
 // The workout in progress is not part of config: it lives only in this
 // device's localStorage (features/session/lib/activeSession.ts) and nothing
@@ -34,7 +36,7 @@ import { MEASUREMENT_LABELS, WEEKDAYS, mergeConfig, routineById } from '../../..
 import type { Config, Intention } from '../../../lib/types'
 
 export type ConfigSide = { config: Config; updatedAt: number }
-export type ConfigMergeResult = { merged: Config; discarded: string[] }
+export type ConfigMergeResult = { merged: Config; discarded: string[]; remoteDiscarded: string[] }
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 
@@ -62,6 +64,7 @@ const isEmptyIntention = (i: Intention | undefined) => !i || (i.time === '' && i
 
 class Merger {
   readonly discarded: string[] = []
+  readonly remoteDiscarded: string[] = []
   constructor(
     private readonly hasBase: boolean,
     private readonly localWins: boolean,
@@ -92,12 +95,18 @@ class Merger {
       this.discarded.push(label)
       return remote
     }
-    if (remote === undefined) return local
+    if (remote === undefined) {
+      this.remoteDiscarded.push(label)
+      return local
+    }
     return this.conflict(label, local, remote)
   }
 
   private conflict<T>(label: string, local: T, remote: T): T {
-    if (this.localWins) return local
+    if (this.localWins) {
+      this.remoteDiscarded.push(label)
+      return local
+    }
     this.discarded.push(label)
     return remote
   }
@@ -178,7 +187,7 @@ export function mergeConfigs(base: Config | null, local: ConfigSide, remote: Con
     out[k] = m.scalar(SCALAR_LABELS[k] ?? k, rec(b)[k], rec(l)[k], rec(r)[k])
   }
 
-  return { merged: mergeConfig(out), discarded: m.discarded }
+  return { merged: mergeConfig(out), discarded: m.discarded, remoteDiscarded: m.remoteDiscarded }
 }
 
 /** A local edit made from `seen` (the config a screen read) saved over

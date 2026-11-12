@@ -23,6 +23,7 @@ const STORE_REJECTED = 'rejected'
 const BACKUP_KEY = 'preBootstrapBackup'
 const CONFIG_BASE_KEY = 'configBase'
 const CONFIG_CONFLICT_KEY = 'configConflict'
+const CONFIG_PUSHED_AT_KEY = 'configPushedAt'
 
 export type Entity = 'document' | 'session' | 'measurement' | 'exerciseMeta'
 
@@ -173,6 +174,16 @@ export async function addConfigConflict(fields: string[], now = Date.now()) {
 }
 
 export const clearConfigConflict = () => tx(STORE_META, 'readwrite', s => s.delete(CONFIG_CONFLICT_KEY))
+
+/** updatedAt of the last config push the server applied, until another
+ *  device reports that it lost a merge (then cleared). */
+export const getConfigPushedAt = () =>
+  tx<number | undefined>(STORE_META, 'readonly', s => s.get(CONFIG_PUSHED_AT_KEY) as IDBRequest<number | undefined>)
+
+export const saveConfigPushedAt = (updatedAt: number) =>
+  tx(STORE_META, 'readwrite', s => s.put(updatedAt, CONFIG_PUSHED_AT_KEY))
+
+export const clearConfigPushedAt = () => tx(STORE_META, 'readwrite', s => s.delete(CONFIG_PUSHED_AT_KEY))
 
 /* ---------- meta ---------- */
 

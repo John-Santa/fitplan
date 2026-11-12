@@ -312,7 +312,7 @@ async function settle(batch: OutboxEntry[], res: PushResult): Promise<boolean> {
   for (const sent of batch) {
     if (!answered.has(sdb.outboxId(sent.entity, sent.key))) continue
     await sdb.removeRejected(sent.entity, sent.key)
-    if (sent.entity === 'document' && sent.key === 'config') await noteConfigSynced(sent.body)
+    if (sent.entity === 'document' && sent.key === 'config') await noteConfigSynced(sent.body, sent.updatedAt)
     // Si el registro cambió otra vez mientras se subía, la entrada nueva
     // se queda para la próxima vuelta.
     const now = await sdb.getOutboxEntry(sent.entity, sent.key)

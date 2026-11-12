@@ -144,24 +144,37 @@ describe('config merge across devices (S15)', () => {
     for (const c of [serverConfig(), configOf(a), configOf(b)]) expect(c.habitCheckIns).toEqual(['2026-11-10'])
   })
 
-  it('both devices change the same setting: the last write wins and the losing device keeps the "esto cambió en otro dispositivo" notice', async () => {
+  // P11: with the losing device syncing first, the winner runs the merge and
+  // the loser only sees a plain pull; it must still get the notice.
+  it.each([
+    ['the winner syncs first', false],
+    ['the losing device syncs first (P11)', true],
+  ])('both devices change the same setting: the last write wins and the losing device keeps the "esto cambió en otro dispositivo" notice (%s)', async (_label, loserFirst) => {
     const { a, b } = await syncedPair()
     await edit(a, clock + 1_000, c => ({ ...c, heightCm: 180 }))
     await edit(b, clock + 2_000, c => ({ ...c, heightCm: 185 }))
     await offline(a, b)
 
-    await b.engine.syncNow()
-    await a.engine.syncNow()
-    await b.engine.syncNow()
+    const [first, second] = loserFirst ? [a, b] : [b, a]
+    await first.engine.syncNow()
+    await second.engine.syncNow()
+    await first.engine.syncNow()
 
     for (const c of [serverConfig(), configOf(a), configOf(b)]) expect(c.heightCm).toBe(185)
     expect((await a.syncDb.getConfigConflict())?.fields).toEqual(['Altura'])
     expect(await b.syncDb.getConfigConflict()).toBeUndefined()
+    // The conflict record travels only in the synced document: the stored
+    // config (what older clients and the app read) has no such field.
+    expect(Object.keys(configOf(a))).not.toContain('syncConflict')
+    expect(Object.keys(configOf(b))).not.toContain('syncConflict')
     const { configConflictText } = await import('./configMerge')
     expect(configConflictText(['Altura'])).toBe('Altura: esto cambió en otro dispositivo y se conservó esa versión.')
   })
 
-  it('a routine reset on one device and edited on another keeps the edit, whatever the clocks say', async () => {
+  it.each([
+    ['the editing device syncs first', false],
+    ['the resetting device syncs first (P9)', true],
+  ])('a routine reset on one device and edited on another keeps the edit, whatever the clocks say (%s)', async (_label, loserFirst) => {
     const { ROUTINES } = await plan()
     const r = ROUTINES[0]
     const custom = (sets: number): Exercise[] => r.exercises.map((e, i) => (i === 0 ? { ...e, sets } : { ...e }))
@@ -171,9 +184,10 @@ describe('config merge across devices (S15)', () => {
     await edit(a, clock + 2_000, c => ({ ...c, routineExercises: {} }))
     await offline(a, b)
 
-    await b.engine.syncNow()
-    await a.engine.syncNow()
-    await b.engine.syncNow()
+    const [first, second] = loserFirst ? [a, b] : [b, a]
+    await first.engine.syncNow()
+    await second.engine.syncNow()
+    await first.engine.syncNow()
 
     for (const c of [serverConfig(), configOf(a), configOf(b)]) expect(c.routineExercises[r.id]?.[0].sets).toBe(5)
     expect((await a.syncDb.getConfigConflict())?.fields).toEqual([`Ejercicios de ${r.name}`])
@@ -314,6 +328,19 @@ describe('behavior kept (pins)', () => {
 })
 
 describe('store edits over a merge that landed meanwhile', () => {
+  it('a local edit before the push keeps the conflict record queued for the other device', async () => {
+    const d = await device()
+    const { DEFAULT_CONFIG } = await plan()
+    await d.db.saveConfig(DEFAULT_CONFIG)
+    const record = { fields: ['Altura'], lostAt: 123 }
+    await d.syncDb.enqueueUpsert('document', 'config', { ...DEFAULT_CONFIG, heightCm: 185, syncConflict: record })
+    await d.local.saveConfigEdit(configOf(d), checkIn('2026-11-11')(configOf(d)))
+
+    const body = (outboxOf(d).get('document:config') as { body: Config & { syncConflict?: unknown } }).body
+    expect(body.syncConflict).toEqual(record)
+    expect(body.habitCheckIns).toEqual(['2026-11-11'])
+  })
+
   it('saving an edit made on a stale in-memory config keeps what the merge added', async () => {
     const d = await device()
     const { DEFAULT_CONFIG } = await plan()
