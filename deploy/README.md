@@ -8,7 +8,7 @@ One environment (production). Convention reference: the atlas repo (Render + Neo
 Browser (PWA, offline-first)
   |-- https://app.magnifit.co  -> Render static site  (magnifit-web, from web/)
   |-- https://api.magnifit.co  -> Render web service  (magnifit-api, Docker from api/)
-                                    |-- Neon Postgres (pooled URL, runtime)
+                                    |-- Neon Postgres (direct URL, runtime + migrations on boot)
                                     |-- Clerk (clerk.magnifit.co, production instance)
 ```
 
@@ -19,13 +19,13 @@ Browser (PWA, offline-first)
 
 ## First-time setup checklist (you)
 
-1. Neon: create a project (same region family as Render, e.g. AWS us-west-2 for `oregon`). Copy the **pooled** connection string (host contains `-pooler`).
+1. Neon: create a project in the region that matches Render (AWS us-east-2 for `ohio`). In **Connect**, turn **Connection pooling off** and copy the **direct** connection string (host without `-pooler`). The API runs migrations on boot behind a session advisory lock, which Neon's pooled (PgBouncer transaction mode) connection does not support.
 2. Clerk: create a **Production** instance for `magnifit.co`. Copy the publishable key (`pk_live_...`) and secret key (`sk_live_...`). Clerk shows the DNS records it needs (domain `clerk.magnifit.co` plus mail/DKIM CNAMEs).
 3. Render: New > Blueprint > select this repo > path `deploy/render.yaml`.
 4. In the Render dashboard set the `sync: false` variables:
-   - `magnifit-api`: `DATABASE_URL` (Neon pooled), `CLERK_SECRET_KEY`.
+   - `magnifit-api`: `DATABASE_URL` (Neon direct), `CLERK_SECRET_KEY`.
    - `magnifit-web`: `VITE_CLERK_PUBLISHABLE_KEY`.
-5. Run migrations once against Neon (use the direct, non-pooled URL for DDL): from `api/`, the goose command in `api/README.md`.
+5. Migrations run automatically when the API boots; nothing to run by hand.
 6. Add the custom domains in Render (the Blueprint declares them; confirm they verify) and create the DNS records below in GoDaddy.
 7. Wait for TLS issuance, then check `https://api.magnifit.co/readyz` and sign in at `https://app.magnifit.co`.
 8. Remember: the free web service sleeps after inactivity, so the first request can take about a minute.

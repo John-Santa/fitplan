@@ -20,7 +20,7 @@ Vite inlines these at build time, so changing one needs a new deploy. Nothing he
 | `APP_ENV` | optional | repo | local `api/.env`, `deploy/render.yaml` (`production`) | Environment name. |
 | `PORT` | optional (default `8080`) | repo | local `api/.env`, `deploy/render.yaml` | HTTP listen port. |
 | `ALLOWED_ORIGINS` | required | repo | local `api/.env`, `deploy/render.yaml` | Comma-separated CORS origins, e.g. the `app.magnifit.co` origin plus local dev origin. |
-| `DATABASE_URL` | required | you | local `api/.env`, Render dashboard (`sync: false`) | Postgres URL. In production use the Neon pooled string. |
+| `DATABASE_URL` | required | you | local `api/.env`, Render dashboard (`sync: false`) | Postgres URL. Use the Neon **direct** string (pooling off): migrations on boot take a session advisory lock that the pooled connection does not support. In a local `.env`, quote it (`DATABASE_URL="..."`) because it contains `&`. |
 | `CLERK_SECRET_KEY` | required | you | local `api/.env`, Render dashboard (`sync: false`) | Clerk secret key. Secret. |
 | `TEST_DATABASE_URL` | tests only | you / CI | local shell or `api/.env`; CI service container | Disposable Postgres the integration tests truncate. Never point it at real data. Tests skip when unset. |
 
