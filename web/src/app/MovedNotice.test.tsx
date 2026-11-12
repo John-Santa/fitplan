@@ -12,6 +12,11 @@ describe('moved notice', () => {
     expect(html).toContain('<button')
   })
 
+  it('announces the Pages retirement date', () => {
+    const html = renderToString(<MovedNotice baseUrl="/fitapp/" />)
+    expect(html).toContain('Esta versión deja de funcionar el 12 dic 2026.')
+  })
+
   it('does not render anything on the Render build (root base)', () => {
     expect(renderToString(<MovedNotice baseUrl="/" />)).toBe('')
   })
