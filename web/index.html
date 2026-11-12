@@ -2,18 +2,45 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, interactive-widget=resizes-visual" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-visual" />
     <meta name="theme-color" content="#0E1014" />
+    <meta name="color-scheme" content="dark" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="description" content="Registro de entrenamiento y composicion corporal. Local-first, funciona sin conexion." />
+    <meta name="apple-mobile-web-app-title" content="MagniFit" />
+    <meta name="description" content="Registra tu entrenamiento y tu composición corporal. Funciona sin conexión." />
+    <link rel="canonical" href="https://app.magnifit.co/" />
+    <link rel="icon" type="image/png" sizes="192x192" href="%BASE_URL%icon-192.png" />
+    <link rel="apple-touch-icon" href="%BASE_URL%apple-touch-icon.png" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="MagniFit" />
+    <meta property="og:locale" content="es_ES" />
+    <meta property="og:title" content="MagniFit: entrenamiento y composición corporal" />
+    <meta property="og:description" content="Registra tu entrenamiento y tu composición corporal. Funciona sin conexión." />
+    <meta property="og:url" content="https://app.magnifit.co/" />
+    <meta property="og:image" content="https://app.magnifit.co/icon-512.png" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="MagniFit: entrenamiento y composición corporal" />
+    <meta name="twitter:description" content="Registra tu entrenamiento y tu composición corporal. Funciona sin conexión." />
+    <meta name="twitter:image" content="https://app.magnifit.co/icon-512.png" />
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"MagniFit","url":"https://app.magnifit.co/","applicationCategory":"HealthApplication","operatingSystem":"Web, iOS, Android","inLanguage":"es","description":"Registra tu entrenamiento y tu composición corporal. Funciona sin conexión."}</script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <title>MagniFit</title>
+    <title>MagniFit: entrenamiento y composición corporal</title>
+    <style>
+      .boot-fallback { font-family: system-ui, sans-serif; padding: 24px; color: #EDEEF0; background: #0E1014; }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <!-- Static content for crawlers and the first paint; createRoot replaces it on render. -->
+    <div id="root">
+      <main class="boot-fallback">
+        <h1>MagniFit</h1>
+        <p>Registra tu entrenamiento y tu composición corporal. Funciona sin conexión.</p>
+      </main>
+    </div>
+    <noscript>MagniFit necesita JavaScript para funcionar.</noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

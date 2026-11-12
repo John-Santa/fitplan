@@ -16,8 +16,10 @@ export default defineConfig({
       manifest: {
         name: 'MagniFit',
         short_name: 'MagniFit',
-        description: 'Registro de entrenamiento y composicion corporal. Funciona sin conexion.',
+        description: 'Registra tu entrenamiento y tu composición corporal. Funciona sin conexión.',
         lang: 'es',
+        id: base,
+        categories: ['health', 'fitness', 'lifestyle'],
         start_url: base,
         scope: base,
         display: 'standalone',
