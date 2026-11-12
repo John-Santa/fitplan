@@ -33,6 +33,17 @@ npm install
 npm run dev
 ```
 
+## Cuenta y backend
+
+El login y la sincronización son opcionales. Se activan con dos variables de entorno de Vite (por ejemplo en un archivo `.env.local`, que no se versiona):
+
+| Variable | Para qué |
+| --- | --- |
+| `VITE_CLERK_PUBLISHABLE_KEY` | Clave pública de Clerk. Con ella aparece el inicio de sesión en Ajustes. |
+| `VITE_API_URL` | URL base de la API de MagniFit, por ejemplo `https://api.magnifit.co`. |
+
+Sin ellas la app es solo local: no se carga Clerk, no hay cuenta y todo vive en el dispositivo (IndexedDB), igual que hoy. El despliegue en GitHub Pages funciona sin configurar nada.
+
 ## Publicar en GitHub Pages
 
 1. Crea el repo y sube esto.

@@ -1,9 +1,50 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { downloadBackupFile, exportBackup, getLastBackupAt, importBackup, saveLastBackupAt, wipeAll } from '../lib/db'
 import { useStore } from '../lib/store'
 import { Tile, useToast } from '../components/ui'
 import { daysSince, fmt, fmtDate } from '../lib/calc'
+import { authEnabled, useAuthState } from '../lib/auth'
 import { MEASUREMENT_KEYS, MEASUREMENT_LABELS, MEASUREMENT_UNITS } from '../lib/plan'
+
+// Clerk solo se carga si hay clave; sin ella este módulo nunca se importa.
+const AccountControls = lazy(() => import('../lib/clerkAuth.tsx').then(m => ({ default: m.AccountControls })))
+
+export function AccountCard() {
+  const auth = useAuthState()
+  if (!authEnabled || !auth.enabled) {
+    return (
+      <div className="card">
+        <p style={{ margin: 0 }}>Tus datos viven solo en este teléfono.</p>
+      </div>
+    )
+  }
+  const who = auth.user?.name ?? auth.user?.email
+  return (
+    <div className="card">
+      {auth.isSignedIn ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <Suspense fallback={null}>
+            <AccountControls isSignedIn />
+          </Suspense>
+          <div style={{ minWidth: 0 }}>
+            {who && <strong style={{ display: 'block' }}>{who}</strong>}
+            {auth.user?.name && auth.user.email && (
+              <span className="hint" style={{ display: 'block', margin: 0 }}>{auth.user.email}</span>
+            )}
+          </div>
+        </div>
+      ) : (
+        <>
+          <p style={{ marginTop: 0 }}>Inicia sesión para respaldar tus datos y usarlos en otros dispositivos.</p>
+          <Suspense fallback={null}>
+            <AccountControls isSignedIn={false} />
+          </Suspense>
+        </>
+      )}
+      {auth.isSignedIn && <p className="hint" style={{ marginBottom: 0 }}>Sincronización: próximamente</p>}
+    </div>
+  )
+}
 
 export default function Settings() {
   const { config, saveConfig, reload, sessions, droppedSessionCount, measurements } = useStore()
@@ -44,6 +85,9 @@ export default function Settings() {
       <h1>Ajustes</h1>
 
       <div className="col-a">
+        <div className="section-title">Cuenta</div>
+        <AccountCard />
+
         <div className="section-title">Tus datos</div>
         <div className="card">
           <p>
