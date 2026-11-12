@@ -5,7 +5,6 @@ import { BASELINE, DEFAULT_CONFIG, mergeConfig } from './plan'
 import { derive } from './calc'
 import { defaultPlanWithLegacy } from './defaultPlan'
 import { applyPlanMigration } from './migration'
-import { normalizePlan } from './planStorage'
 import { authEnabled, useAuthState } from '../features/account/lib/auth'
 import * as local from '../features/sync/lib/localWrites'
 import { useSyncTriggers } from '../features/sync/lib/useSync'
@@ -39,6 +38,11 @@ interface Store {
   plan: TrainingPlan
   /** Reemplaza el plan completo y lo persiste. */
   savePlan: (p: TrainingPlan) => Promise<void>
+  /** El plan guardado en este dispositivo no se pudo leer y se usa el plan
+   *  por defecto en memoria. Se apaga al guardar un plan o restaurar un
+   *  respaldo con plan. Ajustes lo muestra en vez de cambiar de plan en
+   *  silencio. */
+  planDamaged: boolean
 }
 
 const Ctx = createContext<Store | null>(null)
@@ -54,6 +58,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Lo guardado bajo la llave 'plan'; si falta o es ilegible, el plan por
   // defecto (en memoria hasta que la persona lo edite).
   const [plan, setPlan] = useState<TrainingPlan>(defaultPlanWithLegacy)
+  const [planDamaged, setPlanDamaged] = useState(false)
 
   const reload = useCallback(async () => {
     const [sessionsResult, m, em, c, p] = await Promise.all([
@@ -68,7 +73,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setMeasurements(m)
     setMetaList(em)
     setConfig(mergeConfig(c))
-    setPlan(normalizePlan(p) ?? defaultPlanWithLegacy())
+    const resolved = db.resolveStoredPlan(p)
+    setPlan(resolved.plan)
+    setPlanDamaged(resolved.damaged)
   }, [])
 
   useEffect(() => {
@@ -126,9 +133,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       saveMeta: async m => { await local.saveExerciseMeta(m); await reload() },
       saveConfig: async c => { await local.saveConfig(c); await reload() },
       plan,
-      savePlan: async p => { await local.savePlan(p); setPlan(p) },
+      savePlan: async p => { await local.savePlan(p); setPlan(p); setPlanDamaged(false) },
+      planDamaged,
     }),
-    [ready, dbError, sessions, droppedSessionCount, measurements, metaList, config, reload, plan],
+    [ready, dbError, sessions, droppedSessionCount, measurements, metaList, config, reload, plan, planDamaged],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

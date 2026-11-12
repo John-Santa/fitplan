@@ -8,6 +8,7 @@ import { MEASUREMENT_KEYS, MEASUREMENT_LABELS, MEASUREMENT_UNITS } from '../../.
 import { enqueueAllLocalChanges, syncNow, type SyncStatus } from '../../sync/lib/engine'
 import { getPreBootstrapBackup, resetSyncState } from '../../sync/lib/syncDb'
 import { exportAndEraseDevice } from '../lib/eraseDevice'
+import PlanDamagedNotice from '../components/PlanDamagedNotice'
 import { BACKUP_NOTICE, restoreHint, syncStatusLines, wipeConfirmTexts } from '../../sync/lib/statusText'
 import { useSyncStatus } from '../../sync/lib/useSync'
 
@@ -138,7 +139,7 @@ export function SyncStatusLines({ status, onSync, onDownloadBackup, onExportAndS
 }
 
 export default function Settings() {
-  const { config, saveConfig, reload, sessions, droppedSessionCount, measurements } = useStore()
+  const { config, saveConfig, reload, sessions, droppedSessionCount, measurements, planDamaged } = useStore()
   const auth = useAuthState()
   const signedIn = authEnabled && auth.enabled && auth.isSignedIn
   const toast = useToast()
@@ -213,6 +214,7 @@ export default function Settings() {
                 : `${droppedSessionCount} sesiones no se pudieron leer.`}
             </p>
           )}
+          {planDamaged && <PlanDamagedNotice />}
           <div className="btnrow">
             <button className="primary" onClick={doExport}>Exportar respaldo</button>
             <button onClick={() => fileRef.current?.click()}>Restaurar</button>
