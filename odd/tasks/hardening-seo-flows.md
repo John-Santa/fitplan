@@ -10,7 +10,7 @@ Runners: `pnpm test` / `pnpm typecheck` in `web/`, `go test ./...` / `go vet ./.
 - S5 — "orquestes a opus y sonnet": audits delegated to Opus (flows, security) and Sonnet (SEO/PWA/performance); the parent implements.
 
 ## Tasks
-- [x] A1 — S1,S5: flow inventory audit (Opus, read-only). Route: delegated, mapping. Returned 2026-11-12: 34 flows, 14 partial or missing.
+- [x] A1 — S1,S5: flow inventory audit (Opus, read-only). Route: delegated, mapping. Returned 2026-11-12: 34 flows; 18 partial or missing, grouped into 14 work items. Audit report published as a private artifact (2026-11-12).
 - [x] A2 — S2,S5: security audit (Opus, read-only). Route: delegated, mapping. Returned 2026-11-12: no critical or high finding; 5 medium, 9 low.
 - [x] A3 — S3,S4,S5: SEO/PWA/performance audit (Sonnet, read-only). Route: delegated, mapping. Returned 2026-11-12.
 - [x] T1 — S3,S4: web metadata, robots/sitemap, manifest id and categories, static fallback, viewport zoom. Route: inline (one understood change). Commit fffedde. Checks: typecheck ok, build ok, 376/377 tests (the failing one also fails on main: local `web/.env.local` defines the Clerk key). Risk: none.
