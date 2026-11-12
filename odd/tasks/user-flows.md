@@ -19,7 +19,8 @@ Quoted fragments come verbatim from the audit artifact the user asked to impleme
 - S12 — API and CI hardening leftovers. Observation: "Una petición cancelada por el plazo de 25 s responde 500 en vez de 504 y deja una línea superfluous WriteHeader en el log. Se puede mapear context.DeadlineExceeded a 503 o 504." L7: "faltan fijar acciones e imágenes por digest, govulncheck, pnpm audit y packageManager". Assumption (parent): the new audit jobs report without failing the existing pipeline on pre-existing findings.
 - S13 — Web performance and accessibility. "Guía, editor del plan, Medir y Entrenar con React.lazy; medir antes con un visualizador del bundle." "Se revisaron unos 10 de 69 campos; faltan los demás y un h1 por vista." "borrar Archivo-Variable.woff2, que no se usa."
 - S15 — F26/F27, conflicts across devices, option B (decided, L3): "Opción B: fusionar config campo por campo en el cliente antes de enviar, sin cambios en la API." Show "esto cambió en otro dispositivo" when something local is discarded. Edge cases: "Una rutina borrada en un equipo y editada en otro." "Zonas horarias en las fechas de registro." "Un entrenamiento en curso vive solo en un dispositivo (localStorage)." RED: "dos cambios concurrentes a config desde dos colas simuladas; después de sincronizar, ambos están presentes." Acceptance: "Dos registros de hábito hechos sin conexión en dos dispositivos sobreviven ambos tras sincronizar."
-- S14 — Pending user decisions, not implemented until decided: F29 reminders ("Es una propuesta, no estaba en las especificaciones."); F11 warm-up; M2 rate-limit library; L1, L2, L3, L8; og:locale market; Pages retirement date; new image assets.
+- S16 — M2, rate limiting (decided, L5): "Sin límite de peticiones ni tope de registros por envío", library "x/time/rate (Recomendada)": golang.org/x/time/rate, per-user limiter keyed by the verified JWT sub with an own middleware. The per-push record cap needs the first-login upload chunking checked first ("el tope necesita revisar la subida inicial").
+- S14 — Pending user decisions, not implemented until decided: F29 reminders ("Es una propuesta, no estaba en las especificaciones."); F11 warm-up; L1, L2, L3, L8; og:locale market; Pages retirement date; new image assets.
 
 ## Tasks
 - [ ] W1 — S4: delete account (API + web). Route: delegated, parallel writer (Opus, high). Risk items 1 and 2: independent verifier + native review. Branch `feat/delete-account`.
@@ -31,6 +32,7 @@ Quoted fragments come verbatim from the audit artifact the user asked to impleme
 - [ ] W9 — S15: client-side field merge of config. Route: delegated, parallel writer (Opus, high). Risk item 4 (sync ordering) and 6 (silent data loss is hard to detect): independent verifier. Branch `feat/config-merge`.
 - [ ] W7 — S12: API deadline status and CI supply chain. Route: delegated, parallel writer (Sonnet, high). Risk item 5 (CI). Branch `chore/ci-supply-chain`.
 - [ ] W8 — S13: lazy screens and accessibility. Route: delegated, parallel writer (Sonnet, medium). Branch `feat/web-perf-a11y`.
+- [ ] W10 — S16: per-user rate limit and per-push record cap. Route: delegated, parallel writer (Sonnet, high). Risk items 2 (guard) and 5 (new dependency): independent verifier. Branch `feat/api-rate-limit`.
 - [ ] D1 — S14: decisions requested from the user, one at a time, starting with F26.
 
 ## Log
@@ -38,3 +40,4 @@ Quoted fragments come verbatim from the audit artifact the user asked to impleme
 - L2 — 2026-11-12, routing: eight independent units with overlapping files (`Settings.tsx`, `App.tsx`, `engine.ts`, `db.ts`), so each writer runs in an isolated worktree on its own branch from this base (Writer trigger (a), parallelism). Model and effort per unit follow its risk and size. Items in S14 need a product or dependency decision and stay out until the user decides.
 - L3 — 2026-11-12, user decision on F26: "B: fusión en el cliente (Recomendada)". S15 added, W9 opened.
 - L4 — 2026-11-12, W6 evidence: `MovedNotice.tsx` and `movedNotice.ts` collide on the case-insensitive macOS filesystem; merged into `MovedNotice.tsx`. Engram mirror pending: auto mode could not review `mem_save` because a hook rewrites the call.
+- L5 — 2026-11-12, user decision on M2: "x/time/rate (Recomendada)". S16 added, W10 opened.
