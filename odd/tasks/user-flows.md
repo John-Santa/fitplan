@@ -43,7 +43,7 @@ Quoted fragments come verbatim from the audit artifact the user asked to impleme
 - [x] W14 — S19: self-hosted Inter. Route: inline. Branch `feat/self-hosted-inter`, commit 7d211d9. Latin-subset variable woff2 (48 KB) from Google Fonts with its OFL license; Google links removed from `index.html`; CSP `style-src`/`font-src` back to `'self'`. Build ok: font emitted with hash, referenced by the CSS, present in `sw.js` precache (15 entries). Not checked in a browser. Risk: item 5 (CSP in `render.yaml`), low: removing hosts only narrows the policy.
 - [ ] W13 — S20: separate migration role. Route: delegated when load allows (Sonnet, high). Risk items 1, 2 and 5: independent verifier. Branch `feat/migration-role`.
 - [ ] W3 — verification pending: Risk item 1 (erase device, atomic import) needs an independent verifier.
-- [ ] W15 — S21: editable warm-up. Route: delegated (Sonnet, high). Branch `feat/editable-warmup`.
+- [x] W15 — S21: editable warm-up. Route: delegated (Sonnet, high). Branch `feat/editable-warmup`, commits e165b48 (editor + reset), c39aafd (session label), parent 6c4ebc6 (template title and Hoy hint no longer say "fijo" or "10 min"). RED observed per rule; typecheck ok; 403/403 (parent rerun after 6c4ebc6). Differential: `normalizePlan`, `resetToTemplate`, `RoutineEditor` identical to base. Risk: none (no persisted-shape change; the routine block list moved verbatim into `BlockEditor`). Note: existing installs keep the old warm-up title stored in their plan.
 - [ ] D1 — S14: decisions requested from the user, one at a time, starting with F26.
 
 ## Log
