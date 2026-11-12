@@ -8,6 +8,7 @@ import { doneSets, fmtDate, fmtDuration, mmss, sessionVolume, todayISO } from '.
 import { DISCIPLINES, SWIM_STROKE_LABELS, finishSwimSession, metresToLaps, sessionDigest, swimDistance, swimPaceSecPer100m } from '../../../lib/disciplines'
 import { useStore } from '../../../lib/store'
 import { loadActiveDraft, saveActiveDraft } from '../lib/activeSession'
+import { applySessionEdit } from '../lib/editSession'
 import ActiveSession from './ActiveSession'
 import ExerciseProgress from '../../progress/routes/ExerciseProgress'
 import SwimProgress from '../../progress/routes/SwimProgress'
@@ -25,6 +26,8 @@ export default function Train({ autoStart, autoStartMinimal, autoStartDate, onAu
   const [active, setActive] = useState<Session | null>(() => loadActiveDraft())
   useEffect(() => { saveActiveDraft(active) }, [active])
   const [detail, setDetail] = useState<string | null>(null)
+  // Sesion terminada abierta en el editor (separada del borrador activo).
+  const [editing, setEditing] = useState<Session | null>(null)
   const [progressFor, setProgressFor] = useState<ProgressTarget | null>(null)
 
   // Arranque directo desde Hoy: igual que el boton "start" de la rutina.
@@ -64,6 +67,21 @@ export default function Train({ autoStart, autoStartMinimal, autoStartDate, onAu
           setActive(null)
         }}
         onDiscard={() => setActive(null)}
+      />
+    )
+  }
+
+  if (editing) {
+    const original = sessions.find(x => x.id === editing.id)
+    return (
+      <ActiveSession
+        session={editing}
+        onChange={setEditing}
+        onFinish={async () => {
+          await saveSession(original ? applySessionEdit(original, editing) : editing)
+          setEditing(null)
+        }}
+        onDiscard={() => setEditing(null)}
       />
     )
   }
@@ -161,6 +179,9 @@ export default function Train({ autoStart, autoStartMinimal, autoStartDate, onAu
             <p style={{ margin: 0 }}>{s.notes}</p>
           </div>
         )}
+        <button className="primary block" style={{ marginTop: 12 }} onClick={() => setEditing(structuredClone(s))}>
+          Editar
+        </button>
         <button
           className="danger block"
           style={{ marginTop: 12 }}
