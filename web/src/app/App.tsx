@@ -9,6 +9,8 @@ import Settings from '../features/account/routes/Settings'
 import PlanEditor from '../features/plan/routes/PlanEditor'
 import { loadActiveDraft } from '../features/session/lib/activeSession'
 import Guide from '../features/guide/routes/Guide'
+import { PwaPrompts } from '../features/pwa/components/PwaPrompts'
+import { SyncIndicator } from '../features/sync/components/SyncIndicator'
 
 type Tab = 'home' | 'plan' | 'progreso' | 'perfil'
 type ProgressView = 'habit' | 'train' | 'measure'
@@ -58,6 +60,10 @@ function Shell() {
   return (
     <div className="app">
       <main className="main">
+        <div className="app-notices">
+          <SyncIndicator onOpenAccount={() => selectTab('perfil')} />
+          <PwaPrompts />
+        </div>
         {guideOpen ? (
           <Guide onBack={() => setGuideOpen(false)} />
         ) : (
