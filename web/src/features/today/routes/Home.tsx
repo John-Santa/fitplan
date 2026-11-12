@@ -8,6 +8,8 @@ import { dayStatus, intentionFor, missedYesterday, streak as habitStreak, toggle
 import { nextRoutine, restAllowance, routinesDoneThisWeek, weekDays, weekRotation, weekSummary } from '../../habit/lib/week'
 import { useDerivedMeasurements, useStore } from '../../../lib/store'
 import BottomSheet from '../../../components/BottomSheet'
+import { isBackCarePlan } from '../../../lib/defaultPlan'
+import HoyBackupNotice from '../components/BackupNotice'
 import './home.css'
 
 type Tab = 'plan' | 'progreso' | 'perfil'
@@ -188,6 +190,11 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
       </div>
     </div>
   )
+
+  // The lower-back tip belongs to the "espalda protegida" template.
+  const tip = isBackCarePlan(plan)
+    ? { kicker: 'Cuidado lumbar', text: 'Columna neutra: piensa en sacar un poco la cola' }
+    : { kicker: 'Técnica', text: 'Termina cada serie con 2 o 3 repeticiones en reserva' }
 
   const restLine =
     summary.restAllowance === 0
@@ -471,8 +478,8 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
           <div className="hoy-tip-body">
             <div className="hoy-tip-icon"><Icon name="shield" size={20} /></div>
             <div>
-              <span className="hoy-tip-kicker">Cuidado lumbar</span>
-              <p className="hoy-tip-text">Columna neutra: piensa en sacar un poco la cola</p>
+              <span className="hoy-tip-kicker">{tip.kicker}</span>
+              <p className="hoy-tip-text">{tip.text}</p>
             </div>
           </div>
           <button type="button" className="hoy-link" onClick={() => go('plan')}>
@@ -480,6 +487,8 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
             <Icon name="chevron" size={16} />
           </button>
         </section>
+
+        <HoyBackupNotice />
 
         {rows.length <= 1 && (
           <section className="hoy-nudge">

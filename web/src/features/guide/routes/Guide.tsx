@@ -1,24 +1,8 @@
 import BottomSheet from '../../../components/BottomSheet'
 import { useStore } from '../../../lib/store'
-import {
-  AVOID_INTRO,
-  AVOID_ROWS,
-  DOUBLE_PROGRESSION_STEPS,
-  FOUR_DAY_TIP,
-  GOLDEN_RULES,
-  GUIDE_DISCLAIMER,
-  GUIDE_INTRO,
-  HABITS,
-  HABITS_TITLE,
-  PLAN_PARAGRAPHS,
-  PLAN_PARAGRAPHS_AFTER_PROGRESSION,
-  PROGRESSION_INTRO,
-  PROGRESSION_OUTRO,
-  RED_FLAGS,
-  RED_FLAGS_TITLE,
-} from '../lib/guideContent'
+import { RED_FLAGS_TITLE, guideContentFor, type RedFlag } from '../lib/guideContent'
 import { blockWeekNumber, phaseForWeek } from '../../../lib/phases'
-import type { Phase } from '../../../lib/types'
+import type { Config, Phase, TrainingPlan } from '../../../lib/types'
 import './guide.css'
 
 function AlertIcon() {
@@ -41,10 +25,10 @@ function InfoIcon() {
 
 /** Lista de señales de alarma. La urgente lleva icono, negrita y borde critico,
  *  no solo color. */
-function RedFlagList() {
+function RedFlagList({ flags }: { flags: readonly RedFlag[] }) {
   return (
     <ul className="guide-red-flags">
-      {RED_FLAGS.map(flag => (
+      {flags.map(flag => (
         <li key={flag.text} className={flag.urgent ? 'is-urgent' : undefined}>
           {flag.urgent ? (
             <>
@@ -73,6 +57,13 @@ function weekRange(phase: Phase): string {
 /** Pantalla "Guía": texto de L1 en secciones, con la tabla de progresion del plan. */
 export default function Guide({ onBack }: { onBack: () => void }) {
   const { plan, config } = useStore()
+  return <GuideView plan={plan} config={config} onBack={onBack} />
+}
+
+/** The guide for one plan (presentational). The disc-protrusion sections only
+ *  exist for the "espalda protegida" template (see guideContentFor). */
+export function GuideView({ plan, config, onBack }: { plan: TrainingPlan; config: Config; onBack: () => void }) {
+  const c = guideContentFor(plan)
   const currentWeek = blockWeekNumber(new Date(), config.blockStart)
   const currentPhase = phaseForWeek(plan, currentWeek)
 
@@ -91,73 +82,79 @@ export default function Guide({ onBack }: { onBack: () => void }) {
       <main className="guide-body">
         <section className="guide-section" aria-labelledby="guide-before">
           <h2 id="guide-before" className="section-title">Antes de empezar</h2>
-          <p className="guide-lead">{GUIDE_INTRO}</p>
+          <p className="guide-lead">{c.intro}</p>
           <aside className="guide-callout">
             <InfoIcon />
-            <p>{GUIDE_DISCLAIMER}</p>
+            <p>{c.disclaimer}</p>
           </aside>
         </section>
 
         <section className="guide-section" aria-labelledby="guide-flags">
           <h2 id="guide-flags" className="section-title">{RED_FLAGS_TITLE}</h2>
-          <RedFlagList />
+          <RedFlagList flags={c.redFlags} />
         </section>
 
-        <section className="guide-section" aria-labelledby="guide-rules">
-          <h2 id="guide-rules" className="section-title">Reglas de oro para tu espalda</h2>
-          <ol className="guide-rules">
-            {GOLDEN_RULES.map(rule => (
-              <li key={rule}>{rule}</li>
-            ))}
-          </ol>
-        </section>
+        {c.goldenRules && (
+          <section className="guide-section" aria-labelledby="guide-rules">
+            <h2 id="guide-rules" className="section-title">Reglas de oro para tu espalda</h2>
+            <ol className="guide-rules">
+              {c.goldenRules.map(rule => (
+                <li key={rule}>{rule}</li>
+              ))}
+            </ol>
+          </section>
+        )}
 
         <section className="guide-section" aria-labelledby="guide-plan">
           <h2 id="guide-plan" className="section-title">Cómo funciona el plan</h2>
-          {PLAN_PARAGRAPHS.map(p => (
+          {c.planParagraphs.map(p => (
             <p key={p}>{p}</p>
           ))}
           <ol className="guide-steps">
-            {DOUBLE_PROGRESSION_STEPS.map(step => (
+            {c.progressionSteps.map(step => (
               <li key={step}>{step}</li>
             ))}
           </ol>
-          {PLAN_PARAGRAPHS_AFTER_PROGRESSION.map(p => (
+          {c.afterProgression.map(p => (
             <p key={p}>{p}</p>
           ))}
-          <aside className="guide-callout">
-            <InfoIcon />
-            <p>{FOUR_DAY_TIP}</p>
-          </aside>
+          {c.fourDayTip && (
+            <aside className="guide-callout">
+              <InfoIcon />
+              <p>{c.fourDayTip}</p>
+            </aside>
+          )}
         </section>
 
-        <section className="guide-section" aria-labelledby="guide-avoid">
-          <h2 id="guide-avoid" className="section-title">Ejercicios a evitar por ahora</h2>
-          <p>{AVOID_INTRO}</p>
-          <table className="guide-table">
-            <caption className="guide-sr">Ejercicios a evitar, por qué y su reemplazo</caption>
-            <thead>
-              <tr>
-                <th scope="col">Evitar</th>
-                <th scope="col">Por qué</th>
-                <th scope="col">Reemplazo</th>
-              </tr>
-            </thead>
-            <tbody>
-              {AVOID_ROWS.map(row => (
-                <tr key={row.avoid}>
-                  <th scope="row">{row.avoid}</th>
-                  <td data-label="Por qué">{row.why}</td>
-                  <td data-label="Reemplazo">{row.replacement}</td>
+        {c.avoid && (
+          <section className="guide-section" aria-labelledby="guide-avoid">
+            <h2 id="guide-avoid" className="section-title">Ejercicios a evitar por ahora</h2>
+            <p>{c.avoid.intro}</p>
+            <table className="guide-table">
+              <caption className="guide-sr">Ejercicios a evitar, por qué y su reemplazo</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Evitar</th>
+                  <th scope="col">Por qué</th>
+                  <th scope="col">Reemplazo</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
+              </thead>
+              <tbody>
+                {c.avoid.rows.map(row => (
+                  <tr key={row.avoid}>
+                    <th scope="row">{row.avoid}</th>
+                    <td data-label="Por qué">{row.why}</td>
+                    <td data-label="Reemplazo">{row.replacement}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        )}
 
         <section className="guide-section" aria-labelledby="guide-progression">
           <h2 id="guide-progression" className="section-title">Progresión en 12 semanas</h2>
-          <p>{PROGRESSION_INTRO}</p>
+          <p>{c.progressionIntro}</p>
           <table className="guide-table guide-progression">
             <caption className="guide-sr">Progresión por semanas del bloque</caption>
             <thead>
@@ -185,17 +182,19 @@ export default function Guide({ onBack }: { onBack: () => void }) {
               })}
             </tbody>
           </table>
-          <p>{PROGRESSION_OUTRO}</p>
+          <p>{c.progressionOutro}</p>
         </section>
 
-        <section className="guide-section" aria-labelledby="guide-habits">
-          <h2 id="guide-habits" className="section-title">{HABITS_TITLE}</h2>
-          <ul className="guide-list">
-            {HABITS.map(habit => (
-              <li key={habit}>{habit}</li>
-            ))}
-          </ul>
-        </section>
+        {c.habits && (
+          <section className="guide-section" aria-labelledby="guide-habits">
+            <h2 id="guide-habits" className="section-title">{c.habits.title}</h2>
+            <ul className="guide-list">
+              {c.habits.items.map(habit => (
+                <li key={habit}>{habit}</li>
+              ))}
+            </ul>
+          </section>
+        )}
       </main>
     </div>
   )
@@ -203,12 +202,13 @@ export default function Guide({ onBack }: { onBack: () => void }) {
 
 /** Hoja con solo las señales de alarma y el aviso, abrible desde la sesion. */
 export function RedFlagsSheet({ onClose }: { onClose: () => void }) {
+  const c = guideContentFor(useStore().plan)
   return (
     <BottomSheet title={RED_FLAGS_TITLE} onClose={onClose}>
-      <RedFlagList />
+      <RedFlagList flags={c.redFlags} />
       <aside className="guide-callout">
         <InfoIcon />
-        <p>{GUIDE_DISCLAIMER}</p>
+        <p>{c.disclaimer}</p>
       </aside>
     </BottomSheet>
   )

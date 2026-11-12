@@ -1,5 +1,7 @@
 // Texto estatico de la guia "Guía", tomado verbatim del plan de L1.
 // Datos tipados (no JSX) para poder probarlo.
+import type { TrainingPlan } from '../../../lib/types'
+import { isBackCarePlan } from '../../../lib/defaultPlan'
 
 export const GUIDE_INTRO =
   'Con una protrusión discal, el progreso rápido viene de entrenar constante y sin lesionarte, no de cargar pesado desde la semana 1. Este plan prioriza máquinas y ejercicios que no comprimen ni flexionan la columna bajo carga.'
@@ -126,3 +128,90 @@ export const HABITS: readonly string[] = [
   'Duerme 7–9 horas: ahí es donde realmente progresas.',
   'Si un día la espalda está irritada, no faltes: haz solo el Día 3 suave y camina.',
 ]
+
+/* ---------- general template ---------- */
+
+// The text above is specific to a disc protrusion and belongs to the
+// "espalda protegida" template. The general template gets its own, shorter
+// guide with no back-specific advice.
+
+export const GENERIC_GUIDE_INTRO =
+  'Este plan reparte el trabajo en tres sesiones de cuerpo completo por semana. El progreso viene de entrenar constante, con buena técnica, y de sumar repeticiones y peso poco a poco.'
+
+export const GENERIC_GUIDE_DISCLAIMER =
+  'Aviso: MagniFit no sustituye la valoración de un médico o fisioterapeuta. Si tienes una lesión, dolor o una condición de salud, consulta antes de empezar.'
+
+export const GENERIC_RED_FLAGS: readonly RedFlag[] = [
+  { text: 'Dolor agudo o punzante en una articulación durante un ejercicio.' },
+  { text: 'Dolor que empeora durante la sesión y sigue peor al día siguiente.' },
+  { text: 'Dolor en el pecho, mareo o falta de aire fuera de lo normal: detente y busca atención médica ese mismo día.', urgent: true },
+]
+
+export const GENERIC_PLAN_PARAGRAPHS: readonly string[] = [
+  'Son 3 sesiones de 50–60 minutos con un día de descanso entre cada una. Cada músculo grande se entrena 3 veces por semana con pocas series por sesión, lo que funciona bien para empezar.',
+  PLAN_PARAGRAPHS[1],
+  PLAN_PARAGRAPHS[2],
+]
+
+export const GENERIC_PLAN_PARAGRAPHS_AFTER_PROGRESSION: readonly string[] = [
+  PLAN_PARAGRAPHS_AFTER_PROGRESSION[0],
+  'Anota todo (peso, series y reps) en la app. Sin registro no hay progresión.',
+]
+
+export const GENERIC_PROGRESSION_INTRO =
+  'Las primeras 2 semanas parecen fáciles a propósito: sirven para aprender la técnica y el ajuste de cada máquina.'
+
+export const GENERIC_PROGRESSION_OUTRO =
+  'En la semana 12 compara tu registro con la semana 1 y decide qué cambiar en el siguiente bloque.'
+
+/** Everything the guide shows, for one plan. null = the section does not
+ *  apply to that template. */
+export interface GuideContent {
+  intro: string
+  disclaimer: string
+  redFlags: readonly RedFlag[]
+  goldenRules: readonly string[] | null
+  planParagraphs: readonly string[]
+  progressionSteps: readonly string[]
+  afterProgression: readonly string[]
+  fourDayTip: string | null
+  avoid: { intro: string; rows: readonly AvoidRow[] } | null
+  progressionIntro: string
+  progressionOutro: string
+  habits: { title: string; items: readonly string[] } | null
+}
+
+/** The disc-protrusion guide stays tied to the "espalda protegida" plan
+ *  (edited or not); any other plan gets the general guide. */
+export function guideContentFor(plan: Pick<TrainingPlan, 'id'>): GuideContent {
+  if (isBackCarePlan(plan)) {
+    return {
+      intro: GUIDE_INTRO,
+      disclaimer: GUIDE_DISCLAIMER,
+      redFlags: RED_FLAGS,
+      goldenRules: GOLDEN_RULES,
+      planParagraphs: PLAN_PARAGRAPHS,
+      progressionSteps: DOUBLE_PROGRESSION_STEPS,
+      afterProgression: PLAN_PARAGRAPHS_AFTER_PROGRESSION,
+      fourDayTip: FOUR_DAY_TIP,
+      avoid: { intro: AVOID_INTRO, rows: AVOID_ROWS },
+      progressionIntro: PROGRESSION_INTRO,
+      progressionOutro: PROGRESSION_OUTRO,
+      habits: { title: HABITS_TITLE, items: HABITS },
+    }
+  }
+  return {
+    intro: GENERIC_GUIDE_INTRO,
+    disclaimer: GENERIC_GUIDE_DISCLAIMER,
+    redFlags: GENERIC_RED_FLAGS,
+    goldenRules: null,
+    planParagraphs: GENERIC_PLAN_PARAGRAPHS,
+    progressionSteps: DOUBLE_PROGRESSION_STEPS,
+    afterProgression: GENERIC_PLAN_PARAGRAPHS_AFTER_PROGRESSION,
+    fourDayTip: null,
+    avoid: null,
+    progressionIntro: GENERIC_PROGRESSION_INTRO,
+    progressionOutro: GENERIC_PROGRESSION_OUTRO,
+    habits: null,
+  }
+}
