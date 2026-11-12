@@ -279,7 +279,7 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
             <button type="button" className="hoy-minimal" onClick={() => startRoutine(selected.id, { minimal: true })}>
               <span>
                 <strong>Día difícil: versión mínima</strong>
-                <small>Calentamiento + primer ejercicio · ~10 min</small>
+                <small>Calentamiento + primer ejercicio</small>
               </span>
               <Icon name="sliders" size={20} />
             </button>

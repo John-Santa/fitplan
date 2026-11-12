@@ -24,7 +24,7 @@ function slot(
 
 const WARMUP: RoutineBlock = {
   id: 'warmup',
-  title: 'Calentamiento fijo (10 min, antes de cada sesión)',
+  title: 'Calentamiento (antes de cada sesión)',
   note: 'Este calentamiento despierta glúteos y core, que se "apagan" tras 8 horas sentado, y prepara la espalda para cargar.',
   slots: [
     slot('warmup-1', 'cardio-warmup', 1, time(300, 300), 0, 'Caminadora o elíptica: 5 min a ritmo moderado (inclinación 3–5 % en caminadora).'),
