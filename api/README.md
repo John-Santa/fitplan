@@ -1,13 +1,28 @@
 # MagniFit API
 
-Go HTTP service, hexagonal layout:
+Go HTTP service with a hexagonal, layer-first layout (same conventions as icaro's hermes). Dependencies point inward: adapters → use cases → ports → domain.
 
-- `internal/domain`: sync record types, validation and the `Store` port (standard library only).
-- `internal/sync`: application service (pull with cursor pagination, push with validation).
-- `internal/store`: Postgres adapter (pgxpool + sqlc in `internal/store/sqlcgen`), embedded goose migrations (`db/migrations`, applied on boot).
-- `internal/auth`: Clerk authenticator (Bearer session JWT; the token subject is the user id).
-- `internal/http`: HTTP adapter (routing, middleware, JSON wire format).
-- `internal/config`, `cmd/api`: env config and entrypoint.
+```
+api/
+├── cmd/magnifit-api/        composition root: manual dependency wiring
+├── openapi.yaml             OpenAPI 3.1 contract (checked against the real handlers by a test)
+├── migrations/              goose SQL migrations, embedded in the binary (testdata/ holds a smoke script)
+├── internal/
+│   ├── domain/sync/         sync records, validation, future-timestamp clamp (standard library only)
+│   ├── domain/shared/       UserID, ValidationError
+│   ├── port/                sentinel errors (ErrInvalid, ErrUnauthorized, ErrNotFound, ErrUnavailable), Authenticator, Clock, user id in context
+│   ├── usecase/sync/        Service (Pull/Push) with Deps and consumer-side ChangeReader/ChangeApplier
+│   ├── adapter/httpapi/     chi router, middleware, problem+json, handlers and wire DTOs
+│   ├── adapter/postgres/    SyncStore (pgx + sqlc), queries/ → sqlcgen/, pgmap/ row↔domain, goose Migrate
+│   ├── adapter/clerk/       Clerk SDK v2 Bearer verifier (azp list rule)
+│   └── platform/            config (env, fails fast), logging (slog JSON + request_id), postgresdb (pool, WithTx), httpserver (graceful shutdown)
+├── .golangci.yml            depguard keeps internal/domain on the standard library; sloglint requires context
+└── Makefile
+```
+
+Middleware order, outermost first: RequestID → Logger → Recover → CORS → Auth. Auth sits inside CORS so 401 answers carry CORS headers and preflights never need a token; it runs before any handler, skips the public paths (`/health`, `/readyz`) and leaves unrouted requests to 404/405.
+
+Architecture decisions: [docs/decisiones-tecnicas.md](docs/decisiones-tecnicas.md).
 
 ## Run
 
@@ -31,10 +46,20 @@ On boot the service connects to `DATABASE_URL`, applies pending migrations (unde
 
 ## Endpoints
 
-`GET /health` is public. Every `/v1` route requires `Authorization: Bearer <Clerk session token>`; a missing or invalid token gets `401 {"error":"unauthorized"}`. Errors are always `{"error":"..."}`.
+The contract is [openapi.yaml](openapi.yaml). `GET /health` (liveness) and `GET /readyz` (pings the database; `503` when it is down or not configured) are public. Every `/v1` route requires `Authorization: Bearer <Clerk session token>`; a missing or invalid token gets a `401` problem with `WWW-Authenticate: Bearer realm="magnifit"`.
+
+Errors are RFC 7807 problems with `Content-Type: application/problem+json`:
+
+```json
+{"type": "about:blank", "title": "Bad Request", "status": 400, "detail": "sessions[0].body.date: must be a valid YYYY-MM-DD date"}
+```
+
+`title` is the HTTP status text and `detail` the reason (for validation errors, the failing field path and rule). Unexpected failures answer an opaque `500` with `detail: "internal server error"`.
 
 | Method | Path | Answer |
 | --- | --- | --- |
+| `GET` | `/health` | `{"status":"ok"}` |
+| `GET` | `/readyz` | `{"status":"ready"}` or `503` problem |
 | `GET` | `/v1/me` | `{"userId":"user_..."}` |
 | `GET` | `/v1/sync?since=<rev>&limit=<n>` | ChangeSet with records whose `rev > since` (`since` default 0, `limit` 1-500, default 200) |
 | `POST` | `/v1/sync` | Push a ChangeSet (max 5 MB, else 413); answers one result per record |
@@ -65,12 +90,16 @@ ChangeSet (timestamps are epoch milliseconds, like the front):
 ## Test
 
 ```sh
-make test   # go test ./... (Postgres integration tests skip without TEST_DATABASE_URL)
-make vet
-make build  # outputs bin/api
+make check             # gofmt check + go vet + golangci-lint + go test ./...
+make test              # go test ./... (Postgres integration tests skip without TEST_DATABASE_URL)
+make test-integration  # same, against a throwaway postgres:17 container
+make sqlc-check        # regenerates sqlc code and fails if it differs from the committed code
+make build             # outputs bin/magnifit-api
 ```
 
-Postgres integration tests (`internal/store`) run when `TEST_DATABASE_URL` is set. They migrate the database and truncate all its data, so use a throwaway one:
+`internal/adapter/httpapi/contract_conformance_test.go` validates real handler requests and responses (success and error) against `openapi.yaml` with libopenapi-validator, and checks that every router route is in the contract and vice versa.
+
+Postgres integration tests (`internal/adapter/postgres`) run when `TEST_DATABASE_URL` is set. They migrate the database and truncate all its data, so use a throwaway one:
 
 ```sh
 docker run -d --rm --name magnifit-pg -e POSTGRES_PASSWORD=pg -p 55433:5432 postgres:17
