@@ -162,6 +162,12 @@ export const PLAN_WEEKLY_ROUTINE: WeeklyRoutine = [
   { kind: 'rest', title: '', note: 'Descanso activo: tus 10.000 pasos' },
 ]
 
+/** Config of the "espalda protegida" template as the app seeded it on the
+ *  first open before the welcome existed: the owner's height, goals and
+ *  fixed 12-week block. New installs never get it (they go through the
+ *  welcome and newInstallConfig); it stays because mergeConfig fills missing
+ *  fields of stored configs from it (existing installs must not change) and
+ *  because the first sign-in still recognizes it as an older phone's seed. */
 export const DEFAULT_CONFIG: Config = {
   heightCm: 173,
   blockStart: '2026-11-16',
@@ -187,6 +193,9 @@ export const DEFAULT_CONFIG: Config = {
   ],
 }
 
+/** Measurement the app seeded on the first open before the welcome existed.
+ *  New installs never get it; the first sign-in still recognizes it as an
+ *  older phone's seed (engine.ts). */
 export const BASELINE = {
   date: '2026-08-03',
   weight: 83.0,
@@ -198,6 +207,54 @@ export const BASELINE = {
   hip: 101,
   chest: 108,
   neck: 42,
+}
+
+/** A goal of 0 means "not set": the welcome writes it for every goal the
+ *  person leaves empty instead of inheriting DEFAULT_CONFIG's fixed goals.
+ *  0 is a finite number, so mergeConfig keeps it on read. */
+export const UNSET_GOAL = 0
+
+/** What the welcome asks for. Everything else of the config starts neutral. */
+export interface NewInstallSetup {
+  heightCm: number
+  /** Goals the person entered; missing ones are stored as UNSET_GOAL. */
+  goal: Partial<Config['goal']>
+  blockStart: string
+  blockEnd: string
+  /** Week of the chosen plan template (its weekTemplate). */
+  weeklyRoutine: WeeklyRoutine
+}
+
+/** Config of a new install, built only from the welcome's answers plus
+ *  neutral defaults: no seeded height, goals or block dates. Field by field
+ *  (no spread), same reason as mergeConfig. */
+export function newInstallConfig(setup: NewInstallSetup): Config {
+  const g = setup.goal
+  const goal = (v: number | undefined) => (typeof v === 'number' && Number.isFinite(v) ? v : UNSET_GOAL)
+  return {
+    heightCm: setup.heightCm,
+    blockStart: setup.blockStart,
+    blockEnd: setup.blockEnd,
+    goal: {
+      weight: goal(g.weight),
+      fatPct: goal(g.fatPct),
+      fatMass: goal(g.fatMass),
+      muscle: goal(g.muscle),
+      water: goal(g.water),
+      waist: goal(g.waist),
+      hip: goal(g.hip),
+      chest: goal(g.chest),
+      neck: goal(g.neck),
+    },
+    weeklyRoutine: structuredClone(setup.weeklyRoutine),
+    poolLengthM: 25,
+    routineExercises: {},
+    habitCheckIns: [],
+    intentions: [
+      { time: '', place: '' }, { time: '', place: '' }, { time: '', place: '' }, { time: '', place: '' },
+      { time: '', place: '' }, { time: '', place: '' }, { time: '', place: '' },
+    ],
+  }
 }
 
 export const ROUTINES: Routine[] = [
