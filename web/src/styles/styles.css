@@ -982,3 +982,8 @@ figcaption {
   .main:has(.session-head) { display: block; max-width: 760px; }
   .main:has(.session-head) > * { max-width: none; }
 }
+
+.moved-notice { background: var(--surface-1); border-bottom: 3px solid var(--accent); padding: 12px var(--sp-4); }
+.moved-notice p { margin: 0 0 8px; }
+.moved-notice-error { color: var(--danger, #c0392b); }
+.moved-notice-actions { display: flex; gap: 8px; flex-wrap: wrap; }
