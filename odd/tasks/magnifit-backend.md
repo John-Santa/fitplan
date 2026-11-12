@@ -18,8 +18,8 @@ Assumptions (parent): the front stays at the repo root for now (no move to `web/
 - [x] T2 — S4,S6: Postgres schema + goose migrations + sqlc queries (sync columns), validated against a throwaway Postgres container. Risk 1 (data). Route: delegated, parallel with T1. Done: sqlc compile/generate/vet ok; Up/Down + 6 smoke checks PASS on postgres:17.
 - [~] T3 — S3: Clerk middleware (Go) + login in the front. Risk 2. Route: delegated + independent verifier. Front 8addf41 (343 tests, Clerk lazy-loaded only with VITE_CLERK_PUBLISHABLE_KEY); Go half in 701614b (WithHeaderAuthorization + JSON 401, since RequireHeaderAuthorization answers a bodyless 403 in SDK v2.8.0). Verifier running.
 - [~] T4 — S2,S4: API endpoints (documents, sessions, measurements, exercise meta; push/pull sync) with Postgres integration tests. Risk 3. Commit 701614b: /v1/me, GET/POST /v1/sync; per-user advisory lock on push, REPEATABLE READ pull; 5 integration tests green. Verifier running.
-- [ ] T5 — S6: offline sync layer in the front. Risk 4. Independent verifier.
-- [ ] T6 — S7: first-login upload of local data. Risk 1. Independent verifier.
+- [~] T5 — S6: offline sync layer in the front. Risk 4. Independent verifier. Commit 90c7849 (365 tests); verifier running.
+- [~] T6 — S7: first-login upload of local data. Risk 1. Independent verifier. Same commit 90c7849 (bootstrap in engine.ts); verifier running.
 - [ ] T7 — S8: deploy (DNS, API host, DB, secrets). Risk 5. Parent, user confirms each external step.
 - [x] T8 — rename the app to MagniFit (title, manifest, icon text). Route: inline. Commit 6b914cc; 333 tests green.
 
@@ -28,3 +28,4 @@ Assumptions (parent): the front stays at the repo root for now (no move to `web/
 - L2 (2026-11-11) name chosen by the user: MagniFit; domain bought: magnifit.co.
 - L3 (2026-11-11) user: "Ya tengo dominio,  es magnifit.co  y me gusta la arquitectura que propones, cómo seguimos?" — architecture approved, including offline-first sync.
 - L4 (2026-11-11) api/.env.example left untracked: the parent cannot read .env* files (permission settings); the user must review it (expected names: PORT, ALLOWED_ORIGINS, APP_ENV, DATABASE_URL, CLERK_SECRET_KEY, optional TEST_DATABASE_URL).
+- L5 (2026-11-11) T4 verifier: PASS, no blockers, 5 advisories + future-skew pin; all fixed in cb372a9 (range/NUL validation, clamp updatedAt to now+10min, strict JSON decoding, azp required when a list is set, goose session locker).
