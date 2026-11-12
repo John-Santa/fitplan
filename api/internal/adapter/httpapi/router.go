@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -30,6 +31,8 @@ type RouterConfig struct {
 	Sync SyncService
 	// Readiness is pinged by /readyz; nil answers 503.
 	Readiness Pinger
+	// Timeout bounds one request; zero means the default (25 s). Tests shorten it.
+	Timeout time.Duration
 	// Extra registers additional routes (tests only).
 	Extra func(r chi.Router)
 }
@@ -51,7 +54,11 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	r.Use(recoverer(log))
 	r.Use(cors(cfg.AllowedOrigins))
 	r.Use(authenticate(cfg.Authenticator, r))
-	r.Use(middleware.Timeout(handlerTimeout))
+	timeout := cfg.Timeout
+	if timeout <= 0 {
+		timeout = handlerTimeout
+	}
+	r.Use(middleware.Timeout(timeout))
 	r.Use(middleware.GetHead)
 
 	r.NotFound(func(w http.ResponseWriter, _ *http.Request) {

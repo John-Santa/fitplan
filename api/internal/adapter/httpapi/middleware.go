@@ -82,11 +82,15 @@ type statusRecorder struct {
 	wrote  bool
 }
 
+// WriteHeader forwards only the first status. A later call, such as the
+// deadline middleware's 504 after a handler already answered, would only make
+// net/http log a superfluous WriteHeader line.
 func (r *statusRecorder) WriteHeader(code int) {
-	if !r.wrote {
-		r.status = code
-		r.wrote = true
+	if r.wrote {
+		return
 	}
+	r.status = code
+	r.wrote = true
 	r.ResponseWriter.WriteHeader(code)
 }
 
