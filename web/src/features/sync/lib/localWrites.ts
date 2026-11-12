@@ -9,6 +9,8 @@
 import type { Config, ExerciseMeta, Measurement, Session, TrainingPlan } from '../../../lib/types'
 import { authEnabled } from '../../account/lib/auth'
 import * as db from '../../../lib/db'
+import { mergeConfig } from '../../../lib/plan'
+import { rebaseConfigEdit } from './configMerge'
 import { noteLocalWrite } from './engine'
 import { enqueueDelete, enqueueUpsert, type Entity } from './syncDb'
 
@@ -65,6 +67,14 @@ export async function saveExerciseMeta(m: ExerciseMeta) {
 export async function saveConfig(c: Config) {
   await db.saveConfig(c)
   await upsert('document', 'config', c)
+}
+
+/** Saves an edit a screen made from `seen`, its in-memory copy. A sync may
+ *  have merged another device's changes into the stored config since then
+ *  (S15): the edit is applied over the stored copy instead of replacing it,
+ *  so those changes survive. */
+export async function saveConfigEdit(seen: Config, edited: Config) {
+  await saveConfig(rebaseConfigEdit(seen, edited, mergeConfig(await db.getConfig())))
 }
 
 export async function savePlan(p: TrainingPlan) {

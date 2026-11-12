@@ -6,7 +6,8 @@ import { daysSince, fmt, fmtDate } from '../../../lib/calc'
 import { authEnabled, useAuthState } from '../lib/auth'
 import { MEASUREMENT_KEYS, MEASUREMENT_LABELS, MEASUREMENT_UNITS } from '../../../lib/plan'
 import { enqueueAllLocalChanges, syncNow, type SyncStatus } from '../../sync/lib/engine'
-import { getPreBootstrapBackup, resetSyncState } from '../../sync/lib/syncDb'
+import { clearConfigConflict, getConfigConflict, getPreBootstrapBackup, resetSyncState } from '../../sync/lib/syncDb'
+import { ConfigConflictNotice } from '../../sync/components/ConfigConflictNotice'
 import { BACKUP_NOTICE, restoreHint, syncStatusLines, wipeConfirmTexts } from '../../sync/lib/statusText'
 import { useSyncStatus } from '../../sync/lib/useSync'
 
@@ -51,11 +52,26 @@ export function AccountCard() {
 }
 
 function SyncStatusView() {
+  const status = useSyncStatus()
+  // S15: settings where another device's value was kept over a local change.
+  const [conflictFields, setConflictFields] = useState<string[]>([])
+  useEffect(() => {
+    getConfigConflict().then(c => setConflictFields(c?.fields ?? [])).catch(() => {})
+  }, [status.lastSyncAt])
   const downloadBackup = async () => {
     const saved = await getPreBootstrapBackup()
     if (saved) downloadBackupFile(saved.backup)
   }
-  return <SyncStatusLines status={useSyncStatus()} onSync={() => void syncNow()} onDownloadBackup={() => void downloadBackup()} />
+  const dismissConflict = async () => {
+    await clearConfigConflict().catch(() => {})
+    setConflictFields([])
+  }
+  return (
+    <>
+      <ConfigConflictNotice fields={conflictFields} onDismiss={() => void dismissConflict()} />
+      <SyncStatusLines status={status} onSync={() => void syncNow()} onDownloadBackup={() => void downloadBackup()} />
+    </>
+  )
 }
 
 /** Estado de sincronización, botón "Sincronizar ahora" y, si el primer

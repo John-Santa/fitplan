@@ -312,3 +312,29 @@ describe('behavior kept (pins)', () => {
     }
   })
 })
+
+describe('store edits over a merge that landed meanwhile', () => {
+  it('saving an edit made on a stale in-memory config keeps what the merge added', async () => {
+    const d = await device()
+    const { DEFAULT_CONFIG } = await plan()
+    await d.db.saveConfig(DEFAULT_CONFIG)
+    const seen = configOf(d)
+    // A remote merge writes a check-in after the screen read `seen`.
+    await d.db.saveConfig(checkIn('2026-11-10')(seen))
+    await d.local.saveConfigEdit(seen, checkIn('2026-11-11')(seen))
+
+    expect(configOf(d).habitCheckIns).toEqual(['2026-11-10', '2026-11-11'])
+    expect((outboxOf(d).get('document:config') as { body: Config }).body.habitCheckIns).toEqual(['2026-11-10', '2026-11-11'])
+  })
+
+  it('an undo made on the stale config still removes the day', async () => {
+    const d = await device()
+    const { DEFAULT_CONFIG } = await plan()
+    await d.db.saveConfig(checkIn('2026-11-09')(DEFAULT_CONFIG))
+    const seen = configOf(d)
+    await d.db.saveConfig(checkIn('2026-11-10')(seen))
+    await d.local.saveConfigEdit(seen, { ...seen, habitCheckIns: [] })
+
+    expect(configOf(d).habitCheckIns).toEqual(['2026-11-10'])
+  })
+})
