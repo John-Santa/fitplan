@@ -8,3 +8,5 @@ dist-ssr
 *.log
 *.tsbuildinfo
 .atl
+api/.env
+api/bin/
