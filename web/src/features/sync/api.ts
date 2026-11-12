@@ -3,11 +3,23 @@ import type { ChangeSet, Me, PushChangeSet, PushResult } from './syncTypes'
 
 export class ApiError extends Error {
   readonly status: number
-  constructor(status: number, message: string) {
+  /** Espera pedida por el servidor (cabecera Retry-After), en ms. */
+  readonly retryAfterMs?: number
+  constructor(status: number, message: string, retryAfterMs?: number) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.retryAfterMs = retryAfterMs
   }
+}
+
+/** Retry-After admite segundos enteros o una fecha HTTP; otro valor se ignora. */
+export function parseRetryAfter(value: string | null, now = Date.now()): number | undefined {
+  const v = value?.trim()
+  if (!v) return undefined
+  if (/^\d+$/.test(v)) return Number(v) * 1000
+  const at = Date.parse(v)
+  return Number.isNaN(at) ? undefined : Math.max(0, at - now)
 }
 
 function baseUrl(): string {
@@ -39,7 +51,7 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
   const token = await getAuthToken()
   if (token) headers.set('Authorization', `Bearer ${token}`)
   const res = await fetch(url, { ...init, headers })
-  if (!res.ok) throw new ApiError(res.status, await errorMessage(res))
+  if (!res.ok) throw new ApiError(res.status, await errorMessage(res), parseRetryAfter(res.headers.get('Retry-After')))
   return res
 }
 
