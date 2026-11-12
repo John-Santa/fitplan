@@ -982,3 +982,11 @@ figcaption {
   .main:has(.session-head) { display: block; max-width: 760px; }
   .main:has(.session-head) > * { max-width: none; }
 }
+
+/* Sign-out dialog (account/components/SignOutDialog): a short sheet, not the
+   90% tall one used for the exercise card. */
+.sheet.signout-sheet { height: auto; max-height: 90dvh; }
+.signout { display: grid; gap: var(--sp-3); }
+.signout p { margin: 0; }
+.signout-warning { color: var(--alert); font-weight: 600; }
+.signout-actions { margin-top: var(--sp-2); }

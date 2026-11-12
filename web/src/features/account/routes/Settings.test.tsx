@@ -50,3 +50,24 @@ describe('estado de sincronización en la tarjeta Cuenta', () => {
     expect(html).toContain('3 cambios no se pudieron subir: body contains NUL')
   })
 })
+
+describe('cuenta bloqueada por datos de otra cuenta', () => {
+  const blocked = { state: 'blocked' as const, pending: 0, lastSyncAt: null, lastError: 'Esta app tiene datos de otra cuenta.', rejected: 0, rejectedError: null, backupAt: null }
+
+  it('ofrece "Exportar y cambiar" junto a "Sincronizar ahora"', () => {
+    const html = renderToString(<SyncStatusLines status={blocked} onSync={() => {}} onExportAndSwitch={() => {}} />)
+    expect(html).toContain('Exportar y cambiar')
+    expect(html).toContain('Sincronizar ahora')
+  })
+
+  it('no lo ofrece en los demás estados', () => {
+    for (const state of ['idle', 'syncing', 'offline', 'error'] as const) {
+      const html = renderToString(<SyncStatusLines status={{ ...blocked, state }} onSync={() => {}} onExportAndSwitch={() => {}} />)
+      expect(html).not.toContain('Exportar y cambiar')
+    }
+  })
+
+  it('no lo ofrece si no hay acción para ejecutarlo', () => {
+    expect(renderToString(<SyncStatusLines status={blocked} onSync={() => {}} />)).not.toContain('Exportar y cambiar')
+  })
+})
