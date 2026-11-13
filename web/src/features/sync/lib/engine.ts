@@ -39,8 +39,7 @@ import type { ChangeSet, ItemResult, PushChangeSet } from '../syncTypes'
 import type { ExerciseMeta, Measurement } from '../../../lib/types'
 import * as sdb from './syncDb'
 import type { Entity, OutboxEntry } from './syncDb'
-import { mergePendingConfig, noteConfigSynced } from './configSync'
-import { defaultDisciplines, hasDisciplines, withDisciplines } from '../../../lib/disciplineSelection'
+import { mergePendingConfig, noteConfigSynced, withLocalNewFields } from './configSync'
 
 export const OTHER_ACCOUNT_ERROR =
   'Esta app tiene datos de otra cuenta. Para no mezclarlos, la sincronización está en pausa: vuelve a iniciar ' +
@@ -449,9 +448,9 @@ async function applyRemote(r: Remote, allowDelete: boolean): Promise<boolean> {
     await db.saveExerciseMeta(r.body as unknown as ExerciseMeta)
   } else if (r.key === 'config') {
     if (!isObject(r.body)) return false
-    // A body without the discipline list (older client) never undoes the
-    // local list; when there is no local list either, D2-A applies once.
-    await db.saveConfig(await withDisciplines(r.body, mergeConfig(r.body), localDisciplines))
+    // A body from an older client lacks the new fields: the local values
+    // stay (withLocalNewFields, same helper as the queued-merge path).
+    await db.saveConfig(await withLocalNewFields(r.body, mergeConfig(r.body), await db.getConfig()))
     await noteConfigSynced(r.body)
   } else if (r.key === 'plan') {
     const plan = normalizePlan(r.body)
@@ -459,14 +458,6 @@ async function applyRemote(r: Remote, allowDelete: boolean): Promise<boolean> {
     await db.savePlan(plan)
   } else return false
   return true
-}
-
-/** The list a pulled config without one must keep: the stored local list,
- *  or D2-A from the local sessions when none is stored yet. */
-async function localDisciplines() {
-  const stored = await db.getConfig()
-  if (hasDisciplines(stored)) return mergeConfig(stored).disciplines
-  return defaultDisciplines((await db.getSessions()).sessions)
 }
 
 /** Baja páginas desde `since`. `onPage` decide qué hacer con cada registro. */

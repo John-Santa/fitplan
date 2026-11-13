@@ -365,3 +365,83 @@ describe('store edits over a merge that landed meanwhile', () => {
     expect(configOf(d).habitCheckIns).toEqual(['2026-11-10'])
   })
 })
+
+// S10: a config body from an older client carries neither disciplines nor
+// swimWeeklyTarget; on both pull paths the local values are kept.
+describe('older-client config body without the new fields', () => {
+  async function pushedDevice() {
+    const { DEFAULT_CONFIG } = await plan()
+    const a = await device()
+    await a.db.saveConfig({ ...DEFAULT_CONFIG, disciplines: ['strength', 'swim'], swimWeeklyTarget: 4 })
+    a.engine.setSyncUser('u1')
+    await a.engine.syncNow()
+    return a
+  }
+  /** The device's config as an older client would push it. */
+  const olderBody = (a: Device, patch: Partial<Config>) => {
+    const o = structuredClone(configOf(a)) as Partial<Config>
+    delete o.disciplines
+    delete o.swimWeeklyTarget
+    return { ...o, ...patch }
+  }
+
+  it('with a local edit queued, keeps the local list and target here and on the server (B1)', async () => {
+    const a = await pushedDevice()
+    clock += 1000
+    await a.local.saveConfig({ ...configOf(a), habitCheckIns: ['2026-11-12'] })
+    clock += 10000
+    server.seed('documents', 'config', olderBody(a, { heightCm: 180, habitCheckIns: [] }), clock)
+
+    await a.engine.syncNow()
+    await a.engine.syncNow()
+
+    expect(configOf(a).disciplines).toEqual(['strength', 'swim'])
+    expect(configOf(a).swimWeeklyTarget).toBe(4)
+    expect(configOf(a).heightCm).toBe(180)
+    expect(configOf(a).habitCheckIns).toEqual(['2026-11-12'])
+    expect(serverConfig().disciplines).toEqual(['strength', 'swim'])
+    expect(serverConfig().swimWeeklyTarget).toBe(4)
+    expect(await a.syncDb.getConfigConflict()).toBeUndefined()
+  })
+
+  it('with nothing queued, keeps the local list and target and applies the rest (B2)', async () => {
+    const a = await pushedDevice()
+    clock += 10000
+    server.seed('documents', 'config', olderBody(a, { heightCm: 180 }), clock)
+
+    await a.engine.syncNow()
+
+    expect(configOf(a).heightCm).toBe(180)
+    expect(configOf(a).disciplines).toEqual(['strength', 'swim'])
+    expect(configOf(a).swimWeeklyTarget).toBe(4)
+  })
+
+  it('a body from this build that changes the target and the list is applied as a normal remote change', async () => {
+    const a = await pushedDevice()
+    clock += 10000
+    server.seed('documents', 'config', { ...configOf(a), swimWeeklyTarget: 5, disciplines: ['strength'] }, clock)
+
+    await a.engine.syncNow()
+
+    expect(configOf(a).swimWeeklyTarget).toBe(5)
+    expect(configOf(a).disciplines).toEqual(['strength'])
+  })
+
+  it('after an older-client pull, a queued edit still loses the target and list to a later body from this build', async () => {
+    const a = await pushedDevice()
+    clock += 10000
+    server.seed('documents', 'config', olderBody(a, { heightCm: 180 }), clock)
+    await a.engine.syncNow()
+    clock += 1000
+    await a.local.saveConfig({ ...configOf(a), habitCheckIns: ['2026-11-12'] })
+    clock += 10000
+    server.seed('documents', 'config', { ...configOf(a), habitCheckIns: [], swimWeeklyTarget: 5, disciplines: ['strength'] }, clock)
+
+    await a.engine.syncNow()
+    await a.engine.syncNow()
+
+    expect(configOf(a).swimWeeklyTarget).toBe(5)
+    expect(configOf(a).disciplines).toEqual(['strength'])
+    expect(configOf(a).habitCheckIns).toEqual(['2026-11-12'])
+  })
+})
