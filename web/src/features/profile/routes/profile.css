@@ -1,0 +1,13 @@
+/* Perfil (S8): per-discipline metric blocks. */
+.profile-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.profile-head h1 { margin: 0; }
+.profile-block { margin-top: 12px; }
+.profile-block-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.profile-block-head h2 { margin: 0; font-size: 15px; }
+.profile-block p { margin: 6px 0 0; }
+.profile-big { font-size: 20px; font-weight: 700; }
+.profile-empty { font-size: 13.5px; }
+.profile-list { margin: 6px 0 0; padding-left: 18px; }
+.profile-bars { display: flex; align-items: flex-end; gap: 4px; height: 56px; margin-top: 8px; }
+.profile-bars i { display: block; flex: 1; min-height: 4px; border-radius: 2px 2px 0 0; background: var(--fp-line); }
+.profile-bars i.on { background: var(--fp-primary); }
