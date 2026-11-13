@@ -182,7 +182,14 @@ func TestSyncAndMeBehaveTheSameUnderTheLimit(t *testing.T) {
 }
 
 func TestRateLimitDefaultsApplyWhenUnconfigured(t *testing.T) {
-	h := newRouter(httpapi.RouterConfig{Authenticator: fakeAuth{}, Sync: &fakeSync{}})
+	// Frozen clock: with the real one, a slow run refills a token between the
+	// burst and the extra request and the 429 never comes.
+	clk := &clock{t: time.Unix(1_700_000_000, 0)}
+	h := newRouter(httpapi.RouterConfig{
+		Authenticator: fakeAuth{},
+		Sync:          &fakeSync{},
+		RateLimit:     httpapi.RateLimitConfig{Now: clk.now},
+	})
 	for i := 0; i < httpapi.DefaultRateLimitBurst; i++ {
 		if rec := getMe(h, "user_a", nil); rec.Code != http.StatusOK {
 			t.Fatalf("request %d: status = %d, want 200 within the default burst", i+1, rec.Code)
