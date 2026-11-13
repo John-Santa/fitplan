@@ -7,12 +7,15 @@ import { authEnabled, useAuthState } from '../lib/auth'
 import { MEASUREMENT_KEYS, MEASUREMENT_LABELS, MEASUREMENT_UNITS } from '../../../lib/plan'
 import { enqueueAllLocalChanges, syncNow, type SyncStatus } from '../../sync/lib/engine'
 import { getPreBootstrapBackup, resetSyncState } from '../../sync/lib/syncDb'
+import { exportAndEraseDevice } from '../lib/eraseDevice'
+import PlanDamagedNotice from '../components/PlanDamagedNotice'
 import { BACKUP_NOTICE, restoreHint, syncStatusLines, wipeConfirmTexts } from '../../sync/lib/statusText'
 import { useSyncStatus } from '../../sync/lib/useSync'
 import { CloudDangerZone } from '../components/CloudDangerZone'
 
 // Clerk solo se carga si hay clave; sin ella este módulo nunca se importa.
 const AccountControls = lazy(() => import('../components/clerkAuth.tsx').then(m => ({ default: m.AccountControls })))
+const SignOutControl = lazy(() => import('../components/clerkAuth.tsx').then(m => ({ default: m.SignOutControl })))
 
 export function AccountCard() {
   const auth = useAuthState()
@@ -47,6 +50,13 @@ export function AccountCard() {
         </>
       )}
       {auth.isSignedIn && <SyncStatusView />}
+      {auth.isSignedIn && (
+        <div className="btnrow" style={{ marginTop: 12 }}>
+          <Suspense fallback={null}>
+            <SignOutControl />
+          </Suspense>
+        </div>
+      )}
     </div>
   )
 }
@@ -56,19 +66,47 @@ function SyncStatusView() {
     const saved = await getPreBootstrapBackup()
     if (saved) downloadBackupFile(saved.backup)
   }
-  return <SyncStatusLines status={useSyncStatus()} onSync={() => void syncNow()} onDownloadBackup={() => void downloadBackup()} />
+  // Blocked by another account's data: export a backup, erase the device and
+  // carry on with the account that is signed in now (its data comes down on
+  // the next sync because the device no longer has an owner).
+  const exportAndSwitch = async () => {
+    await exportAndEraseDevice()
+    location.reload()
+  }
+  return (
+    <SyncStatusLines
+      status={useSyncStatus()}
+      onSync={() => void syncNow()}
+      onDownloadBackup={() => void downloadBackup()}
+      onExportAndSwitch={exportAndSwitch}
+    />
+  )
 }
 
 /** Estado de sincronización, botón "Sincronizar ahora" y, si el primer
  *  ingreso guardó una copia de los datos anteriores, el botón para bajarla
  *  (presentacional). */
-export function SyncStatusLines({ status, onSync, onDownloadBackup, now }: {
+export function SyncStatusLines({ status, onSync, onDownloadBackup, onExportAndSwitch, now }: {
   status: SyncStatus
   onSync: () => void
   onDownloadBackup?: () => void
+  /** Only offered in the `blocked` state (data of another account). */
+  onExportAndSwitch?: () => void | Promise<void>
   now?: number
 }) {
   const alert = status.state === 'error' || status.state === 'blocked'
+  const [switching, setSwitching] = useState<'idle' | 'confirm' | 'working'>('idle')
+  const [switchError, setSwitchError] = useState<string | null>(null)
+  const switchAccount = async () => {
+    setSwitching('working')
+    setSwitchError(null)
+    try {
+      await onExportAndSwitch?.()
+    } catch (e) {
+      setSwitchError(e instanceof Error ? e.message : 'No se pudo cambiar de cuenta.')
+      setSwitching('idle')
+    }
+  }
   return (
     <>
       {syncStatusLines(status, now).map(line => (
@@ -78,13 +116,31 @@ export function SyncStatusLines({ status, onSync, onDownloadBackup, now }: {
       <div className="btnrow" style={{ marginTop: 12 }}>
         <button onClick={onSync} disabled={status.state === 'syncing'}>Sincronizar ahora</button>
         {status.backupAt != null && <button onClick={onDownloadBackup}>Descargar copia</button>}
+        {status.state === 'blocked' && onExportAndSwitch && switching === 'idle' && (
+          <button onClick={() => setSwitching('confirm')}>Exportar y cambiar</button>
+        )}
       </div>
+      {status.state === 'blocked' && onExportAndSwitch && switching !== 'idle' && (
+        <div role="alertdialog" aria-label="Exportar y cambiar de cuenta">
+          <p className="hint">
+            Se descargará un respaldo de los datos de este dispositivo y luego se borrarán, para seguir con la cuenta
+            que tienes abierta. Los datos de la otra cuenta quedan en su respaldo.
+          </p>
+          <div className="btnrow">
+            <button className="danger" onClick={() => void switchAccount()} disabled={switching === 'working'}>
+              {switching === 'working' ? 'Exportando…' : 'Exportar y cambiar'}
+            </button>
+            <button onClick={() => setSwitching('idle')} disabled={switching === 'working'}>Cancelar</button>
+          </div>
+        </div>
+      )}
+      {switchError && <p className="hint" style={{ color: 'var(--alert)' }}>{switchError}</p>}
     </>
   )
 }
 
 export default function Settings() {
-  const { config, saveConfig, reload, sessions, droppedSessionCount, measurements } = useStore()
+  const { config, saveConfig, reload, sessions, droppedSessionCount, measurements, planDamaged } = useStore()
   const auth = useAuthState()
   const signedIn = authEnabled && auth.enabled && auth.isSignedIn
   const toast = useToast()
@@ -159,6 +215,7 @@ export default function Settings() {
                 : `${droppedSessionCount} sesiones no se pudieron leer.`}
             </p>
           )}
+          {planDamaged && <PlanDamagedNotice />}
           <div className="btnrow">
             <button className="primary" onClick={doExport}>Exportar respaldo</button>
             <button onClick={() => fileRef.current?.click()}>Restaurar</button>

@@ -3,6 +3,7 @@ import { mergeConfig, normalizeSession } from './plan'
 import { normalizePlan, planFromBackup } from './planStorage'
 import { defaultPlanWithLegacy } from './defaultPlan'
 import { migrateLegacyConfig } from './legacyConfig'
+import { saveActiveDraft } from '../features/session/lib/activeSession'
 import { addLegacyCustomExercises, applyLegacyRoutineExercises, legacyRoutinesUntouched } from './legacyRoutines'
 
 const DB_NAME = 'fitplan'
@@ -103,6 +104,28 @@ const put = <T>(store: string, value: T, key?: IDBValidKey) =>
 const del = (store: string, key: IDBValidKey) => tx(store, 'readwrite', s => s.delete(key))
 const clear = (store: string) => tx(store, 'readwrite', s => s.clear())
 
+/** Runs `work` (which queues requests on the given stores) inside ONE
+ *  readwrite transaction: resolves on commit and rejects if any request fails
+ *  or `work` throws, in which case IndexedDB discards every queued write. */
+function writeAtomically(stores: string[], work: (store: (name: string) => IDBObjectStore) => void): Promise<void> {
+  return openDb().then(
+    db =>
+      new Promise<void>((resolve, reject) => {
+        const t = db.transaction(stores, 'readwrite')
+        t.oncomplete = () => resolve()
+        // A failed request aborts the transaction (nobody calls
+        // preventDefault), so onabort is the single failure signal.
+        t.onabort = () => reject(t.error ?? new Error('No se pudo guardar el respaldo.'))
+        try {
+          work(name => t.objectStore(name))
+        } catch (e) {
+          try { t.abort() } catch { /* already finished */ }
+          reject(e)
+        }
+      }),
+  )
+}
+
 /* ---------- sesiones ---------- */
 
 /** sessions ya normalizadas y ordenadas; droppedCount cuenta las filas que
@@ -157,6 +180,16 @@ export const saveConfig = (c: Config) => put(STORE_CONFIG, c, 'config')
 export const getPlan = () =>
   tx<unknown>(STORE_CONFIG, 'readonly', s => s.get('plan') as IDBRequest<unknown>)
 export const savePlan = (p: TrainingPlan) => put(STORE_CONFIG, p, 'plan')
+
+/** Plan to use for what getPlan returned, and whether the stored one is
+ *  damaged. Never saved (undefined) is a normal fresh install; anything stored
+ *  that normalizePlan cannot read is damaged, so the app can say that it is
+ *  running on the default plan instead of switching to it silently. */
+export function resolveStoredPlan(raw: unknown): { plan: TrainingPlan; damaged: boolean } {
+  const plan = normalizePlan(raw)
+  if (plan) return { plan, damaged: false }
+  return { plan: defaultPlanWithLegacy(), damaged: raw !== undefined }
+}
 
 /* ---------- respaldo: marca local del ultimo export ---------- */
 export const getLastBackupAt = () =>
@@ -218,20 +251,15 @@ export async function importBackup(data: unknown, mode: 'replace' | 'merge' = 'r
   const sessions = (b.sessions ?? [])
     .map(normalizeSession)
     .filter((s): s is Session => s !== null)
-  if (mode === 'replace') {
-    await Promise.all([clear(STORE_SESSIONS), clear(STORE_MEASUREMENTS), clear(STORE_EXERCISE_META)])
-  }
-  await Promise.all([
-    ...sessions.map(s => saveSession(s)),
-    ...(b.measurements ?? []).map(m => saveMeasurement(m)),
-    ...(b.exerciseMeta ?? []).map(m => saveExerciseMeta(m)),
-  ])
+  // Everything the backup writes is decided here, before opening the
+  // transaction: a plan or config that cannot be prepared throws with the disk
+  // untouched, and the writes below happen in one transaction (all or nothing).
   // Respaldos v1/v2 (o con plan ilegible) no traen plan: se conserva el actual.
-  const plan = planFromBackup(b)
+  let planToSave: TrainingPlan | null = planFromBackup(b)
+  let configToSave: Config | null = null
   if (b.config) {
     let config = mergeConfig(b.config)
-    let withCustoms: TrainingPlan | null = null
-    if (!plan) {
+    if (!planToSave) {
       // La config de un respaldo sin plan es de antes del plan editable: puede
       // traer la semana dia1..dia3 y el bloque viejo, y la migracion de
       // arranque no vuelve a correr porque ya hay un plan guardado. Se
@@ -250,13 +278,26 @@ export async function importBackup(data: unknown, mode: 'replace' | 'merge' = 'r
         const next = legacyRoutinesUntouched(stored)
           ? applyLegacyRoutineExercises(stored, config.routineExercises)
           : addLegacyCustomExercises(stored, config.routineExercises)
-        if (next !== stored) withCustoms = next
+        if (next !== stored) planToSave = next
       }
     }
-    await saveConfig(config)
-    if (withCustoms) await savePlan(withCustoms)
+    configToSave = config
   }
-  if (plan) await savePlan(plan)
+  await writeAtomically(
+    [STORE_SESSIONS, STORE_MEASUREMENTS, STORE_EXERCISE_META, STORE_CONFIG],
+    store => {
+      if (mode === 'replace') {
+        store(STORE_SESSIONS).clear()
+        store(STORE_MEASUREMENTS).clear()
+        store(STORE_EXERCISE_META).clear()
+      }
+      for (const s of sessions) store(STORE_SESSIONS).put(s)
+      for (const m of b.measurements ?? []) store(STORE_MEASUREMENTS).put(m)
+      for (const m of b.exerciseMeta ?? []) store(STORE_EXERCISE_META).put(m)
+      if (configToSave) store(STORE_CONFIG).put(configToSave, 'config')
+      if (planToSave) store(STORE_CONFIG).put(planToSave, 'plan')
+    },
+  )
 }
 
 /** Dispara la descarga de un respaldo ya generado: Blob + URL de objeto +
@@ -274,6 +315,9 @@ export function downloadBackupFile(data: Backup): void {
   setTimeout(() => URL.revokeObjectURL(a.href), 2000)
 }
 
+/** Empties the fitplan database and the session draft kept in localStorage
+ *  (the workout in progress is user data too). The sync database is not
+ *  touched here: eraseDevice (features/account) combines both. */
 export async function wipeAll() {
   await Promise.all([
     clear(STORE_SESSIONS),
@@ -281,4 +325,5 @@ export async function wipeAll() {
     clear(STORE_EXERCISE_META),
     clear(STORE_CONFIG),
   ])
+  saveActiveDraft(null)
 }
