@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import type { Config, Session, TrainingPlan } from '../../../lib/types'
-import { blockReview, closedWeekSummary, deltaPct, weekDays, weekTitle } from '../lib/week'
+import { blockReview, closedWeekSummaryFor, deltaPct, weekDays, weekTitle } from '../lib/week'
+import { useDiscipline } from '../../../lib/useDiscipline'
 
 const kg = (n: number): string => `${Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')} kg`
+const meters = (n: number): string => `${Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')} m`
 const pct = (n: number): string => `${n > 0 ? '+' : ''}${n} %`
 
 const parse = (iso: string): Date => {
@@ -18,13 +20,14 @@ const addDays = (iso: string, days: number): string => {
 interface Props {
   plan: Pick<TrainingPlan, 'routines' | 'weeks' | 'phases'>
   sessions: readonly Session[]
-  config: Pick<Config, 'blockStart' | 'blockEnd' | 'habitCheckIns'>
+  config: Pick<Config, 'blockStart' | 'blockEnd' | 'habitCheckIns' | 'swimWeeklyTarget'>
   today: string
 }
 
 /** Review of a closed calendar week, stepping back to earlier ones. No stored
  *  state: the week shown is derived from `today` and a local offset. */
 export default function WeekReview({ plan, sessions, config, today }: Props) {
+  const { active } = useDiscipline()
   const [back, setBack] = useState(0)
   const lastMonday = addDays(weekDays(today)[0], -7)
   const monday = addDays(lastMonday, -7 * back)
@@ -43,7 +46,33 @@ export default function WeekReview({ plan, sessions, config, today }: Props) {
     )
   }
 
-  const r = closedWeekSummary(plan, sessions, config.habitCheckIns, monday)
+  const r = closedWeekSummaryFor(active, plan, sessions, config.habitCheckIns, monday, config.swimWeeklyTarget)
+  const nav = (
+    <span className="hab-nav">
+      <button type="button" className="hab-link" disabled={!canGoBack} onClick={() => setBack(back + 1)}>Semana anterior</button>
+      <button type="button" className="hab-link" disabled={back === 0} onClick={() => setBack(back - 1)}>Semana siguiente</button>
+    </span>
+  )
+
+  if (r.kind === 'swim') {
+    const swimChange = deltaPct(r.distance, r.prevDistance)
+    return (
+      <section className="hab-card hab-review" aria-label="Semana cerrada">
+        <div className="hab-row">
+          <h2 className="hab-title">{weekTitle(monday)}</h2>
+          {nav}
+        </div>
+        <ul className="hab-review-list">
+          <li>{`Sesiones: ${r.done} de ${r.target}`}</li>
+          <li>
+            {`Distancia: ${meters(r.distance)}`}
+            {swimChange != null && <span className="hab-sub">{` · ${pct(swimChange)} frente a la semana anterior`}</span>}
+          </li>
+        </ul>
+      </section>
+    )
+  }
+
   const block = blockReview(plan, config, sessions, monday)
   const change = deltaPct(r.volume, r.prevVolume)
   const vsFirst = block != null && block.week > 1 ? deltaPct(r.volume, block.firstVolume) : null
@@ -52,10 +81,7 @@ export default function WeekReview({ plan, sessions, config, today }: Props) {
     <section className="hab-card hab-review" aria-label="Semana cerrada">
       <div className="hab-row">
         <h2 className="hab-title">{weekTitle(monday)}</h2>
-        <span className="hab-nav">
-          <button type="button" className="hab-link" disabled={!canGoBack} onClick={() => setBack(back + 1)}>Semana anterior</button>
-          <button type="button" className="hab-link" disabled={back === 0} onClick={() => setBack(back - 1)}>Semana siguiente</button>
-        </span>
+        {nav}
       </div>
       <ul className="hab-review-list">
         <li>{`Entrenamientos: ${r.done} de ${r.target}`}</li>

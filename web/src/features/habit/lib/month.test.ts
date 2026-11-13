@@ -10,6 +10,19 @@ const swim = (date: string, finished = true): Session => ({
   id: `s${n++}`, kind: 'swim', date, startedAt: 1, finishedAt: finished ? 2 : null, notes: '',
 }) as unknown as Session
 
+describe('monthActivity per discipline (S7)', () => {
+  const sessions = [strength('2026-11-10'), swim('2026-11-12')]
+  it('Gimnasio marks gym sessions and walks, never swims', () => {
+    expect(monthActivity(sessions, ['2026-11-12'], 2026, 11, 'strength')).toEqual({
+      '2026-11-10': ['strength'],
+      '2026-11-12': ['walk'],
+    })
+  })
+  it('Natación marks only swims, never walks', () => {
+    expect(monthActivity(sessions, ['2026-11-12'], 2026, 11, 'swim')).toEqual({ '2026-11-12': ['swim'] })
+  })
+})
+
 describe('monthActivity', () => {
   it('maps strength, swim and walk to the days of the month', () => {
     const sessions = [strength('2026-11-10'), swim('2026-11-12')]
