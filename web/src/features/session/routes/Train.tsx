@@ -12,13 +12,14 @@ import { applySessionEdit } from '../lib/editSession'
 import ActiveSession from './ActiveSession'
 import ExerciseProgress from '../../progress/routes/ExerciseProgress'
 import SwimProgress from '../../progress/routes/SwimProgress'
+import PainHistory from '../../progress/routes/PainHistory'
 import { Empty } from '../../../components/ui'
 
 /** Que progresion mostrar: por rutina (fuerza) o la unica de natacion — a
  *  diferencia de fuerza, natacion no tiene "por ejercicio", asi que su rama
  *  no lleva id. Union en vez de un RoutineId | null ampliado a mano: agregar
  *  una disciplina nueva con progresion propia exige agregarle su rama aca. */
-type ProgressTarget = { kind: 'strength'; routineId: RoutineId } | { kind: 'swim' }
+type ProgressTarget = { kind: 'strength'; routineId: RoutineId } | { kind: 'swim' } | { kind: 'pain' }
 
 export default function Train({ autoStart, autoStartMinimal, autoStartDate, onAutoStarted }: { autoStart?: string; autoStartMinimal?: boolean; autoStartDate?: string; onAutoStarted?: () => void } = {}) {
   const { sessions, config, plan, saveSession, deleteSession } = useStore()
@@ -87,6 +88,7 @@ export default function Train({ autoStart, autoStartMinimal, autoStartDate, onAu
   }
 
   if (progressFor) {
+    if (progressFor.kind === 'pain') return <PainHistory onBack={() => setProgressFor(null)} />
     return progressFor.kind === 'strength'
       ? <ExerciseProgress routineId={progressFor.routineId} onBack={() => setProgressFor(null)} />
       : <SwimProgress onBack={() => setProgressFor(null)} />
@@ -272,6 +274,9 @@ export default function Train({ autoStart, autoStartMinimal, autoStartDate, onAu
             Ver progresión
           </button>
         </div>
+        <button className="ghost" style={{ padding: '7px 12px', fontSize: 13 }} onClick={() => setProgressFor({ kind: 'pain' })}>
+          Ver registro de dolor
+        </button>
       </div>
 
       <div className="col-b">
