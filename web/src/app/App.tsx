@@ -38,6 +38,12 @@ export function appScreen(s: { ready: boolean; dbError: string | null; needsOnbo
   return s.needsOnboarding ? 'welcome' : 'app'
 }
 
+/** The welcome of a new install, with the moved notice above it on the
+ *  Pages build (S1: it must reach Pages users on every screen). */
+export function WelcomeScreen() {
+  return <Welcome notice={<MovedNotice />} />
+}
+
 function Shell() {
   const { ready, dbError, needsOnboarding } = useStore()
   // A workout in progress survives a reload: reopen it where it was.
@@ -76,7 +82,7 @@ function Shell() {
     )
   }
 
-  if (screen === 'welcome') return <Welcome />
+  if (screen === 'welcome') return <WelcomeScreen />
 
   return (
     <div className="app">

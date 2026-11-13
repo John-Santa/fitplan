@@ -1,4 +1,4 @@
-import { lazy, Suspense, useRef, useState } from 'react'
+import { lazy, Suspense, useRef, useState, type ReactNode } from 'react'
 import { importBackup } from '../../../lib/db'
 import { useStore } from '../../../lib/store'
 import { useToast } from '../../../components/ui'
@@ -90,7 +90,9 @@ function AccountStep() {
 /** Welcome for a new install (F1). Nothing is saved until the last step:
  *  then the plan, the measurement (only if entered) and, last, the config,
  *  whose presence is what ends the welcome. */
-export default function Welcome() {
+/** `notice` renders above the steps, like the app shell's notices (the
+ *  moved notice of the Pages build, S1). */
+export default function Welcome({ notice }: { notice?: ReactNode } = {}) {
   const { savePlan, saveMeasurement, saveConfig, restart } = useStore()
   const toast = useToast()
   const fileRef = useRef<HTMLInputElement>(null)
@@ -169,6 +171,7 @@ export default function Welcome() {
 
   return (
     <div className="app">
+      {notice}
       <main className="main onboarding">
         <div className="eyebrow">{`Paso ${index + 1} de ${steps.length}`}</div>
         <h1>{STEP_TITLES[step]}</h1>
