@@ -30,6 +30,22 @@ export default defineConfig({
           { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
           { src: 'icon-512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
+        screenshots: [
+          {
+            src: 'screenshots/home-narrow.png',
+            sizes: '540x960',
+            type: 'image/png',
+            form_factor: 'narrow',
+            label: 'Pantalla de inicio con el entrenamiento del día',
+          },
+          {
+            src: 'screenshots/home-wide.png',
+            sizes: '1280x720',
+            type: 'image/png',
+            form_factor: 'wide',
+            label: 'Pantalla de inicio en pantalla ancha',
+          },
+        ],
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,png,svg,woff2}'],
