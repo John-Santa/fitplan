@@ -10,6 +10,7 @@ import { PwaPrompts } from '../features/pwa/components/PwaPrompts'
 import { SyncIndicator } from '../features/sync/components/SyncIndicator'
 import Welcome from '../features/onboarding/components/Welcome'
 import { ReminderRunner } from '../features/reminders/components/ReminderRunner'
+import DisciplineSwitcher from '../components/DisciplineSwitcher'
 
 const Train = lazy(() => import('../features/session/routes/Train'))
 const Measure = lazy(() => import('../features/progress/routes/Measure'))
@@ -49,12 +50,16 @@ function Shell() {
   // A workout in progress survives a reload: reopen it where it was.
   const [tab, setTab] = useState<Tab>(() => (loadActiveDraft() ? 'progreso' : 'home'))
   const [progressView, setProgressView] = useState<ProgressView>(() => (loadActiveDraft() ? 'train' : 'habit'))
-  const [auto, setAuto] = useState<{ id: string; minimal: boolean; date?: string } | undefined>(undefined)
+  const [auto, setAuto] = useState<{ id?: string; minimal?: boolean; date?: string; swim?: boolean } | undefined>(undefined)
+  // Ajustes is a secondary screen of Perfil (D11-A): the gear in Perfil and
+  // the sync chip open it.
+  const [settingsOpen, setSettingsOpen] = useState(false)
   // La Guia es una pantalla secundaria: se abre desde Plan y no tiene pestaña propia.
   const [guideOpen, setGuideOpen] = useState(false)
   // Tapping Progreso always lands on Hábito, the default segment.
   const selectTab = (t: Tab) => {
     setGuideOpen(false)
+    setSettingsOpen(false)
     if (t === 'progreso') setProgressView('habit')
     setTab(t)
   }
@@ -63,6 +68,18 @@ function Shell() {
     setProgressView('train')
     setAuto({ id: routineId, minimal: opts?.minimal === true, date: opts?.date })
     setTab('progreso')
+  }
+  // "Nadar" on Hoy under Natación: the same start as the Train screen's button.
+  const startSwim = () => {
+    setGuideOpen(false)
+    setProgressView('train')
+    setAuto({ swim: true })
+    setTab('progreso')
+  }
+  const openSettings = () => {
+    setGuideOpen(false)
+    setTab('perfil')
+    setSettingsOpen(true)
   }
 
   const screen = appScreen({ ready, dbError, needsOnboarding })
@@ -89,7 +106,7 @@ function Shell() {
       <MovedNotice />
       <main className="main">
         <div className="app-notices">
-          <SyncIndicator onOpenAccount={() => selectTab('perfil')} />
+          <SyncIndicator onOpenAccount={openSettings} />
           <PwaPrompts />
         </div>
         <ReminderRunner onOpen={() => selectTab('home')} />
@@ -98,7 +115,10 @@ function Shell() {
           <Guide onBack={() => setGuideOpen(false)} />
         ) : (
           <>
-            {tab === 'home' && <Home go={t => selectTab(t)} startRoutine={startRoutine} />}
+            {/* The discipline chip sits above every tab (D1-A), never on Ajustes
+               or the guide: those screens are not scoped to a discipline. */}
+            {!(tab === 'perfil' && settingsOpen) && <DisciplineSwitcher />}
+            {tab === 'home' && <Home go={t => selectTab(t)} startRoutine={startRoutine} onStartSwim={startSwim} />}
             {tab === 'plan' && <PlanEditor onOpenGuide={() => setGuideOpen(true)} />}
             {tab === 'progreso' && (
               <>
@@ -130,7 +150,10 @@ function Shell() {
                 </div>
                 {progressView === 'habit' && <Habit />}
                 {progressView === 'train' && (
-                  <Train autoStart={auto?.id} autoStartMinimal={auto?.minimal} autoStartDate={auto?.date} onAutoStarted={() => setAuto(undefined)} />
+                  <Train
+                    autoStart={auto?.id} autoStartMinimal={auto?.minimal} autoStartDate={auto?.date} autoStartSwim={auto?.swim}
+                    onAutoStarted={() => setAuto(undefined)}
+                  />
                 )}
                 {progressView === 'measure' && <Measure />}
               </>

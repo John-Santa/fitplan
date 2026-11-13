@@ -10,6 +10,7 @@ import { useStore } from '../../../lib/store'
 import { useDiscipline } from '../../../lib/useDiscipline'
 import { loadActiveDraft, saveActiveDraft } from '../lib/activeSession'
 import { applySessionEdit } from '../lib/editSession'
+import { autoStartSession } from '../lib/autoStart'
 import ActiveSession from './ActiveSession'
 import SessionClosing from '../components/SessionClosing'
 import ExerciseProgress from '../../progress/routes/ExerciseProgress'
@@ -28,7 +29,7 @@ const EMPTY_HISTORY_COPY: Record<SessionKind, string> = {
   swim: 'Cuando termines la primera, aquí vas a ver largos y tiempo de cada sesión.',
 }
 
-export default function Train({ autoStart, autoStartMinimal, autoStartDate, onAutoStarted }: { autoStart?: string; autoStartMinimal?: boolean; autoStartDate?: string; onAutoStarted?: () => void } = {}) {
+export default function Train({ autoStart, autoStartMinimal, autoStartDate, autoStartSwim, onAutoStarted }: { autoStart?: string; autoStartMinimal?: boolean; autoStartDate?: string; autoStartSwim?: boolean; onAutoStarted?: () => void } = {}) {
   const { sessions, config, plan, saveSession, deleteSession } = useStore()
   // S6: starting and history show only the selected discipline.
   const { active: discipline } = useDiscipline()
@@ -45,13 +46,17 @@ export default function Train({ autoStart, autoStartMinimal, autoStartDate, onAu
 
   // Arranque directo desde Hoy: igual que el boton "start" de la rutina.
   useEffect(() => {
-    if (!autoStart || active) return
+    if ((!autoStart && !autoStartSwim) || active) return
     // A past date logs that day's workout retroactively.
-    const created = DISCIPLINES.strength.create(autoStartDate ?? todayISO(), autoStart)
-    setActive(autoStartMinimal ? { ...created, minimal: true } : created)
+    const created = autoStartSession(
+      { routineId: autoStart, minimal: autoStartMinimal, date: autoStartDate, swim: autoStartSwim },
+      todayISO(),
+      config.poolLengthM,
+    )
+    if (created) setActive(created)
     onAutoStarted?.()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoStart])
+  }, [autoStart, autoStartSwim])
 
   const history = sessions.filter(s => s.kind === discipline)
   const week = blockWeekNumber(new Date(), config.blockStart)
