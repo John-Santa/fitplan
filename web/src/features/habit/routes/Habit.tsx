@@ -4,6 +4,7 @@ import { todayISO } from '../../../lib/calc'
 import { bestStreak, consistency, habitGrid, intentionFor, streak, votes, type DayStatus, type HabitContext } from '../lib/habit'
 import { restAllowance, weekSummary } from '../lib/week'
 import type { Intention, WeeklyIntentions } from '../../../lib/types'
+import { MonthCalendar } from '../components/MonthCalendar'
 import { ReminderSettings } from '../../reminders/components/ReminderSettings'
 import './habit.css'
 
@@ -125,6 +126,8 @@ export default function Habit() {
           <li><i className="hab-cell missed" />Faltó</li>
         </ul>
       </section>
+
+      <MonthCalendar sessions={sessions} checkIns={config.habitCheckIns} today={today} />
 
       <section className="hab-card" aria-label="Votos por tu identidad">
         <p className="hab-sub strong">Votos por tu identidad</p>

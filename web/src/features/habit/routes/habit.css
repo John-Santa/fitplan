@@ -105,3 +105,25 @@
 .hab-switch.on span { transform: translateX(20px); background: var(--fp-on-primary); }
 .hab-switch:disabled { opacity: .6; cursor: default; }
 .hab-note { color: var(--fp-ink); }
+
+/* ---- month calendar ---- */
+.hab-monthnav { margin-top: 8px; align-items: center; }
+.hab-monthname { text-transform: capitalize; font-size: 14px; }
+.hab-navbtn {
+  min-height: 44px; padding: 0 12px; border-radius: var(--fp-r-btn); cursor: pointer;
+  background: var(--fp-s2); color: var(--fp-ink); border: 1px solid var(--fp-line); font: inherit; font-size: 13px;
+}
+.hab-navbtn:disabled { opacity: .45; cursor: default; }
+.hab-month { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.hab-monthrow { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.hab-monthhead { font-size: 11px; color: var(--fp-ink3); text-align: center; }
+.hab-day {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  min-height: 40px; border-radius: 8px; background: var(--fp-s2); font-size: 12px; color: var(--fp-ink2);
+}
+.hab-day.pad { background: transparent; }
+.hab-marks { display: flex; gap: 3px; min-height: 6px; }
+.hab-mark { display: inline-block; width: 6px; height: 6px; border-radius: 9999px; }
+.hab-mark.strength { background: var(--fp-primary); }
+.hab-mark.swim { background: var(--fp-swim); }
+.hab-mark.walk { background: var(--fp-success); }
