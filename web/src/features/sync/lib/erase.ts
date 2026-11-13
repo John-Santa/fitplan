@@ -4,10 +4,14 @@
 // motor cuando la API responde 410 (la cuenta se eliminó desde otro
 // dispositivo).
 import { wipeAll } from '../../../lib/db'
+import { saveActiveDraft } from '../../session/lib/activeSession'
 import { resetSyncState } from './syncDb'
 
 export async function eraseLocalCopy(): Promise<void> {
   await wipeAll()
+  // The in-progress workout lives in localStorage, outside IndexedDB: without
+  // this it reopens after the reload that follows an account deletion.
+  saveActiveDraft(null)
   // Sin datos locales tampoco hay dueño: la próxima cuenta empieza de cero.
   await resetSyncState()
 }
