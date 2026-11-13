@@ -37,6 +37,7 @@
   --fp-on-primary: #0E1014;
   --fp-success: #22C55E;
   --fp-warning: #F5B83D;
+  --fp-swim: #38BDF8;
   --fp-danger: #F05252;
   --fp-ink: #F4F5F7;
   --fp-ink2: #A3A9B4;
@@ -602,13 +603,21 @@ figcaption {
   border-bottom-color: var(--alert);
 }
 
-/* Paso 3 — Progresión: tile de acento para "Mejor serie". */
+/* Paso 3 — Progresión: tile de acento para "Mejor peso". */
 .tile.accent {
   background: var(--accent);
   color: var(--on-accent);
 }
 .tile.accent .label { color: var(--on-accent); opacity: 0.72; }
 .tile.accent .value span { color: var(--on-accent); }
+
+/* Resumen al terminar una sesión de fuerza. */
+.ses-summary .ses-summary-card { margin-top: 12px; }
+.ses-summary .ses-summary-card p { margin: 0 0 6px; }
+.ses-summary .ses-summary-card p:last-child { margin-bottom: 0; }
+.ses-summary-records { list-style: none; margin: 8px 0 0; padding: 0; }
+.ses-summary-records li { padding: 6px 0; }
+.ses-summary-done { margin-top: 12px; }
 
 /* Paso 3 — Progresión: filas de historial por sesión. */
 .histrow {

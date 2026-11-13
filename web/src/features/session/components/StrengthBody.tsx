@@ -14,7 +14,8 @@ import SessionShell from './SessionShell'
 import SlotCard from './SlotCard'
 import WarmupStep from './WarmupStep'
 import { ArrowRightIcon, CheckCircle } from './PlanIcons'
-import { completionPatch, refFor } from './SlotCard'
+import { completionPatch, refFor, suggestionFor } from './SlotCard'
+import { useRecordNotice } from '../lib/recordNotices'
 
 interface Props {
   session: StrengthSession
@@ -52,7 +53,9 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
   // lastPerformance solo mira fuerza (calc.ts la tipa a StrengthSession[]):
   // una sesion de natacion no tiene .sets.
   const strengthSessions = sessions.filter((s): s is StrengthSession => s.kind === 'strength')
-  const week = blockWeekNumber(new Date(session.startedAt), config.blockStart)
+  // The week of the day the session belongs to: a session logged late for a
+  // past day gets startedAt = now, which may fall in another week.
+  const week = blockWeekNumber(new Date(session.date + 'T00:00:00'), config.blockStart)
   const phase = phaseForWeek(plan, week)
   const minimal = session.minimal === true
   const swaps = session.swaps
@@ -131,12 +134,12 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
   /** Marks every remaining set of the exercise as done in one tap, using the
    *  values on screen or the last session's as the default. */
   const completeAll = (slot: PlanSlot) => {
-    const prev = lastPerformance(strengthSessions, slot.exerciseId, session.id)
+    const prev = lastPerformance(strengthSessions, slot.exerciseId, session.id, session)
     const next = session.sets.slice()
     for (let i = 0; i < targetOf(slot); i++) {
       const idx = next.findIndex(s => s.exerciseId === slot.exerciseId && s.setIndex === i)
       if (idx >= 0 && next[idx].done) continue
-      const patch = completionPatch(slot, idx >= 0 ? next[idx] : undefined, refFor(prev, i))
+      const patch = completionPatch(slot, idx >= 0 ? next[idx] : undefined, refFor(prev, i), suggestionFor(prev, i, slot, targetOf(slot), phase)?.weight)
       if (idx >= 0) next[idx] = { ...next[idx], ...patch }
       else next.push({ exerciseId: slot.exerciseId, setIndex: i, weight: null, reps: null, done: false, ...patch })
     }
@@ -172,6 +175,7 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
 
   const totalDone = steps.reduce((a, st) => a + stepDone(st), 0)
   const totalTarget = steps.reduce((a, st) => a + stepTarget(st), 0)
+  const recordNotice = useRecordNotice(session, strengthSessions, steps.flatMap(st => st.slots).map(sl => ({ exerciseId: sl.exerciseId, name: nameOf(sl), target: targetOf(sl) })))
 
   const safeIndex = Math.min(currentIndex, Math.max(items.length - 1, 0))
   const item = items[safeIndex]
@@ -256,13 +260,15 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
       onDiscard={onDiscard}
       onAlarm={() => setFlagsOpen(true)}
       progress={progress}
+      notice={recordNotice}
       showEnd={isLastItem}
       footer={startRest => {
         const complete = () => {
           if (!focus) return
           const { slot, index, isLast } = focus
           const s = logsOf(slot).find(l => l.setIndex === index)
-          update(slot.exerciseId, index, completionPatch(slot, s, refFor(lastPerformance(strengthSessions, slot.exerciseId, session.id), index)))
+          const prev = lastPerformance(strengthSessions, slot.exerciseId, session.id, session)
+          update(slot.exerciseId, index, completionPatch(slot, s, refFor(prev, index), suggestionFor(prev, index, slot, targetOf(slot), phase)?.weight))
           if (isLast && slot.restSec > 0) startRest(slot.restSec)
         }
         const skip = () => {
@@ -321,7 +327,8 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
             name={nameOf(slot)}
             sets={targetOf(slot)}
             logs={logsOf(slot)}
-            prev={lastPerformance(strengthSessions, slot.exerciseId, session.id)}
+            prev={lastPerformance(strengthSessions, slot.exerciseId, session.id, session)}
+            phase={phase}
             seat={meta[slot.exerciseId]?.seat ?? ''}
             pain={session.pain?.[slot.exerciseId]}
             current={currentOf(slot)}

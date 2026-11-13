@@ -54,6 +54,16 @@ export async function saveMeasurement(m: Measurement) {
   await upsert('measurement', m.date, m)
 }
 
+/** Saves `patch` over the measurement stored for its date (see
+ *  db.mergeMeasurement) and queues the merged record. The stored copy is read
+ *  in the same transaction as the write (db.saveMergedMeasurement), not taken
+ *  from a screen's memory, which may be stale after a sync, and a remote row
+ *  applied meanwhile cannot slip in between. */
+export async function mergeMeasurement(patch: Measurement) {
+  const merged = await db.saveMergedMeasurement(patch)
+  await upsert('measurement', merged.date, merged)
+}
+
 export async function deleteMeasurement(date: string) {
   const last = tracking ? (await db.getMeasurements()).find(m => m.date === date) : undefined
   await db.deleteMeasurement(date)

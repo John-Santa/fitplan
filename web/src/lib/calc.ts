@@ -1,4 +1,4 @@
-import type { Measurement, DerivedMeasurement, SetLog, StrengthSession } from './types'
+import type { Measurement, DerivedMeasurement, Session, SetLog, StrengthSession } from './types'
 
 export function derive(m: Measurement, heightCm: number): DerivedMeasurement {
   const h2 = (heightCm / 100) ** 2
@@ -76,11 +76,30 @@ export function bestSet(sets: SetLog[], exerciseId: string): SetLog | null {
   )
 }
 
-/** Series de la sesion completada mas reciente para ese ejercicio. */
-export function lastPerformance(sessions: StrengthSession[], exerciseId: string, excludeId?: string) {
+/** Orden cronologico de las sesiones, de la mas antigua a la mas nueva: por la
+ *  fecha de la sesion (ISO, se ordena como texto) y, a igual fecha, por
+ *  startedAt. Una sesion cargada despues para un dia pasado recibe
+ *  startedAt = ahora, asi que startedAt solo no sirve: queda en su propio dia.
+ *  Es el unico orden que usan "la vez pasada", los records, las graficas de
+ *  progreso y la lista de sesiones; para la mas nueva primero, `(a, b) =>
+ *  bySessionTime(b, a)`. */
+export const bySessionTime = (a: Pick<Session, 'date' | 'startedAt'>, b: Pick<Session, 'date' | 'startedAt'>): number =>
+  a.date === b.date ? a.startedAt - b.startedAt : a.date < b.date ? -1 : 1
+
+/** Series de la sesion completada mas reciente (segun bySessionTime) para ese
+ *  ejercicio. */
+export function lastPerformance(
+  sessions: StrengthSession[],
+  exerciseId: string,
+  excludeId?: string,
+  /** The session being logged: only sessions before it count, so a session
+   *  logged for a past date is compared with what came before that date (the
+   *  same cutoff the records and the closing summary use). */
+  before?: Pick<Session, 'date' | 'startedAt'>,
+) {
   const ordered = sessions
-    .filter(s => s.finishedAt && s.id !== excludeId)
-    .sort((a, b) => b.startedAt - a.startedAt)
+    .filter(s => s.finishedAt && s.id !== excludeId && (!before || bySessionTime(s, before) < 0))
+    .sort((a, b) => bySessionTime(b, a))
   for (const s of ordered) {
     const sets = s.sets.filter(x => x.exerciseId === exerciseId && x.done && x.weight != null)
     if (sets.length) return { session: s, sets: sets.sort((a, b) => a.setIndex - b.setIndex) }

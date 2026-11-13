@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { RoutineId, Session } from '../../../lib/types'
+import type { RoutineId, Session, StrengthSession } from '../../../lib/types'
 import { nextRoutine } from '../../habit/lib/week'
 import { exerciseNameInRoutine, routineSetCount, routineSlots, weekLabel, routineDisplayName, sortByFocus } from '../../../lib/planQueries'
 import { blockWeekNumber, phaseForWeek } from '../../../lib/phases'
@@ -10,15 +10,17 @@ import { useStore } from '../../../lib/store'
 import { loadActiveDraft, saveActiveDraft } from '../lib/activeSession'
 import { applySessionEdit } from '../lib/editSession'
 import ActiveSession from './ActiveSession'
+import SessionClosing from '../components/SessionClosing'
 import ExerciseProgress from '../../progress/routes/ExerciseProgress'
 import SwimProgress from '../../progress/routes/SwimProgress'
+import PainHistory from '../../progress/routes/PainHistory'
 import { Empty } from '../../../components/ui'
 
 /** Que progresion mostrar: por rutina (fuerza) o la unica de natacion — a
  *  diferencia de fuerza, natacion no tiene "por ejercicio", asi que su rama
  *  no lleva id. Union en vez de un RoutineId | null ampliado a mano: agregar
  *  una disciplina nueva con progresion propia exige agregarle su rama aca. */
-type ProgressTarget = { kind: 'strength'; routineId: RoutineId } | { kind: 'swim' }
+type ProgressTarget = { kind: 'strength'; routineId: RoutineId } | { kind: 'swim' } | { kind: 'pain' }
 
 export default function Train({ autoStart, autoStartMinimal, autoStartDate, onAutoStarted }: { autoStart?: string; autoStartMinimal?: boolean; autoStartDate?: string; onAutoStarted?: () => void } = {}) {
   const { sessions, config, plan, saveSession, deleteSession } = useStore()
@@ -29,6 +31,9 @@ export default function Train({ autoStart, autoStartMinimal, autoStartDate, onAu
   // Sesion terminada abierta en el editor (separada del borrador activo).
   const [editing, setEditing] = useState<Session | null>(null)
   const [progressFor, setProgressFor] = useState<ProgressTarget | null>(null)
+  // Strength session just finished: shows its closing summary until "Listo".
+  // Memory only: a reload drops the summary, the session is already saved.
+  const [closing, setClosing] = useState<StrengthSession | null>(null)
 
   // Arranque directo desde Hoy: igual que el boton "start" de la rutina.
   useEffect(() => {
@@ -64,12 +69,15 @@ export default function Train({ autoStart, autoStartMinimal, autoStartDate, onAu
               // diferencia de la linea de arriba, que si filtra para fuerza.
               : finishSwimSession(active, Date.now())
           await saveSession(finished)
+          if (finished.kind === 'strength') setClosing(finished)
           setActive(null)
         }}
         onDiscard={() => setActive(null)}
       />
     )
   }
+
+  if (closing) return <SessionClosing finished={closing} onDone={() => setClosing(null)} />
 
   if (editing) {
     const original = sessions.find(x => x.id === editing.id)
@@ -87,6 +95,7 @@ export default function Train({ autoStart, autoStartMinimal, autoStartDate, onAu
   }
 
   if (progressFor) {
+    if (progressFor.kind === 'pain') return <PainHistory onBack={() => setProgressFor(null)} />
     return progressFor.kind === 'strength'
       ? <ExerciseProgress routineId={progressFor.routineId} onBack={() => setProgressFor(null)} />
       : <SwimProgress onBack={() => setProgressFor(null)} />
@@ -272,6 +281,9 @@ export default function Train({ autoStart, autoStartMinimal, autoStartDate, onAu
             Ver progresión
           </button>
         </div>
+        <button className="ghost" style={{ padding: '7px 12px', fontSize: 13 }} onClick={() => setProgressFor({ kind: 'pain' })}>
+          Ver registro de dolor
+        </button>
       </div>
 
       <div className="col-b">

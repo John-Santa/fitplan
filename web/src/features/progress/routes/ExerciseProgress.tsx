@@ -2,7 +2,8 @@ import { useState } from 'react'
 import type { PlanSlot, RoutineId, StrengthSession } from '../../../lib/types'
 import { blockWeekNumber, formatTarget, phaseForWeek, setsForSlot } from '../../../lib/phases'
 import { findRoutine, slotExerciseName, routineDisplayName } from '../../../lib/planQueries'
-import { bestSet, fmt, fmtDate, fmtSigned, shouldProgress } from '../../../lib/calc'
+import { bestSet, bySessionTime, fmt, fmtDate, fmtSigned, shouldProgress } from '../../../lib/calc'
+import { formatVolume, personalRecords } from '../../../lib/records'
 import { useStore } from '../../../lib/store'
 import Chart, { type Series } from '../components/Chart'
 import { Empty, Tile } from '../../../components/ui'
@@ -50,7 +51,7 @@ export default function ExerciseProgress({ routineId, onBack }: { routineId: Rou
   // tiene routineId ni .sets, asi que se descarta aca, no mas abajo.
   const done = sessions
     .filter((s): s is StrengthSession => s.kind === 'strength' && !!s.finishedAt && s.routineId === routineId)
-    .sort((a, b) => a.startedAt - b.startedAt)
+    .sort(bySessionTime)
 
   const rows = done.flatMap(s => {
     const b = bestSet(s.sets, activeId)
@@ -60,6 +61,9 @@ export default function ExerciseProgress({ routineId, onBack }: { routineId: Rou
   const first = rows[0]
   const latest = rows[rows.length - 1]
   const gain = first && latest ? latest.weight - first.weight : 0
+  // All-time records read every routine: history is keyed by exerciseId, so
+  // the same exercise in two routines has one best weight and one best volume.
+  const records = personalRecords(sessions, activeId)
 
   const series: Series[] = [
     {
@@ -108,7 +112,15 @@ export default function ExerciseProgress({ routineId, onBack }: { routineId: Rou
         <>
           <div className="col-a">
             <div className="tiles" style={{ marginTop: 12 }}>
-              <Tile label="Mejor serie" value={latest.weight} unit={`kg × ${latest.reps ?? '—'}`} accent />
+              {records.bestWeight && (
+                <Tile label="Mejor peso" value={records.bestWeight.weight} unit={`kg × ${records.bestWeight.reps ?? '—'}`} accent />
+              )}
+              {records.bestVolume && (
+                <div className="tile">
+                  <div className="label">Mejor volumen</div>
+                  <div className="value num">{formatVolume(records.bestVolume.volume)} <span>kg</span></div>
+                </div>
+              )}
               <div className="tile">
                 <div className="label">Desde el {fmtDate(first.s.date)}</div>
                 <div className="value num">{fmtSigned(gain)} <span>kg</span></div>

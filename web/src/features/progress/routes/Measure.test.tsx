@@ -12,6 +12,7 @@ vi.mock('../../../lib/store', () => ({
   useStore: () => ({
     config: { blockEnd: '2027-02-07', heightCm: 175, goal: state.goal },
     saveMeasurement: async () => {},
+    mergeMeasurement: async () => {},
     deleteMeasurement: async () => {},
   }),
   useDerivedMeasurements: () => state.rows,

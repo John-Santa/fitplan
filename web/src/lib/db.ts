@@ -1,5 +1,6 @@
 import type { Session, Measurement, ExerciseMeta, Config, Backup, TrainingPlan } from './types'
 import { mergeConfig, normalizeSession } from './plan'
+import { bySessionTime } from './calc'
 import { normalizePlan, planFromBackup } from './planStorage'
 import { defaultPlanWithLegacy } from './defaultPlan'
 import { migrateLegacyConfig } from './legacyConfig'
@@ -142,7 +143,7 @@ export interface SessionsResult {
  *  abajo): getAll<unknown> porque una fila en disco puede venir de una
  *  version anterior del codigo, .map(normalizeSession) para decidir que
  *  forma tiene, filtro para descartar lo irrecuperable (y contarlo), y
- *  orden por mas reciente. */
+ *  orden por mas reciente (bySessionTime, la fecha de la sesion primero). */
 export const getSessions = async (): Promise<SessionsResult> => {
   const raw = await getAll<unknown>(STORE_SESSIONS)
   const sessions: Session[] = []
@@ -152,7 +153,7 @@ export const getSessions = async (): Promise<SessionsResult> => {
     if (s) sessions.push(s)
     else droppedCount++
   }
-  sessions.sort((a, b) => b.startedAt - a.startedAt)
+  sessions.sort((a, b) => bySessionTime(b, a))
   return { sessions, droppedCount }
 }
 export const saveSession = (s: Session) => put(STORE_SESSIONS, s)
@@ -161,7 +162,39 @@ export const deleteSession = (id: string) => del(STORE_SESSIONS, id)
 /* ---------- medidas ---------- */
 export const getMeasurements = () =>
   getAll<Measurement>(STORE_MEASUREMENTS).then(list => list.sort((a, b) => (a.date < b.date ? -1 : 1)))
+/** Whole-record put by date: it REPLACES the stored measurement, so a record
+ *  with fewer fields drops the rest. Callers that only know some fields (a
+ *  weight-only log, a form with empty inputs) go through `mergeMeasurement`. */
 export const saveMeasurement = (m: Measurement) => put(STORE_MEASUREMENTS, m)
+/** What to store when `patch` is saved over the measurement already stored for
+ *  its date: every field of `existing` survives unless `patch` carries it.
+ *  Fields a patch leaves out are "not entered", never "cleared". */
+export const mergeMeasurement = (existing: Measurement | undefined, patch: Measurement): Measurement => ({
+  ...existing,
+  ...patch,
+})
+/** Reads the measurement stored for `patch.date`, merges `patch` over it
+ *  (mergeMeasurement) and writes the result in ONE readwrite transaction, so
+ *  no other write (a sync-down applying a remote row) can land between the
+ *  read and the write. Resolves with the merged record once it is committed. */
+export const saveMergedMeasurement = (patch: Measurement): Promise<Measurement> =>
+  openDb().then(
+    db =>
+      new Promise<Measurement>((resolve, reject) => {
+        const t = db.transaction(STORE_MEASUREMENTS, 'readwrite')
+        const s = t.objectStore(STORE_MEASUREMENTS)
+        let merged: Measurement | null = null
+        const read = s.get(patch.date) as IDBRequest<Measurement | undefined>
+        read.onerror = () => reject(read.error)
+        read.onsuccess = () => {
+          merged = mergeMeasurement(read.result, patch)
+          const write = s.put(merged)
+          write.onerror = () => reject(write.error)
+        }
+        t.oncomplete = () => (merged ? resolve(merged) : reject(new Error('No se pudo guardar la medición.')))
+        t.onabort = () => reject(t.error ?? new Error('No se pudo guardar la medición.'))
+      }),
+  )
 export const deleteMeasurement = (date: string) => del(STORE_MEASUREMENTS, date)
 
 /* ---------- notas por ejercicio ---------- */
