@@ -70,6 +70,14 @@ export function weekSummary(plan: Pick<TrainingPlan, 'routines'>, sessions: read
   return { target: weeklyTarget(plan), done, restAllowance: allowance, restUsed: Math.min(empty, allowance) }
 }
 
+/** Hoy's one-line reminder that resting is allowed: shown while wildcards
+ *  remain, nothing was done today and a routine is suggested. Informational:
+ *  the flexible week already moves the routine to tomorrow by itself. */
+export function restHint(o: { restLeft: number; activeToday: boolean; blockEnded: boolean; routineName: string | null }): string | null {
+  if (o.restLeft <= 0 || o.activeToday || o.blockEnded || o.routineName == null) return null
+  return `¿Hoy no puedes? Descansa: usas un comodín y mañana sigue ${o.routineName}.`
+}
+
 const addDays = (iso: string, days: number): string => {
   const d = parse(iso)
   return todayISO(new Date(d.getFullYear(), d.getMonth(), d.getDate() + days))

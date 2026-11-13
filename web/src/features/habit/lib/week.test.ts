@@ -2,7 +2,7 @@
 // any day; the free days are rest wildcards.
 import { describe, expect, it } from 'vitest'
 import type { PlanRoutine, Session, StrengthSession, TrainingPlan } from '../../../lib/types'
-import { blockReview, closedWeekSummary, deltaPct, nextRoutine, restAllowance, routinesDoneThisWeek, weekDays, weekSummary, weeklyTarget, weekTitle } from './week'
+import { blockReview, closedWeekSummary, deltaPct, nextRoutine, restAllowance, restHint, routinesDoneThisWeek, weekDays, weekSummary, weeklyTarget, weekTitle } from './week'
 
 const routine = (id: string, archived = false): PlanRoutine => ({ id, name: id, archived } as unknown as PlanRoutine)
 const plan = (...rs: PlanRoutine[]): Pick<TrainingPlan, 'routines'> => ({ routines: rs })
@@ -96,5 +96,18 @@ describe('blockReview', () => {
   it('has no line before the block starts and says the block ended after it', () => {
     expect(blockReview(bp, cfg, [], '2026-10-12')).toBeNull()
     expect(blockReview(bp, cfg, [], '2027-01-18')?.text).toBe('Bloque terminado')
+  })
+})
+
+describe('restHint', () => {
+  const base = { restLeft: 2, activeToday: false, blockEnded: false, routineName: 'Tren inferior A' }
+  it("tells the user a wildcard moves today's routine to tomorrow", () => {
+    expect(restHint(base)).toBe('¿Hoy no puedes? Descansa: usas un comodín y mañana sigue Tren inferior A.')
+  })
+  it('shows nothing without wildcards, after activity today, once the block ended or without a routine', () => {
+    expect(restHint({ ...base, restLeft: 0 })).toBeNull()
+    expect(restHint({ ...base, activeToday: true })).toBeNull()
+    expect(restHint({ ...base, blockEnded: true })).toBeNull()
+    expect(restHint({ ...base, routineName: null })).toBeNull()
   })
 })
