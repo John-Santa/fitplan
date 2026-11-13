@@ -1,9 +1,12 @@
 import { useState } from 'react'
-import type { Session } from '../../../lib/types'
+import type { Session, SessionKind } from '../../../lib/types'
+import { useDiscipline } from '../../../lib/useDiscipline'
 import { monthActivity, monthWeeks, shiftMonth, type MonthActivityKind } from '../lib/month'
 
 const LABEL: Record<MonthActivityKind, string> = { strength: 'fuerza', swim: 'natación', walk: 'caminata' }
 const LEGEND: [MonthActivityKind, string][] = [['strength', 'Fuerza'], ['swim', 'Natación'], ['walk', 'Caminata']]
+// Marks shown per discipline (S7, D4-A): walks are a Gimnasio habit.
+const KINDS_FOR: Record<SessionKind, MonthActivityKind[]> = { strength: ['strength', 'walk'], swim: ['swim'] }
 const ROW_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 
 const dayLabel = (iso: string) => {
@@ -22,11 +25,13 @@ interface Props {
 }
 
 export function MonthCalendar({ sessions, checkIns, today }: Props) {
+  const { active } = useDiscipline()
+  const legend = LEGEND.filter(([k]) => KINDS_FOR[active].includes(k))
   const [ty, tm] = today.split('-').map(Number)
   const [cursor, setCursor] = useState({ year: ty, month: tm })
   const { year, month } = cursor
   const isCurrent = year === ty && month === tm
-  const activity = monthActivity(sessions, checkIns, year, month)
+  const activity = monthActivity(sessions, checkIns, year, month, active)
   const title = new Date(year, month - 1, 1).toLocaleDateString('es', { month: 'long', year: 'numeric' })
   const go = (delta: number) => setCursor(c => shiftMonth(c.year, c.month, delta))
 
@@ -61,7 +66,7 @@ export function MonthCalendar({ sessions, checkIns, today }: Props) {
         ))}
       </div>
       <ul className="hab-legend">
-        {LEGEND.map(([k, text]) => <li key={k}><i className={`hab-mark ${k}`} />{text}</li>)}
+        {legend.map(([k, text]) => <li key={k}><i className={`hab-mark ${k}`} />{text}</li>)}
       </ul>
     </section>
   )

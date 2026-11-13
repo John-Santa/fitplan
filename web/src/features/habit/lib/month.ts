@@ -1,7 +1,7 @@
 // Monthly calendar: which days had strength, swim or a walk. Read-only over
 // existing data. A walk is a habit check-in (same definition as the weekly
 // summary). Dates are local YYYY-MM-DD strings; nothing here slices UTC.
-import type { Session } from '../../../lib/types'
+import type { Session, SessionKind } from '../../../lib/types'
 import { finishedIn } from '../../../lib/disciplines'
 
 export type MonthActivityKind = 'strength' | 'swim' | 'walk'
@@ -18,11 +18,14 @@ export const monthBounds = (year: number, month: number): { start: string; end: 
   return { start: `${year}-${pad(month)}-01`, end: `${year}-${pad(month)}-${pad(last)}` }
 }
 
+/** With `kind` only that discipline is marked, plus walks under Gimnasio
+ *  (D4-A: check-ins belong to Gimnasio). Without it every mark is returned. */
 export function monthActivity(
   sessions: readonly Session[],
   checkIns: readonly string[],
   year: number,
   month: number,
+  kind?: SessionKind,
 ): MonthActivity {
   const { start, end } = monthBounds(year, month)
   const all = [...sessions]
@@ -30,9 +33,9 @@ export function monthActivity(
   const mark = (date: string, kind: MonthActivityKind) => {
     ;(seen[date] ??= new Set()).add(kind)
   }
-  for (const s of finishedIn(all, 'strength', start, end)) mark(s.date, 'strength')
-  for (const s of finishedIn(all, 'swim', start, end)) mark(s.date, 'swim')
-  for (const d of checkIns) if (d >= start && d <= end) mark(d, 'walk')
+  if (kind === undefined || kind === 'strength') for (const s of finishedIn(all, 'strength', start, end)) mark(s.date, 'strength')
+  if (kind === undefined || kind === 'swim') for (const s of finishedIn(all, 'swim', start, end)) mark(s.date, 'swim')
+  if (kind === undefined || kind === 'strength') for (const d of checkIns) if (d >= start && d <= end) mark(d, 'walk')
 
   const out: MonthActivity = {}
   for (const date of Object.keys(seen).sort()) out[date] = ORDER.filter(k => seen[date].has(k))
