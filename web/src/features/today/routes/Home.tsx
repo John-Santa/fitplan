@@ -7,12 +7,16 @@ import { startNewBlock, weekVolumes } from '../lib/blockEnd'
 import { fmtDate, sessionVolume, todayISO } from '../../../lib/calc'
 import { finishedIn } from '../../../lib/disciplines'
 import { dayStatus, intentionFor, missedYesterday, streak as habitStreak, toggleCheckIn, votes as habitVotes } from '../../habit/lib/habit'
-import { nextRoutine, restAllowance, restHint, routinesDoneThisWeek, weekDays, weekRotation, weekSummary } from '../../habit/lib/week'
+import { habitContextFor } from '../../habit/lib/disciplineHabit'
+import { nextRoutine, restHint, routinesDoneThisWeek, weekDays, weekRotation, weekSummaryFor } from '../../habit/lib/week'
 import { useDerivedMeasurements, useStore } from '../../../lib/store'
+import { useDiscipline } from '../../../lib/useDiscipline'
 import BottomSheet from '../../../components/BottomSheet'
 import { isBackCarePlan } from '../../../lib/defaultPlan'
 import HoyBackupNotice from '../components/BackupNotice'
 import QuickWeight from '../components/QuickWeight'
+import SwimToday from '../components/SwimToday'
+import { fmtThousands, swimToday } from '../lib/swimToday'
 import './home.css'
 
 type Tab = 'plan' | 'progreso' | 'perfil'
@@ -65,13 +69,15 @@ function Icon({ name, size = 20, className }: { name: keyof typeof ICONS; size?:
 }
 
 
-/* ---------- utilidades ---------- */
-
-/** 4320 -> "4.320". */
-const fmtThousands = (n: number): string => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')
-
-export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; startRoutine: (routineId: string, opts?: { minimal?: boolean; date?: string }) => void }) {
+export default function Home({ go, startRoutine, onStartSwim }: {
+  go: (tab: Tab) => void
+  startRoutine: (routineId: string, opts?: { minimal?: boolean; date?: string }) => void
+  /** Starts a swim session from Hoy's "Nadar" (Natación only), like Train's button. */
+  onStartSwim?: () => void
+}) {
   const { sessions, config, plan, saveConfig } = useStore()
+  const { active } = useDiscipline()
+  const isSwim = active === 'swim'
   const rows = useDerivedMeasurements()
   const now = new Date()
   const iso = todayISO(now)
@@ -79,8 +85,8 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
   const phase = phaseForWeek(plan, week)
   const blockEnded = blockStatus(now, config.blockStart, config.blockEnd).state === 'ended'
   const dow = now.getDay()
-  const allowance = restAllowance(plan)
-  const habitCtx = { sessions, config, today: iso, restAllowance: allowance }
+  // Streak, votes and wildcards are the selected discipline's (S4, D5-A).
+  const habitCtx = habitContextFor(active, sessions, config, plan, iso, config.swimWeeklyTarget)
   const streakInfo = habitStreak(habitCtx)
   const voteCount = habitVotes(habitCtx)
   const todayKept = dayStatus(iso, habitCtx) === 'kept'
@@ -97,7 +103,7 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
   const suggestion = nextRoutine(plan, sessions, iso)
   const picked = pickedId != null ? rotation.find(r => r.id === pickedId) ?? null : null
   const selected = picked ?? suggestion
-  const summary = weekSummary(plan, sessions, config.habitCheckIns, iso)
+  const summary = weekSummaryFor('strength', plan, sessions, config.habitCheckIns, iso, config.swimWeeklyTarget)
   const restLeft = summary.restAllowance - summary.restUsed
 
   const intention = intentionFor(config, dow)
@@ -117,12 +123,12 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
     </button>
   )
 
-  const finishedToday = sessions.some(s => s.finishedAt != null && s.date === iso)
   const strengthDoneToday = sessions.some(s => s.kind === 'strength' && s.finishedAt != null && s.date === iso)
   const checkedToday = config.habitCheckIns.includes(iso)
+  // The rest hint and the walk button belong to Gimnasio: its wildcards, its day.
   const hint = restHint({
     restLeft,
-    activeToday: finishedToday || checkedToday,
+    activeToday: strengthDoneToday || checkedToday,
     blockEnded,
     routineName: suggestion != null ? routineDisplayName(suggestion.name) : null,
   })
@@ -224,7 +230,7 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
       </header>
 
       <main className="hoy-main">
-        {blockEnded && (
+        {blockEnded && !isSwim && (
           <BlockEndCard
             {...weekVolumes(sessions, config.blockStart, plan.weeks)}
             weeks={plan.weeks}
@@ -245,7 +251,9 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
           <div className="hoy-identity-item">
             <span className="hoy-identity-icon vote"><Icon name="badge" size={20} /></span>
             <div className="hoy-identity-text">
-              <strong className="hoy-num">{voteCount} {voteCount === 1 ? 'entrenamiento' : 'entrenamientos'}</strong>
+              <strong className="hoy-num">
+                {voteCount} {isSwim ? (voteCount === 1 ? 'sesión de natación' : 'sesiones de natación') : voteCount === 1 ? 'entrenamiento' : 'entrenamientos'}
+              </strong>
               <span>Un voto más por tu atleta</span>
             </div>
           </div>
@@ -261,256 +269,262 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
           </section>
         )}
 
-        {showHero && selected ? (
-          <section className="hoy-hero">
-            <div className="hoy-hero-glow" aria-hidden="true" />
-            {progress}
-            <h1 className="hoy-title">{routineDisplayName(selected.name)}</h1>
-            <div className="hoy-meta">
-              <span className="hoy-pill">
-                <Icon name="dumbbell" size={15} />
-                {slots.length} ejercicios
-              </span>
-              {selected.duration !== '' && (
-                <span className="hoy-pill hoy-num">
-                  <Icon name="timer" size={15} />
-                  ≈ {selected.duration}
-                </span>
-              )}
-              {phase && (
-                <span className="hoy-pill accent hoy-num">
-                  <Icon name="gauge" size={15} />
-                  {phase.intensity}
-                </span>
-              )}
-            </div>
-            {intentionRow}
-            {chips.length > 0 && (
-              <div className="hoy-chips-block">
-                <p className="hoy-eyebrow">Ejercicios principales</p>
-                <div className="hoy-chips">
-                  {chips.map((n, i) => (
-                    <span key={i} className="hoy-chip">{n}</span>
-                  ))}
-                  {extra > 0 && <span className="hoy-chip more hoy-num">+{extra}</span>}
-                </div>
-              </div>
-            )}
-            <button type="button" className="hoy-cta" onClick={() => startRoutine(selected.id)}>
-              <Icon name="play" size={22} />
-              Empezar entrenamiento
-            </button>
-            <button type="button" className="hoy-minimal" onClick={() => startRoutine(selected.id, { minimal: true })}>
-              <span>
-                <strong>Día difícil: versión mínima</strong>
-                <small>Calentamiento + primer ejercicio</small>
-              </span>
-              <Icon name="sliders" size={20} />
-            </button>
-            {hint != null && <p className="hoy-rest-line">{hint}</p>}
-            {picker}
-          </section>
+        {isSwim ? (
+          <SwimToday data={swimToday(sessions, config, iso)} poolLengthM={config.poolLengthM} onStart={onStartSwim} />
         ) : (
-          <section className="hoy-hero">
-            <div className="hoy-hero-glow" aria-hidden="true" />
-            {progress}
-            {strengthDoneToday ? (
-              <>
-                <div className="hoy-calm-icon"><Icon name="check" size={20} /></div>
-                <h1 className="hoy-title">{DONE_TODAY.strength.title}</h1>
-                <p className="hoy-note">{DONE_TODAY.strength.note}</p>
-              </>
-            ) : (
-              <>
-                <div className="hoy-calm-icon"><Icon name="check" size={20} /></div>
-                <h1 className="hoy-title">Semana completa</h1>
-                <p className="hoy-note">Hiciste todas tus rutinas. Descansa o suma una extra.</p>
-              </>
-            )}
-            {picker}
-            <button type="button" className="hoy-cta secondary" onClick={() => go('plan')}>
-              Ver plan
-            </button>
-          </section>
-        )}
-
-        {!finishedToday && (
-          <button
-            type="button"
-            className={`hoy-cta secondary hoy-checkin${checkedToday ? ' on' : ''}`}
-            aria-pressed={checkedToday}
-            onClick={() => void saveConfig(toggleCheckIn(config, iso))}
-          >
-            <Icon name="walk" size={20} />
-            {checkedToday ? 'Caminata hecha ✓ · Deshacer' : 'Marcar caminata hecha'}
-          </button>
-        )}
-
-        <QuickWeight />
-
-        <section className="hoy-section" aria-label="Esta semana">
-          <div className="hoy-section-head">
-            <h2 className="hoy-h2">
-              Esta semana · {summary.done} de {summary.target} {summary.target === 1 ? 'entrenamiento' : 'entrenamientos'}
-            </h2>
-          </div>
-          <p className="hoy-rest-line">{restLine}</p>
-          <button type="button" className="hoy-link hoy-logdate" onClick={() => setLogDate(iso)}>Registrar otra fecha</button>
-          <div className="hoy-week">
-            {days.map((date, i) => {
-              const isToday = date === iso
-              const status = dayStatus(date, habitCtx)
-              const doneSession = sessions.find(s => s.kind === 'strength' && s.finishedAt != null && s.date === date)
-              const doneRoutine = doneSession && doneSession.kind === 'strength' ? plan.routines.find(r => r.id === doneSession.routineId) : undefined
-              const kept = status === 'kept'
-              const cls = ['hoy-day']
-              if (isToday) cls.push('today')
-              if (kept) cls.push('done')
-              if (status === 'rest') cls.push('rest')
-              if (status === 'missed') cls.push('missed')
-
-              let body: ReactNode = null
-              let label = ''
-              if (kept) {
-                const name = doneRoutine ? routineShortName(doneRoutine) : null
-                label = name ?? 'Hecho'
-                body = (
-                  <>
-                    <span className="hoy-day-check"><Icon name="check" size={16} /></span>
-                    {name != null ? <span className="hoy-day-name">{name}</span> : <span className="hoy-day-sub">Hecho</span>}
-                  </>
-                )
-              } else if (status === 'rest') {
-                label = 'Descanso'
-                body = (
-                  <>
-                    <Icon name="moon" size={17} className="hoy-day-main-icon" />
-                    <span className="hoy-day-sub">Descanso</span>
-                  </>
-                )
-              } else if (status === 'missed') {
-                label = 'Faltó'
-                body = (
-                  <>
-                    <span className="hoy-day-miss"><i /></span>
-                    <span className="hoy-day-sub">Faltó</span>
-                  </>
-                )
-              } else if (isToday) {
-                label = 'Hoy'
-                body = (
-                  <>
-                    <span className="hoy-day-dot hoy-num">{Number(date.slice(8))}</span>
-                    <span className="hoy-day-sub">Hoy</span>
-                  </>
-                )
-              }
-
-              const aria = `${weekdayLabel((i + 1) % 7)} ${fmtDate(date)}${label !== '' ? `: ${label}` : ''}`
-              // Today and past days can be logged with any routine.
-              return date <= iso ? (
-                <button type="button" key={date} className={`${cls.join(' ')} tap`} aria-label={`${aria}. Registrar una rutina`} onClick={() => setLogDate(date)}>
-                  <span className="hoy-day-letter">{DAY_LETTERS[i]}</span>
-                  {body}
-                </button>
-              ) : (
-                <div key={date} className={cls.join(' ')} aria-label={aria}>
-                  <span className="hoy-day-letter">{DAY_LETTERS[i]}</span>
-                  {body}
+          <>
+          {showHero && selected ? (
+            <section className="hoy-hero">
+              <div className="hoy-hero-glow" aria-hidden="true" />
+              {progress}
+              <h1 className="hoy-title">{routineDisplayName(selected.name)}</h1>
+              <div className="hoy-meta">
+                <span className="hoy-pill">
+                  <Icon name="dumbbell" size={15} />
+                  {slots.length} ejercicios
+                </span>
+                {selected.duration !== '' && (
+                  <span className="hoy-pill hoy-num">
+                    <Icon name="timer" size={15} />
+                    ≈ {selected.duration}
+                  </span>
+                )}
+                {phase && (
+                  <span className="hoy-pill accent hoy-num">
+                    <Icon name="gauge" size={15} />
+                    {phase.intensity}
+                  </span>
+                )}
+              </div>
+              {intentionRow}
+              {chips.length > 0 && (
+                <div className="hoy-chips-block">
+                  <p className="hoy-eyebrow">Ejercicios principales</p>
+                  <div className="hoy-chips">
+                    {chips.map((n, i) => (
+                      <span key={i} className="hoy-chip">{n}</span>
+                    ))}
+                    {extra > 0 && <span className="hoy-chip more hoy-num">+{extra}</span>}
+                  </div>
                 </div>
-              )
-            })}
-          </div>
-        </section>
+              )}
+              <button type="button" className="hoy-cta" onClick={() => startRoutine(selected.id)}>
+                <Icon name="play" size={22} />
+                Empezar entrenamiento
+              </button>
+              <button type="button" className="hoy-minimal" onClick={() => startRoutine(selected.id, { minimal: true })}>
+                <span>
+                  <strong>Día difícil: versión mínima</strong>
+                  <small>Calentamiento + primer ejercicio</small>
+                </span>
+                <Icon name="sliders" size={20} />
+              </button>
+              {hint != null && <p className="hoy-rest-line">{hint}</p>}
+              {picker}
+            </section>
+          ) : (
+            <section className="hoy-hero">
+              <div className="hoy-hero-glow" aria-hidden="true" />
+              {progress}
+              {strengthDoneToday ? (
+                <>
+                  <div className="hoy-calm-icon"><Icon name="check" size={20} /></div>
+                  <h1 className="hoy-title">{DONE_TODAY.strength.title}</h1>
+                  <p className="hoy-note">{DONE_TODAY.strength.note}</p>
+                </>
+              ) : (
+                <>
+                  <div className="hoy-calm-icon"><Icon name="check" size={20} /></div>
+                  <h1 className="hoy-title">Semana completa</h1>
+                  <p className="hoy-note">Hiciste todas tus rutinas. Descansa o suma una extra.</p>
+                </>
+              )}
+              {picker}
+              <button type="button" className="hoy-cta secondary" onClick={() => go('plan')}>
+                Ver plan
+              </button>
+            </section>
+          )}
 
-        {rotation.length > 0 && (
-          <section className="hoy-section" aria-label="Rutinas de la semana">
+          {!strengthDoneToday && (
+            <button
+              type="button"
+              className={`hoy-cta secondary hoy-checkin${checkedToday ? ' on' : ''}`}
+              aria-pressed={checkedToday}
+              onClick={() => void saveConfig(toggleCheckIn(config, iso))}
+            >
+              <Icon name="walk" size={20} />
+              {checkedToday ? 'Caminata hecha ✓ · Deshacer' : 'Marcar caminata hecha'}
+            </button>
+          )}
+
+          <QuickWeight />
+
+          <section className="hoy-section" aria-label="Esta semana">
             <div className="hoy-section-head">
-              <h2 className="hoy-h2">Rutinas de la semana</h2>
+              <h2 className="hoy-h2">
+                Esta semana · {summary.done} de {summary.target} {summary.target === 1 ? 'entrenamiento' : 'entrenamientos'}
+              </h2>
             </div>
-            <ul className="hoy-checklist">
-              {rotation.map(r => {
-                const done = doneIds.has(r.id)
-                const inner = (
-                  <>
-                    <span className={`hoy-check${done ? ' on' : ''}`} aria-hidden="true">
-                      {done && <Icon name="check" size={14} />}
-                    </span>
-                    <span className="hoy-checklist-name">{routineDisplayName(r.name)}</span>
-                    <span className="hoy-checklist-state">{done ? 'Hecha' : 'Pendiente'}</span>
-                  </>
-                )
-                return (
-                  <li key={r.id}>
-                    {done ? (
-                      <div className="hoy-checklist-row done">{inner}</div>
-                    ) : (
-                      <button
-                        type="button"
-                        className={`hoy-checklist-row${selected?.id === r.id && showHero ? ' on' : ''}`}
-                        onClick={() => {
-                          choose(r.id)
-                          window.scrollTo({ top: 0, behavior: 'smooth' })
-                        }}
-                      >
-                        {inner}
-                      </button>
-                    )}
-                  </li>
+            <p className="hoy-rest-line">{restLine}</p>
+            <button type="button" className="hoy-link hoy-logdate" onClick={() => setLogDate(iso)}>Registrar otra fecha</button>
+            <div className="hoy-week">
+              {days.map((date, i) => {
+                const isToday = date === iso
+                const status = dayStatus(date, habitCtx)
+                const doneSession = sessions.find(s => s.kind === 'strength' && s.finishedAt != null && s.date === date)
+                const doneRoutine = doneSession && doneSession.kind === 'strength' ? plan.routines.find(r => r.id === doneSession.routineId) : undefined
+                const kept = status === 'kept'
+                const cls = ['hoy-day']
+                if (isToday) cls.push('today')
+                if (kept) cls.push('done')
+                if (status === 'rest') cls.push('rest')
+                if (status === 'missed') cls.push('missed')
+
+                let body: ReactNode = null
+                let label = ''
+                if (kept) {
+                  const name = doneRoutine ? routineShortName(doneRoutine) : null
+                  label = name ?? 'Hecho'
+                  body = (
+                    <>
+                      <span className="hoy-day-check"><Icon name="check" size={16} /></span>
+                      {name != null ? <span className="hoy-day-name">{name}</span> : <span className="hoy-day-sub">Hecho</span>}
+                    </>
+                  )
+                } else if (status === 'rest') {
+                  label = 'Descanso'
+                  body = (
+                    <>
+                      <Icon name="moon" size={17} className="hoy-day-main-icon" />
+                      <span className="hoy-day-sub">Descanso</span>
+                    </>
+                  )
+                } else if (status === 'missed') {
+                  label = 'Faltó'
+                  body = (
+                    <>
+                      <span className="hoy-day-miss"><i /></span>
+                      <span className="hoy-day-sub">Faltó</span>
+                    </>
+                  )
+                } else if (isToday) {
+                  label = 'Hoy'
+                  body = (
+                    <>
+                      <span className="hoy-day-dot hoy-num">{Number(date.slice(8))}</span>
+                      <span className="hoy-day-sub">Hoy</span>
+                    </>
+                  )
+                }
+
+                const aria = `${weekdayLabel((i + 1) % 7)} ${fmtDate(date)}${label !== '' ? `: ${label}` : ''}`
+                // Today and past days can be logged with any routine.
+                return date <= iso ? (
+                  <button type="button" key={date} className={`${cls.join(' ')} tap`} aria-label={`${aria}. Registrar una rutina`} onClick={() => setLogDate(date)}>
+                    <span className="hoy-day-letter">{DAY_LETTERS[i]}</span>
+                    {body}
+                  </button>
+                ) : (
+                  <div key={date} className={cls.join(' ')} aria-label={aria}>
+                    <span className="hoy-day-letter">{DAY_LETTERS[i]}</span>
+                    {body}
+                  </div>
                 )
               })}
-            </ul>
+            </div>
           </section>
+
+          {rotation.length > 0 && (
+            <section className="hoy-section" aria-label="Rutinas de la semana">
+              <div className="hoy-section-head">
+                <h2 className="hoy-h2">Rutinas de la semana</h2>
+              </div>
+              <ul className="hoy-checklist">
+                {rotation.map(r => {
+                  const done = doneIds.has(r.id)
+                  const inner = (
+                    <>
+                      <span className={`hoy-check${done ? ' on' : ''}`} aria-hidden="true">
+                        {done && <Icon name="check" size={14} />}
+                      </span>
+                      <span className="hoy-checklist-name">{routineDisplayName(r.name)}</span>
+                      <span className="hoy-checklist-state">{done ? 'Hecha' : 'Pendiente'}</span>
+                    </>
+                  )
+                  return (
+                    <li key={r.id}>
+                      {done ? (
+                        <div className="hoy-checklist-row done">{inner}</div>
+                      ) : (
+                        <button
+                          type="button"
+                          className={`hoy-checklist-row${selected?.id === r.id && showHero ? ' on' : ''}`}
+                          onClick={() => {
+                            choose(r.id)
+                            window.scrollTo({ top: 0, behavior: 'smooth' })
+                          }}
+                        >
+                          {inner}
+                        </button>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            </section>
+          )}
+
+          <section className="hoy-stats" aria-label="Resumen semanal">
+            <div className="hoy-stat">
+              <div className="hoy-stat-head">
+                <span className="hoy-stat-label">Sesiones</span>
+                <Icon name="calendar" size={18} />
+              </div>
+              <div className="hoy-stat-value">
+                <span className="hoy-stat-big hoy-num">{summary.done}</span>
+                <span className="hoy-stat-unit hoy-num">/ {summary.target}</span>
+              </div>
+              <div className="hoy-bar" aria-hidden="true">
+                <i style={{ width: `${summary.target > 0 ? Math.min(100, (summary.done / summary.target) * 100) : 0}%` }} />
+              </div>
+            </div>
+            <div className="hoy-stat">
+              <div className="hoy-stat-head">
+                <span className="hoy-stat-label">Volumen</span>
+                <Icon name="trend" size={18} className="up" />
+              </div>
+              <div className="hoy-stat-value">
+                <span className="hoy-stat-mid hoy-num">{fmtThousands(weekVolume)}</span>
+                <span className="hoy-stat-unit sm">kg</span>
+              </div>
+              <div className="hoy-spark" aria-hidden="true">
+                {volumes.map((v, i) => (
+                  <i key={i} className={i === volumes.length - 1 ? 'on' : ''} style={{ height: `${Math.max(20, (v / maxVol) * 100)}%` }} />
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section className="hoy-tip">
+            <div className="hoy-tip-body">
+              <div className="hoy-tip-icon"><Icon name="shield" size={20} /></div>
+              <div>
+                <span className="hoy-tip-kicker">{tip.kicker}</span>
+                <p className="hoy-tip-text">{tip.text}</p>
+              </div>
+            </div>
+            <button type="button" className="hoy-link" onClick={() => go('plan')}>
+              Ver guía
+              <Icon name="chevron" size={16} />
+            </button>
+          </section>
+          </>
         )}
-
-        <section className="hoy-stats" aria-label="Resumen semanal">
-          <div className="hoy-stat">
-            <div className="hoy-stat-head">
-              <span className="hoy-stat-label">Sesiones</span>
-              <Icon name="calendar" size={18} />
-            </div>
-            <div className="hoy-stat-value">
-              <span className="hoy-stat-big hoy-num">{summary.done}</span>
-              <span className="hoy-stat-unit hoy-num">/ {summary.target}</span>
-            </div>
-            <div className="hoy-bar" aria-hidden="true">
-              <i style={{ width: `${summary.target > 0 ? Math.min(100, (summary.done / summary.target) * 100) : 0}%` }} />
-            </div>
-          </div>
-          <div className="hoy-stat">
-            <div className="hoy-stat-head">
-              <span className="hoy-stat-label">Volumen</span>
-              <Icon name="trend" size={18} className="up" />
-            </div>
-            <div className="hoy-stat-value">
-              <span className="hoy-stat-mid hoy-num">{fmtThousands(weekVolume)}</span>
-              <span className="hoy-stat-unit sm">kg</span>
-            </div>
-            <div className="hoy-spark" aria-hidden="true">
-              {volumes.map((v, i) => (
-                <i key={i} className={i === volumes.length - 1 ? 'on' : ''} style={{ height: `${Math.max(20, (v / maxVol) * 100)}%` }} />
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className="hoy-tip">
-          <div className="hoy-tip-body">
-            <div className="hoy-tip-icon"><Icon name="shield" size={20} /></div>
-            <div>
-              <span className="hoy-tip-kicker">{tip.kicker}</span>
-              <p className="hoy-tip-text">{tip.text}</p>
-            </div>
-          </div>
-          <button type="button" className="hoy-link" onClick={() => go('plan')}>
-            Ver guía
-            <Icon name="chevron" size={16} />
-          </button>
-        </section>
 
         <HoyBackupNotice />
 
-        {rows.length <= 1 && (
+        {!isSwim && rows.length <= 1 && (
           <section className="hoy-nudge">
             <p>
               <strong>Falta tu primera medición del bloque</strong>
