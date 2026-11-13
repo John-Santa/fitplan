@@ -131,7 +131,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       saveMeasurement: async m => { await local.saveMeasurement(m); await reload() },
       deleteMeasurement: async d => { await local.deleteMeasurement(d); await reload() },
       saveMeta: async m => { await local.saveExerciseMeta(m); await reload() },
-      saveConfig: async c => { await local.saveConfig(c); await reload() },
+      // The edit is applied over the stored config: a sync may have merged
+      // another device's changes into it since `config` was read (S15).
+      saveConfig: async c => { await local.saveConfigEdit(config, c); await reload() },
       plan,
       savePlan: async p => { await local.savePlan(p); setPlan(p); setPlanDamaged(false) },
       planDamaged,

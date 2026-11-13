@@ -9,8 +9,11 @@
 import type { Config, ExerciseMeta, Measurement, Session, TrainingPlan } from '../../../lib/types'
 import { authEnabled } from '../../account/lib/auth'
 import * as db from '../../../lib/db'
+import { mergeConfig } from '../../../lib/plan'
+import { rebaseConfigEdit } from './configMerge'
+import { conflictRecord, withConflictRecord } from './configSync'
 import { noteLocalWrite } from './engine'
-import { enqueueDelete, enqueueUpsert, type Entity } from './syncDb'
+import { enqueueDelete, enqueueUpsert, getOutboxEntry, type Entity } from './syncDb'
 
 let tracking = authEnabled
 
@@ -64,7 +67,20 @@ export async function saveExerciseMeta(m: ExerciseMeta) {
 
 export async function saveConfig(c: Config) {
   await db.saveConfig(c)
-  await upsert('document', 'config', c)
+  // A queued merge may carry a conflict record for another device (see
+  // configSync.ts): a new edit replaces the queued body but keeps the record.
+  await track(async () => {
+    const queued = conflictRecord((await getOutboxEntry('document', 'config'))?.body)
+    await enqueueUpsert('document', 'config', withConflictRecord(c, queued))
+  })
+}
+
+/** Saves an edit a screen made from `seen`, its in-memory copy. A sync may
+ *  have merged another device's changes into the stored config since then
+ *  (S15): the edit is applied over the stored copy instead of replacing it,
+ *  so those changes survive. */
+export async function saveConfigEdit(seen: Config, edited: Config) {
+  await saveConfig(rebaseConfigEdit(seen, edited, mergeConfig(await db.getConfig())))
 }
 
 export async function savePlan(p: TrainingPlan) {

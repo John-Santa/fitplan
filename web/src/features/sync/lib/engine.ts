@@ -38,6 +38,7 @@ import type { ChangeSet, ItemResult, PushChangeSet } from '../syncTypes'
 import type { ExerciseMeta, Measurement } from '../../../lib/types'
 import * as sdb from './syncDb'
 import type { Entity, OutboxEntry } from './syncDb'
+import { mergePendingConfig, noteConfigSynced } from './configSync'
 
 export const OTHER_ACCOUNT_ERROR =
   'Esta app tiene datos de otra cuenta. Para no mezclarlos, la sincronización está en pausa: vuelve a iniciar ' +
@@ -204,9 +205,14 @@ async function runOnce(): Promise<boolean> {
   try {
     if (!meta.userId) await bootstrap(uid, changed)
     else {
+      // S15: a queued config change is merged with the server copy before
+      // it is pushed, so the push never overwrites another device's fields.
+      if (await sdb.getOutboxEntry('document', 'config')) await pullFrom(meta.cursor, changed)
       const { stale } = await pushOutbox()
       const full = stale || meta.fullPullAt != null
-      await pullFrom(full ? 0 : meta.cursor, changed)
+      await pullFrom(full ? 0 : (await sdb.getMeta()).cursor, changed)
+      // A stale config stays queued and the pull merged it: push the merge.
+      if (stale && (await sdb.getOutboxEntry('document', 'config'))) runAgain = true
       // Solo se limpia el pedido que se atendió: uno nuevo hecho durante esta
       // vuelta se queda para la próxima.
       if (meta.fullPullAt != null && (await sdb.getMeta()).fullPullAt === meta.fullPullAt) {
@@ -379,7 +385,9 @@ async function settle(batch: OutboxEntry[], res: PushResult): Promise<boolean> {
   const mark = (entity: Entity, items: ItemResult[] | null | undefined) => {
     for (const r of items ?? []) {
       if (r.status === 'stale') stale = true
-      if (r.status === 'applied' || r.status === 'stale') answered.add(sdb.outboxId(entity, r.key))
+      // S15: a stale config is not dropped; the following pull merges it.
+      const keep = r.status === 'stale' && entity === 'document' && r.key === 'config'
+      if ((r.status === 'applied' || r.status === 'stale') && !keep) answered.add(sdb.outboxId(entity, r.key))
     }
   }
   mark('document', res.documents)
@@ -389,6 +397,7 @@ async function settle(batch: OutboxEntry[], res: PushResult): Promise<boolean> {
   for (const sent of batch) {
     if (!answered.has(sdb.outboxId(sent.entity, sent.key))) continue
     await sdb.removeRejected(sent.entity, sent.key)
+    if (sent.entity === 'document' && sent.key === 'config') await noteConfigSynced(sent.body, sent.updatedAt)
     // Si el registro cambió otra vez mientras se subía, la entrada nueva
     // se queda para la próxima vuelta.
     const now = await sdb.getOutboxEntry(sent.entity, sent.key)
@@ -401,14 +410,14 @@ async function settle(batch: OutboxEntry[], res: PushResult): Promise<boolean> {
 
 /* ---------- bajada ---------- */
 
-type Remote = { entity: Entity; key: string; body: unknown; deletedAt: number | null }
+type Remote = { entity: Entity; key: string; body: unknown; updatedAt: number; deletedAt: number | null }
 
 function remoteRecords(page: ChangeSet): Remote[] {
   return [
-    ...(page.documents ?? []).map(d => ({ entity: 'document' as const, key: d.kind, body: d.body, deletedAt: d.deletedAt })),
-    ...(page.sessions ?? []).map(s => ({ entity: 'session' as const, key: s.id, body: s.body, deletedAt: s.deletedAt })),
-    ...(page.measurements ?? []).map(m => ({ entity: 'measurement' as const, key: m.date, body: m.body, deletedAt: m.deletedAt })),
-    ...(page.exerciseMeta ?? []).map(e => ({ entity: 'exerciseMeta' as const, key: e.exerciseId, body: e.body, deletedAt: e.deletedAt })),
+    ...(page.documents ?? []).map(d => ({ entity: 'document' as const, key: d.kind, body: d.body, updatedAt: d.updatedAt, deletedAt: d.deletedAt })),
+    ...(page.sessions ?? []).map(s => ({ entity: 'session' as const, key: s.id, body: s.body, updatedAt: s.updatedAt, deletedAt: s.deletedAt })),
+    ...(page.measurements ?? []).map(m => ({ entity: 'measurement' as const, key: m.date, body: m.body, updatedAt: m.updatedAt, deletedAt: m.deletedAt })),
+    ...(page.exerciseMeta ?? []).map(e => ({ entity: 'exerciseMeta' as const, key: e.exerciseId, body: e.body, updatedAt: e.updatedAt, deletedAt: e.deletedAt })),
   ]
 }
 
@@ -439,6 +448,7 @@ async function applyRemote(r: Remote, allowDelete: boolean): Promise<boolean> {
   } else if (r.key === 'config') {
     if (!isObject(r.body)) return false
     await db.saveConfig(mergeConfig(r.body))
+    await noteConfigSynced(r.body)
   } else if (r.key === 'plan') {
     const plan = normalizePlan(r.body)
     if (!plan) return false
@@ -464,8 +474,12 @@ async function pullPages(since: number, onRecord: (r: Remote) => Promise<void>) 
 
 async function pullFrom(since: number, changed: { value: boolean }) {
   await pullPages(since, async r => {
-    // Lo local pendiente gana hasta que se sube.
-    if (await sdb.getOutboxEntry(r.entity, r.key)) return
+    // Lo local pendiente gana hasta que se sube. S15: config is merged instead.
+    const pending = await sdb.getOutboxEntry(r.entity, r.key)
+    if (pending) {
+      if (r.entity === 'document' && r.key === 'config' && (await mergePendingConfig(pending, r))) changed.value = true
+      return
+    }
     if (await applyRemote(r, true)) changed.value = true
   })
 }
@@ -534,6 +548,10 @@ async function bootstrap(uid: string, changed: { value: boolean }) {
   await pullPages(0, async r => {
     remote.set(sdb.outboxId(r.entity, r.key), r)
   })
+  // S15: the server copy is the base of the next config merge, whichever
+  // side wins below (a local copy that wins is pushed as a change against it).
+  const remoteConfig = remote.get(sdb.outboxId('document', 'config'))
+  if (remoteConfig && remoteConfig.deletedAt == null) await noteConfigSynced(remoteConfig.body)
 
   const local = await localRecords()
   const seeded = seeds()

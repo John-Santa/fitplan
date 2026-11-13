@@ -598,8 +598,11 @@ describe('convergencia (B2, B3, A1)', () => {
     await b.engine.syncNow()
     clock.mockRestore()
 
-    expect((server.rows.get('documents:config')?.body as { heightCm: number }).heightCm).toBe(170)
-    expect((fitplanState(b).config as { heightCm: number }).heightCm).toBe(170)
+    // S15: b had already pulled a's 170 when it wrote 185, so 185 is the only
+    // change against the base. The stale push is merged, not dropped, and it
+    // wins despite b's clock being behind.
+    expect((server.rows.get('documents:config')?.body as { heightCm: number }).heightCm).toBe(185)
+    expect((fitplanState(b).config as { heightCm: number }).heightCm).toBe(185)
     await a.engine.syncNow()
     expect(fitplanState(b)).toEqual(fitplanState(a))
     expect(b.engine.getSyncStatus()).toMatchObject({ state: 'idle', lastError: null, pending: 0, rejected: 0 })
