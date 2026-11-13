@@ -209,3 +209,16 @@ describe('mergeMeasurement', () => {
     expect(stored).toEqual({ date: '2026-11-12', weight: 80, fatPct: 20 })
   })
 })
+
+describe('getSessions order', () => {
+  it('lists the newest first by session date, so a session logged late for an earlier day sits on that day', async () => {
+    const { db } = await freshDb()
+    const at = (date: string, time: string) => Date.parse(`${date}T${time}`)
+    const day = (id: string, date: string, startedAt: number) =>
+      db.saveSession({ ...strengthSession, id, date, startedAt, finishedAt: startedAt + 1 } as never)
+    await day('nov-9', '2026-11-09', at('2026-11-09', '10:00:00'))
+    await day('nov-2-late', '2026-11-02', at('2026-11-10', '09:00:00')) // typed in on the 10th
+    await day('nov-9-pm', '2026-11-09', at('2026-11-09', '19:00:00'))
+    expect((await db.getSessions()).sessions.map(s => s.id)).toEqual(['nov-9-pm', 'nov-9', 'nov-2-late'])
+  })
+})

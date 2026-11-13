@@ -96,4 +96,14 @@ describe('ExerciseProgress', () => {
     ])
     expect(html).toContain('<div class="label">Mejor peso</div><div class="value num">90,0 <span>kg × 5</span>')
   })
+
+  it('orders a session logged late for an earlier date by its own date', () => {
+    const done = session('2026-11-09', [set(0, 70, 10)])
+    // Logged on the 10th for the 2nd: startedAt is later than the 9th's.
+    const backDated = { ...session('2026-11-02', [set(0, 80, 8)]), startedAt: Date.parse('2026-11-10T09:00:00') }
+    const html = render([done, backDated])
+    expect(state.charts[0].series[0].points).toEqual([{ x: '2026-11-02', y: 80 }, { x: '2026-11-09', y: 70 }])
+    expect(html).toContain('Desde el 2 nov')
+    expect(html).toContain('-10,0 <span>kg</span>')
+  })
 })

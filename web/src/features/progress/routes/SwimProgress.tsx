@@ -1,5 +1,5 @@
 import type { SwimSession } from '../../../lib/types'
-import { fmtDate, mmss } from '../../../lib/calc'
+import { bySessionTime, fmtDate, mmss } from '../../../lib/calc'
 import { DISCIPLINES, swimDistance, swimSessionPaceSecPer100m, swimSessionSpeedMPerMin } from '../../../lib/disciplines'
 import { useStore } from '../../../lib/store'
 import Chart, { type Series } from '../components/Chart'
@@ -20,7 +20,7 @@ export default function SwimProgress({ onBack }: { onBack: () => void }) {
   // (mismo criterio que ExerciseProgress usa al reves para fuerza).
   const rows: SwimRow[] = sessions
     .filter((s): s is SwimSession => s.kind === 'swim' && !!s.finishedAt)
-    .sort((a, b) => a.startedAt - b.startedAt)
+    .sort(bySessionTime)
     .map(s => ({
       s,
       // swimDistance ya cuenta los bloques marcados con distancia cargada

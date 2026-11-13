@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { PlanSlot, RoutineId, StrengthSession } from '../../../lib/types'
 import { blockWeekNumber, formatTarget, phaseForWeek, setsForSlot } from '../../../lib/phases'
 import { findRoutine, slotExerciseName, routineDisplayName } from '../../../lib/planQueries'
-import { bestSet, fmt, fmtDate, fmtSigned, shouldProgress } from '../../../lib/calc'
+import { bestSet, bySessionTime, fmt, fmtDate, fmtSigned, shouldProgress } from '../../../lib/calc'
 import { formatVolume, personalRecords } from '../../../lib/records'
 import { useStore } from '../../../lib/store'
 import Chart, { type Series } from '../components/Chart'
@@ -51,7 +51,7 @@ export default function ExerciseProgress({ routineId, onBack }: { routineId: Rou
   // tiene routineId ni .sets, asi que se descarta aca, no mas abajo.
   const done = sessions
     .filter((s): s is StrengthSession => s.kind === 'strength' && !!s.finishedAt && s.routineId === routineId)
-    .sort((a, b) => a.startedAt - b.startedAt)
+    .sort(bySessionTime)
 
   const rows = done.flatMap(s => {
     const b = bestSet(s.sets, activeId)

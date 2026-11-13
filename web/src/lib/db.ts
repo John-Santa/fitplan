@@ -1,5 +1,6 @@
 import type { Session, Measurement, ExerciseMeta, Config, Backup, TrainingPlan } from './types'
 import { mergeConfig, normalizeSession } from './plan'
+import { bySessionTime } from './calc'
 import { normalizePlan, planFromBackup } from './planStorage'
 import { defaultPlanWithLegacy } from './defaultPlan'
 import { migrateLegacyConfig } from './legacyConfig'
@@ -142,7 +143,7 @@ export interface SessionsResult {
  *  abajo): getAll<unknown> porque una fila en disco puede venir de una
  *  version anterior del codigo, .map(normalizeSession) para decidir que
  *  forma tiene, filtro para descartar lo irrecuperable (y contarlo), y
- *  orden por mas reciente. */
+ *  orden por mas reciente (bySessionTime, la fecha de la sesion primero). */
 export const getSessions = async (): Promise<SessionsResult> => {
   const raw = await getAll<unknown>(STORE_SESSIONS)
   const sessions: Session[] = []
@@ -152,7 +153,7 @@ export const getSessions = async (): Promise<SessionsResult> => {
     if (s) sessions.push(s)
     else droppedCount++
   }
-  sessions.sort((a, b) => b.startedAt - a.startedAt)
+  sessions.sort((a, b) => bySessionTime(b, a))
   return { sessions, droppedCount }
 }
 export const saveSession = (s: Session) => put(STORE_SESSIONS, s)

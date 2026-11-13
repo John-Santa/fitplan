@@ -53,7 +53,9 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
   // lastPerformance solo mira fuerza (calc.ts la tipa a StrengthSession[]):
   // una sesion de natacion no tiene .sets.
   const strengthSessions = sessions.filter((s): s is StrengthSession => s.kind === 'strength')
-  const week = blockWeekNumber(new Date(session.startedAt), config.blockStart)
+  // The week of the day the session belongs to: a session logged late for a
+  // past day gets startedAt = now, which may fall in another week.
+  const week = blockWeekNumber(new Date(session.date + 'T00:00:00'), config.blockStart)
   const phase = phaseForWeek(plan, week)
   const minimal = session.minimal === true
   const swaps = session.swaps

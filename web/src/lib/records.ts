@@ -1,5 +1,5 @@
 import type { Session, SetLog, StrengthSession } from './types'
-import { bestSet, fmt, setVolume } from './calc'
+import { bestSet, bySessionTime, fmt, setVolume } from './calc'
 
 /* Personal records per exercise (decision D3-A), derived from saved sessions:
  * nothing here is stored or synced.
@@ -39,10 +39,9 @@ const countedSets = (sets: readonly SetLog[], exerciseId: string): SetLog[] =>
 export const exerciseVolume = (sets: readonly SetLog[], exerciseId: string): number =>
   countedSets(sets, exerciseId).reduce((a, s) => a + setVolume(s), 0)
 
-/** True when `a` happened before `b`: by date first (a back-dated session sits
- *  on its own day), then by start time for two sessions on the same day. */
-export const isBefore = (a: StrengthSession, b: StrengthSession): boolean =>
-  a.date < b.date || (a.date === b.date && a.startedAt < b.startedAt)
+/** True when `a` happened before `b`, in the app's one session order
+ *  (bySessionTime: date first, then start time on the same day). */
+export const isBefore = (a: StrengthSession, b: StrengthSession): boolean => bySessionTime(a, b) < 0
 
 /** All-time records of an exercise across every routine. With `before`, only
  *  the finished sessions that happened before that one count. */

@@ -2,7 +2,7 @@
 // double-progression rule that the session screen is built on.
 import { describe, expect, it } from 'vitest'
 import type { SetLog, StrengthSession } from './types'
-import { lastPerformance, shouldProgress } from './calc'
+import { bySessionTime, lastPerformance, shouldProgress } from './calc'
 
 const set = (exerciseId: string, setIndex: number, weight: number | null, reps: number | null, done = true): SetLog => ({
   exerciseId, setIndex, weight, reps, done,
@@ -61,6 +61,17 @@ describe('lastPerformance with back-dated sessions', () => {
     const list = [session('a', 1000, [set('squat', 0, 50, 10)]), session('b', 2000, [set('squat', 0, 60, 10)])]
     lastPerformance(list, 'squat')
     expect(list.map(s => s.id)).toEqual(['a', 'b'])
+  })
+})
+
+describe('bySessionTime', () => {
+  // The one chronological order every screen uses: the session date first (a
+  // back-dated session sits on its own day), then startedAt on the same day.
+  it('sorts by session date, then by start time, oldest first', () => {
+    const lateForTheFirst = session('late', 9000, [], { date: '2026-01-01' })
+    const fifthEvening = session('pm', 2000, [], { date: '2026-01-05' })
+    const fifthMorning = session('am', 1000, [], { date: '2026-01-05' })
+    expect([fifthEvening, lateForTheFirst, fifthMorning].sort(bySessionTime).map(s => s.id)).toEqual(['late', 'am', 'pm'])
   })
 })
 
