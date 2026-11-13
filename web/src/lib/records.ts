@@ -41,7 +41,7 @@ export const exerciseVolume = (sets: readonly SetLog[], exerciseId: string): num
 
 /** True when `a` happened before `b`: by date first (a back-dated session sits
  *  on its own day), then by start time for two sessions on the same day. */
-const isBefore = (a: StrengthSession, b: StrengthSession): boolean =>
+export const isBefore = (a: StrengthSession, b: StrengthSession): boolean =>
   a.date < b.date || (a.date === b.date && a.startedAt < b.startedAt)
 
 /** All-time records of an exercise across every routine. With `before`, only
