@@ -151,6 +151,8 @@ const (
 	corsMethods = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
 	corsHeaders = "Authorization, Content-Type"
 	corsMaxAge  = "600"
+	// corsExpose lets a cross-origin page read Retry-After on a 429.
+	corsExpose = "Retry-After"
 )
 
 // cors allows cross-origin requests only from the configured origins and
@@ -167,6 +169,7 @@ func cors(allowed []string) func(http.Handler) http.Handler {
 			ok := slices.Contains(allowed, origin)
 			if ok {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Access-Control-Expose-Headers", corsExpose)
 			}
 			isPreflight := r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != ""
 			if isPreflight {

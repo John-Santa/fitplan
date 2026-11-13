@@ -336,6 +336,39 @@ describe('concurrencia y errores', () => {
     expect(mods.engine.getSyncStatus()).toMatchObject({ state: 'idle', lastError: null })
   })
 
+  it('un 429 es transitorio: conserva el outbox y reintenta tras Retry-After', async () => {
+    await asKnownUser()
+    await mods.local.saveSession(session('s1') as never)
+    const limited = (retryAfter: string) =>
+      new Response(JSON.stringify({ type: 'about:blank', title: 'Too Many Requests', status: 429, detail: 'too many requests' }), {
+        status: 429,
+        headers: { 'Content-Type': 'application/problem+json', 'Retry-After': retryAfter },
+      })
+    const delays = () => timers.mock.calls.map(c => c[1]).filter(d => typeof d === 'number' && d >= 1_000)
+    const timers = vi.spyOn(globalThis, 'setTimeout')
+    const real = server.fetch.getMockImplementation()!
+    server.fetch.mockImplementationOnce(async () => limited('42'))
+    await mods.engine.syncNow()
+    expect(outbox().has('session:s1')).toBe(true)
+    expect(mods.engine.getSyncStatus()).toMatchObject({ state: 'error', pending: 1 })
+    expect(mods.engine.getSyncStatus().lastError).toContain('42')
+    // Pide 42 s: gana a los 5 s del retroceso base.
+    expect(delays()).toEqual([42_000])
+
+    // Un Retry-After corto no acorta el retroceso exponencial.
+    timers.mockClear()
+    server.fetch.mockImplementation(real)
+    server.fetch.mockImplementationOnce(async () => limited('1'))
+    await mods.engine.syncNow()
+    expect(delays()).toEqual([10_000])
+    timers.mockRestore()
+
+    // Pasada la espera, la sincronización normal sube lo pendiente.
+    await mods.engine.syncNow()
+    expect(outbox().size).toBe(0)
+    expect(mods.engine.getSyncStatus()).toMatchObject({ state: 'idle', lastError: null })
+  })
+
   it('ClerkOfflineError cuenta como sin conexión', async () => {
     await asKnownUser()
     const auth = await import('../../account/lib/auth')

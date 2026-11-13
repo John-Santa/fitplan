@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -30,6 +31,11 @@ type Config struct {
 	// ClerkJWTKey is the Clerk instance's JWT public key. Optional: when set,
 	// session tokens are verified without calling the Clerk API.
 	ClerkJWTKey string
+	// RateLimitRPS is the sustained per-user request rate on /v1/*; 0 means
+	// unset (the HTTP adapter applies its default).
+	RateLimitRPS float64
+	// RateLimitBurst is the per-user bucket size; 0 means unset.
+	RateLimitBurst int
 }
 
 // IsTest reports whether the service runs in the test environment.
@@ -55,6 +61,20 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 	if n, err := strconv.Atoi(cfg.Port); err != nil || n < 1 || n > 65535 {
 		return Config{}, fmt.Errorf("config: invalid PORT %q: must be an integer between 1 and 65535", cfg.Port)
+	}
+	if raw := strings.TrimSpace(getenv("RATE_LIMIT_RPS")); raw != "" {
+		n, err := strconv.ParseFloat(raw, 64)
+		if err != nil || math.IsNaN(n) || math.IsInf(n, 0) || n <= 0 {
+			return Config{}, fmt.Errorf("config: invalid RATE_LIMIT_RPS %q: must be a positive number", raw)
+		}
+		cfg.RateLimitRPS = n
+	}
+	if raw := strings.TrimSpace(getenv("RATE_LIMIT_BURST")); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 {
+			return Config{}, fmt.Errorf("config: invalid RATE_LIMIT_BURST %q: must be an integer of at least 1", raw)
+		}
+		cfg.RateLimitBurst = n
 	}
 	if !cfg.IsTest() {
 		if cfg.DatabaseURL == "" {

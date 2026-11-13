@@ -50,6 +50,30 @@ describe('apiFetch', () => {
     expect(err.message).toContain('502')
   })
 
+  it('un 429 trae la espera de Retry-After (segundos o fecha HTTP) en ApiError', async () => {
+    const problem = { type: 'about:blank', title: 'Too Many Requests', status: 429, detail: 'too many requests' }
+    const limited = (retryAfter?: string) =>
+      new Response(JSON.stringify(problem), {
+        status: 429,
+        headers: { 'Content-Type': 'application/problem+json', ...(retryAfter ? { 'Retry-After': retryAfter } : {}) },
+      })
+    fetchMock.mockResolvedValueOnce(limited('42'))
+    const seconds = await apiFetch('/v1/sync').catch(e => e)
+    expect(seconds).toBeInstanceOf(ApiError)
+    expect(seconds.status).toBe(429)
+    expect(seconds.retryAfterMs).toBe(42_000)
+
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-11-12T10:00:00Z'))
+    fetchMock.mockResolvedValueOnce(limited('Thu, 12 Nov 2026 10:00:30 GMT'))
+    expect((await apiFetch('/v1/sync').catch(e => e)).retryAfterMs).toBe(30_000)
+
+    fetchMock.mockResolvedValueOnce(limited())
+    expect((await apiFetch('/v1/sync').catch(e => e)).retryAfterMs).toBeUndefined()
+    fetchMock.mockResolvedValueOnce(limited('soon'))
+    expect((await apiFetch('/v1/sync').catch(e => e)).retryAfterMs).toBeUndefined()
+    vi.restoreAllMocks()
+  })
+
   it('lanza ApiError sin llamar a fetch si falta VITE_API_URL', async () => {
     vi.stubEnv('VITE_API_URL', '')
     await expect(apiFetch('/v1/me')).rejects.toBeInstanceOf(ApiError)

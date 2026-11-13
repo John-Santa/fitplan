@@ -185,10 +185,15 @@ async function runOnce(): Promise<boolean> {
     return true
   } catch (e) {
     const offline = isOffline(e)
-    const message = offline ? OFFLINE_ERROR : `No se pudo sincronizar: ${e instanceof Error ? e.message : String(e)}`
+    const waitMs = rateLimitWait(e)
+    const message = offline
+      ? OFFLINE_ERROR
+      : waitMs != null
+        ? `Demasiadas solicitudes: se reintenta en ${Math.ceil(waitMs / 1000)} s`
+        : `No se pudo sincronizar: ${e instanceof Error ? e.message : String(e)}`
     await sdb.updateMeta({ lastError: message }).catch(() => {})
     setStatus({ state: offline ? 'offline' : 'error', lastError: message })
-    scheduleRetry()
+    scheduleRetry(waitMs ?? 0)
     return false
   } finally {
     if (changed.value) await Promise.resolve(onRemoteChange?.()).catch(() => {})
@@ -205,9 +210,16 @@ function isOffline(e: unknown): boolean {
   return e instanceof TypeError || err?.code === 'clerk_offline' || err?.name === 'ClerkOfflineError'
 }
 
-function scheduleRetry() {
+/** Un 429 es transitorio: devuelve la espera que pidió el servidor (Retry-After,
+ *  0 si no la dio) o null si el error no es un 429. */
+function rateLimitWait(e: unknown): number | null {
+  return e instanceof ApiError && e.status === 429 ? (e.retryAfterMs ?? 0) : null
+}
+
+/** `minMs` es la espera mínima pedida por el servidor; nunca acorta el retroceso. */
+function scheduleRetry(minMs = 0) {
   if (!currentUser) return
-  const delay = Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** failures)
+  const delay = Math.min(RETRY_MAX_MS, Math.max(minMs, RETRY_BASE_MS * 2 ** failures))
   failures++
   if (retryTimer) clearTimeout(retryTimer)
   retryTimer = setTimeout(() => {
