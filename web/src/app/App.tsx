@@ -9,6 +9,7 @@ import Settings from '../features/account/routes/Settings'
 import PlanEditor from '../features/plan/routes/PlanEditor'
 import { loadActiveDraft } from '../features/session/lib/activeSession'
 import Guide from '../features/guide/routes/Guide'
+import MovedNotice from './MovedNotice'
 
 type Tab = 'home' | 'plan' | 'progreso' | 'perfil'
 type ProgressView = 'habit' | 'train' | 'measure'
@@ -48,6 +49,7 @@ function Shell() {
   if (!ready) {
     return (
       <div className="app">
+        <MovedNotice />
         <div className="main">
           <p className="muted" style={{ textAlign: 'center', marginTop: 60 }}>Cargando…</p>
         </div>
@@ -57,6 +59,7 @@ function Shell() {
 
   return (
     <div className="app">
+      <MovedNotice />
       <main className="main">
         {guideOpen ? (
           <Guide onBack={() => setGuideOpen(false)} />

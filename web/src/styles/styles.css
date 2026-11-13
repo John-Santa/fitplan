@@ -990,3 +990,8 @@ figcaption {
 .signout p { margin: 0; }
 .signout-warning { color: var(--alert); font-weight: 600; }
 .signout-actions { margin-top: var(--sp-2); }
+
+.moved-notice { background: var(--surface-1); border-bottom: 3px solid var(--accent); padding: 12px var(--sp-4); }
+.moved-notice p { margin: 0 0 8px; }
+.moved-notice-error { color: var(--danger, #c0392b); }
+.moved-notice-actions { display: flex; gap: 8px; flex-wrap: wrap; }
