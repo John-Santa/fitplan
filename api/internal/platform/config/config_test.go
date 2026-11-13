@@ -170,3 +170,37 @@ func TestLoadRejectsInvalidRateLimit(t *testing.T) {
 		}
 	}
 }
+
+// The migration role owns the schema, so its connection needs TLS in
+// production just like DATABASE_URL; unset, nothing changes.
+func TestLoadProductionRequiresMigrationDatabaseTLS(t *testing.T) {
+	for _, url := range []string{
+		"postgres://owner:p@db.example/app",
+		"postgres://owner:p@db.example/app?sslmode=disable",
+		"postgres://owner:p@db.example/app?sslmode=require&sslmode=disable",
+		"host=db.example dbname=app sslmode=prefer",
+	} {
+		_, err := config.Load(env(production("MIGRATION_DATABASE_URL", url)))
+		if err == nil || !strings.Contains(err.Error(), "MIGRATION_DATABASE_URL") || !strings.Contains(err.Error(), "sslmode") {
+			t.Errorf("production MIGRATION_DATABASE_URL %q: err = %v, want an sslmode error naming MIGRATION_DATABASE_URL", url, err)
+		}
+	}
+	for _, url := range []string{
+		"",
+		"postgres://owner:p@db.example/app?sslmode=require",
+		"postgres://owner:p@db.example/app?sslmode=verify-full",
+		"host=db.example dbname=app sslmode=verify-ca",
+	} {
+		if _, err := config.Load(env(production("MIGRATION_DATABASE_URL", url))); err != nil {
+			t.Errorf("production MIGRATION_DATABASE_URL %q: err = %v, want ok", url, err)
+		}
+	}
+	// Outside production an insecure migration URL stays allowed (local runs).
+	if _, err := config.Load(env(map[string]string{
+		"DATABASE_URL":           "postgres://u:p@localhost/app?sslmode=disable",
+		"MIGRATION_DATABASE_URL": "postgres://owner:p@localhost/app?sslmode=disable",
+		"CLERK_SECRET_KEY":       "placeholder",
+	})); err != nil {
+		t.Errorf("local insecure MIGRATION_DATABASE_URL: err = %v, want ok", err)
+	}
+}

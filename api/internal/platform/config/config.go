@@ -92,6 +92,10 @@ func Load(getenv func(string) string) (Config, error) {
 		if !requiresTLS(cfg.DatabaseURL) {
 			return Config{}, fmt.Errorf("config: DATABASE_URL must set sslmode=require, verify-ca or verify-full when APP_ENV=production")
 		}
+		// The migration role owns the schema: same TLS rule when it is set.
+		if cfg.MigrationDatabaseURL != "" && !requiresTLS(cfg.MigrationDatabaseURL) {
+			return Config{}, fmt.Errorf("config: MIGRATION_DATABASE_URL must set sslmode=require, verify-ca or verify-full when APP_ENV=production")
+		}
 	}
 	return cfg, nil
 }
