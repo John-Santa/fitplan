@@ -6,6 +6,7 @@ import type { ReactElement } from 'react'
 import { StoreProvider } from '../lib/store'
 import Habit from '../features/habit/routes/Habit'
 import Settings from '../features/account/routes/Settings'
+import Profile from '../features/profile/routes/Profile'
 import PlanEditor from '../features/plan/routes/PlanEditor'
 import Guide from '../features/guide/routes/Guide'
 import Home from '../features/today/routes/Home'
@@ -19,7 +20,8 @@ const views: [string, () => ReactElement][] = [
   ['Guía', () => <Guide onBack={() => {}} />],
   ['Hábito', () => <Habit />],
   ['Entrenar', () => <Train onAutoStarted={() => {}} />],
-  ['Perfil', () => <Settings />],
+  ['Perfil', () => <Profile onOpenSettings={() => {}} />],
+  ['Ajustes', () => <Settings onBack={() => {}} />],
 ]
 
 const attr = (tag: string, name: string) => new RegExp(`\\s${name}="([^"]*)"`).exec(tag)?.[1]

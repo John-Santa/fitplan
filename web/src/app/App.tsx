@@ -4,6 +4,7 @@ import { ErrorScreen } from '../components/ErrorScreen'
 import Home from '../features/today/routes/Home'
 import Habit from '../features/habit/routes/Habit'
 import Settings from '../features/account/routes/Settings'
+import Profile from '../features/profile/routes/Profile'
 import { loadActiveDraft } from '../features/session/lib/activeSession'
 import MovedNotice from './MovedNotice'
 import { PwaPrompts } from '../features/pwa/components/PwaPrompts'
@@ -158,7 +159,15 @@ function Shell() {
                 {progressView === 'measure' && <Measure />}
               </>
             )}
-            {tab === 'perfil' && <Settings />}
+            {tab === 'perfil' && (settingsOpen ? (
+              <Settings onBack={() => setSettingsOpen(false)} />
+            ) : (
+              <Profile
+                onOpenSettings={() => setSettingsOpen(true)}
+                onOpenTraining={() => { selectTab('progreso'); setProgressView('train') }}
+                onOpenMeasures={() => { selectTab('progreso'); setProgressView('measure') }}
+              />
+            ))}
           </>
         )}
         </Suspense>
