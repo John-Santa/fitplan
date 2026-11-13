@@ -92,3 +92,34 @@ describe('merging a measurement over the stored one of the same date', () => {
     expect(stored(e, '2026-11-12')).toEqual(FULL)
   })
 })
+
+describe('merging while a remote row is applied (one transaction)', () => {
+  // A sync-down applies a remote row with its own plain save. If it lands
+  // between the merge's read and its write, the write is built from a stale
+  // read and silently drops what the remote row brought.
+  it('a remote apply cannot land between the read and the write of a merge', async () => {
+    await e.local.saveMeasurement(FULL)
+    const REMOTE: Measurement = { ...FULL, waist: 88, neck: 40 }
+    let remote: Promise<unknown> | null = null
+    e.idb.onGet((store, key) => {
+      if (store !== 'measurements' || key !== '2026-11-12' || remote) return
+      remote = e.db.saveMeasurement(REMOTE)
+    })
+    await e.local.mergeMeasurement({ date: '2026-11-12', weight: 79 })
+    e.idb.onGet(null)
+    expect(remote).not.toBeNull()
+    await remote
+    // The remote row waited for the merge to commit, so it arrives whole.
+    expect(stored(e, '2026-11-12')).toEqual(REMOTE)
+    // The outbox carries exactly the record the merge wrote.
+    expect(outbox(e, '2026-11-12')?.body).toEqual({ ...FULL, weight: 79 })
+  })
+
+  it('a remote row applied before the merge is kept by it', async () => {
+    await e.local.saveMeasurement(FULL)
+    await e.db.saveMeasurement({ ...FULL, neck: 40 })
+    await e.local.mergeMeasurement({ date: '2026-11-12', weight: 79 })
+    expect(stored(e, '2026-11-12')).toEqual({ ...FULL, neck: 40, weight: 79 })
+    expect(outbox(e, '2026-11-12')?.body).toEqual({ ...FULL, neck: 40, weight: 79 })
+  })
+})

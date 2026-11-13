@@ -55,11 +55,13 @@ export async function saveMeasurement(m: Measurement) {
 }
 
 /** Saves `patch` over the measurement stored for its date (see
- *  db.mergeMeasurement) through saveMeasurement, so the outbox gets the merged
- *  record. The stored copy is read here, not taken from a screen's memory,
- *  which may be stale after a sync. */
+ *  db.mergeMeasurement) and queues the merged record. The stored copy is read
+ *  in the same transaction as the write (db.saveMergedMeasurement), not taken
+ *  from a screen's memory, which may be stale after a sync, and a remote row
+ *  applied meanwhile cannot slip in between. */
 export async function mergeMeasurement(patch: Measurement) {
-  await saveMeasurement(db.mergeMeasurement(await db.getMeasurement(patch.date), patch))
+  const merged = await db.saveMergedMeasurement(patch)
+  await upsert('measurement', merged.date, merged)
 }
 
 export async function deleteMeasurement(date: string) {

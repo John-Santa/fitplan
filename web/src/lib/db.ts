@@ -162,8 +162,6 @@ export const deleteSession = (id: string) => del(STORE_SESSIONS, id)
 /* ---------- medidas ---------- */
 export const getMeasurements = () =>
   getAll<Measurement>(STORE_MEASUREMENTS).then(list => list.sort((a, b) => (a.date < b.date ? -1 : 1)))
-export const getMeasurement = (date: string) =>
-  tx<Measurement | undefined>(STORE_MEASUREMENTS, 'readonly', s => s.get(date) as IDBRequest<Measurement | undefined>)
 /** Whole-record put by date: it REPLACES the stored measurement, so a record
  *  with fewer fields drops the rest. Callers that only know some fields (a
  *  weight-only log, a form with empty inputs) go through `mergeMeasurement`. */
@@ -175,6 +173,28 @@ export const mergeMeasurement = (existing: Measurement | undefined, patch: Measu
   ...existing,
   ...patch,
 })
+/** Reads the measurement stored for `patch.date`, merges `patch` over it
+ *  (mergeMeasurement) and writes the result in ONE readwrite transaction, so
+ *  no other write (a sync-down applying a remote row) can land between the
+ *  read and the write. Resolves with the merged record once it is committed. */
+export const saveMergedMeasurement = (patch: Measurement): Promise<Measurement> =>
+  openDb().then(
+    db =>
+      new Promise<Measurement>((resolve, reject) => {
+        const t = db.transaction(STORE_MEASUREMENTS, 'readwrite')
+        const s = t.objectStore(STORE_MEASUREMENTS)
+        let merged: Measurement | null = null
+        const read = s.get(patch.date) as IDBRequest<Measurement | undefined>
+        read.onerror = () => reject(read.error)
+        read.onsuccess = () => {
+          merged = mergeMeasurement(read.result, patch)
+          const write = s.put(merged)
+          write.onerror = () => reject(write.error)
+        }
+        t.oncomplete = () => (merged ? resolve(merged) : reject(new Error('No se pudo guardar la medición.')))
+        t.onabort = () => reject(t.error ?? new Error('No se pudo guardar la medición.'))
+      }),
+  )
 export const deleteMeasurement = (date: string) => del(STORE_MEASUREMENTS, date)
 
 /* ---------- notas por ejercicio ---------- */

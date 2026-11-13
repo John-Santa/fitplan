@@ -2,7 +2,9 @@
 // Cubre solo lo que usa db.ts: open con upgrade, get, getAll, put, clear y
 // delete sobre almacenes con keyPath o con llaves externas. Es un doble de
 // prueba, no una implementacion fiel: sin indices, sin versiones. Las
-// transacciones de un solo almacen (transaction('x')) no son atomicas; las
+// transacciones de un solo almacen (transaction('x')) no hacen rollback, pero
+// las de un mismo almacen corren en fila, en orden de creacion, y avisan
+// oncomplete al quedar sin peticiones pendientes; las
 // de varios almacenes (transaction(['x', 'y'])) si: si una peticion falla se
 // restauran los almacenes (rollback) y se dispara onabort; si todas terminan,
 // oncomplete.
@@ -18,6 +20,10 @@ export interface MemoryIdb {
   /** Hace fallar cada `put` para el que `predicate(almacen, llave)` sea true
    *  (simula cuota llena o escritura interrumpida). null = sin fallos. */
   failPuts(predicate: ((store: string, key: unknown) => boolean) | null): void
+  /** Calls `hook(almacen, llave)` each time a `get` reads a row, before its
+   *  result reaches the caller: lets a test issue another write (a remote
+   *  apply) right between a read and the write that follows it. null = off. */
+  onGet(hook: ((store: string, key: unknown) => void) | null): void
 }
 
 interface FakeRequest<T> {
@@ -35,6 +41,7 @@ export function installMemoryIdb(): MemoryIdb {
   // 'magnifit-sync' no se pisan aunque compartan nombres de almacen.
   const databases: Record<string, Record<string, Store>> = {}
   let shouldFail: ((store: string, key: unknown) => boolean) | null = null
+  let onGet: ((store: string, key: unknown) => void) | null = null
 
   // Resuelve en una microtarea diferida, como el IndexedDB real: el llamador
   // asigna onsuccess/onerror despues de recibir la peticion.
@@ -117,6 +124,75 @@ export function installMemoryIdb(): MemoryIdb {
     return t
   }
 
+  // Single-store transactions on the same store run one after another, in
+  // the order they were created, like IndexedDB does for overlapping scopes:
+  // a write issued while another transaction is open waits until that one
+  // completes. A transaction completes once it has no pending request left.
+  const queues = new Map<Store, Promise<void>>()
+
+  function makeSerialTransaction(name: string, s: Store) {
+    const previous = queues.get(s) ?? Promise.resolve()
+    let release!: () => void
+    queues.set(s, new Promise<void>(r => (release = r)))
+    let started = false
+    let finished = false
+    let pending = 0
+    const waiting: (() => void)[] = []
+    const t: { oncomplete?: () => void; objectStore(): unknown } = { objectStore: () => store }
+    const finishIfIdle = () => {
+      if (finished || pending > 0) return
+      finished = true
+      t.oncomplete?.()
+      release()
+    }
+    void previous.then(() => {
+      started = true
+      waiting.splice(0).forEach(run => run())
+      setTimeout(finishIfIdle)
+    })
+    const op = <R>(run: () => R): FakeRequest<R> => {
+      // A request on a transaction that already completed runs on its own,
+      // as before this queue existed (real IndexedDB would throw).
+      if (finished) return request(run)
+      const r: FakeRequest<R> = {}
+      pending++
+      const exec = () =>
+        setTimeout(() => {
+          try {
+            r.result = run()
+            r.onsuccess?.()
+          } catch (e) {
+            r.error = e
+            r.onerror?.()
+          }
+          pending--
+          setTimeout(finishIfIdle)
+        })
+      if (started) exec()
+      else waiting.push(exec)
+      return r
+    }
+    const store = {
+      get: (k: unknown) =>
+        op(() => {
+          const v = structuredClone(s.rows.get(k))
+          onGet?.(name, k)
+          return v
+        }),
+      getAll: () => op(() => [...s.rows.values()].map(v => structuredClone(v))),
+      put: (v: unknown, k?: unknown) =>
+        op(() => {
+          const key = s.keyPath ? (v as Record<string, unknown>)[s.keyPath] : k
+          if (shouldFail?.(name, key)) throw new Error('QuotaExceededError')
+          s.rows.set(key, structuredClone(v))
+          return key
+        }),
+      clear: () => op(() => void s.rows.clear()),
+      delete: (k: unknown) => op(() => void s.rows.delete(k)),
+    }
+    return t
+  }
+
   const makeDatabase = (stores: Record<string, Store>) => ({
     objectStoreNames: { contains: (name: string) => name in stores },
     createObjectStore(name: string, opts?: { keyPath?: string }) {
@@ -126,24 +202,7 @@ export function installMemoryIdb(): MemoryIdb {
     onversionchange: null as null | (() => void),
     transaction(name: string | string[]) {
       if (Array.isArray(name)) return makeAtomicTransaction(stores, name)
-      return {
-        objectStore() {
-          const s = stores[name]
-          return {
-            get: (k: unknown) => request(() => structuredClone(s.rows.get(k))),
-            getAll: () => request(() => [...s.rows.values()].map(v => structuredClone(v))),
-            put: (v: unknown, k?: unknown) =>
-              request(() => {
-                const key = s.keyPath ? (v as Record<string, unknown>)[s.keyPath] : k
-                if (shouldFail?.(name, key)) throw new Error('QuotaExceededError')
-                s.rows.set(key, structuredClone(v))
-                return key
-              }),
-            clear: () => request(() => void s.rows.clear()),
-            delete: (k: unknown) => request(() => void s.rows.delete(k)),
-          }
-        },
-      }
+      return makeSerialTransaction(name, stores[name])
     },
   })
 
@@ -166,6 +225,9 @@ export function installMemoryIdb(): MemoryIdb {
     },
     failPuts: predicate => {
       shouldFail = predicate
+    },
+    onGet: hook => {
+      onGet = hook
     },
   }
 }
