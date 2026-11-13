@@ -8,14 +8,16 @@ const addDays = (iso: string, days: number): string => {
   return todayISO(d)
 }
 
+/** Volumen de fuerza (kg) de la semana `n` (base 1) del bloque. */
+export function blockWeekVolume(sessions: Session[], blockStart: string, n: number): number {
+  const from = addDays(blockStart, (n - 1) * 7)
+  const to = addDays(blockStart, n * 7 - 1)
+  return sessions.reduce((acc, s) => (s.kind === 'strength' && s.finishedAt != null && s.date >= from && s.date <= to ? acc + sessionVolume(s) : acc), 0)
+}
+
 /** Volumen de fuerza (kg) de la primera y de la ultima semana del bloque. */
 export function weekVolumes(sessions: Session[], blockStart: string, weeks: number): { first: number; last: number } {
-  const inWeek = (n: number) => {
-    const from = addDays(blockStart, (n - 1) * 7)
-    const to = addDays(blockStart, n * 7 - 1)
-    return sessions.reduce((acc, s) => (s.kind === 'strength' && s.finishedAt != null && s.date >= from && s.date <= to ? acc + sessionVolume(s) : acc), 0)
-  }
-  return { first: inWeek(1), last: inWeek(weeks) }
+  return { first: blockWeekVolume(sessions, blockStart, 1), last: blockWeekVolume(sessions, blockStart, weeks) }
 }
 
 /** Config con fechas nuevas: el lunes de hoy o el siguiente, 12 semanas. Las

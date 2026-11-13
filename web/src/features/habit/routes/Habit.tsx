@@ -5,6 +5,7 @@ import { bestStreak, consistency, habitGrid, intentionFor, streak, votes, type D
 import { restAllowance, weekSummary } from '../lib/week'
 import type { Intention, WeeklyIntentions } from '../../../lib/types'
 import { MonthCalendar } from '../components/MonthCalendar'
+import WeekReview from '../components/WeekReview'
 import { ReminderSettings } from '../../reminders/components/ReminderSettings'
 import './habit.css'
 
@@ -144,6 +145,8 @@ export default function Habit() {
           {Array.from({ length: target }, (_, i) => <span key={i} className={i < done ? 'on' : ''} />)}
         </div>
       </section>
+
+      <WeekReview plan={plan} sessions={sessions} config={config} today={today} />
 
       <section className="hab-card" aria-label="Tu plan de acción">
         <h2 className="hab-title">Tu plan de acción</h2>

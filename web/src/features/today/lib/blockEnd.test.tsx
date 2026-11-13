@@ -4,7 +4,7 @@ import { renderToString } from 'react-dom/server'
 import type { Session, StrengthSession } from '../../../lib/types'
 import { DEFAULT_CONFIG } from '../../../lib/plan'
 import { blockStatus } from '../../../lib/phases'
-import { startNewBlock, weekVolumes } from './blockEnd'
+import { blockWeekVolume, startNewBlock, weekVolumes } from './blockEnd'
 import BlockEndCard from '../components/BlockEndCard'
 
 const strength = (id: string, date: string, weight: number): StrengthSession => ({
@@ -41,6 +41,15 @@ describe('weekVolumes', () => {
   it('suma el volumen de la primera y la ultima semana del bloque', () => {
     const s = [strength('a', '2026-11-16', 100), strength('b', '2026-11-22', 100), strength('c', '2027-02-01', 150), strength('d', '2027-02-08', 999)]
     expect(weekVolumes(s, '2026-11-16', 12)).toEqual({ first: 2000, last: 1500 })
+  })
+})
+
+describe('blockWeekVolume', () => {
+  it('sums one block week and agrees with weekVolumes for weeks 1 and 12', () => {
+    const s = [strength('a', '2026-11-16', 100), strength('b', '2026-11-25', 120), strength('c', '2027-02-01', 150)]
+    expect(blockWeekVolume(s, '2026-11-16', 2)).toBe(1200)
+    expect(blockWeekVolume(s, '2026-11-16', 1)).toBe(weekVolumes(s, '2026-11-16', 12).first)
+    expect(blockWeekVolume(s, '2026-11-16', 12)).toBe(weekVolumes(s, '2026-11-16', 12).last)
   })
 })
 

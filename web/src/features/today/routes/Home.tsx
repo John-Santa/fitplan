@@ -7,7 +7,7 @@ import { startNewBlock, weekVolumes } from '../lib/blockEnd'
 import { fmtDate, sessionVolume, todayISO } from '../../../lib/calc'
 import { finishedIn } from '../../../lib/disciplines'
 import { dayStatus, intentionFor, missedYesterday, streak as habitStreak, toggleCheckIn, votes as habitVotes } from '../../habit/lib/habit'
-import { nextRoutine, restAllowance, routinesDoneThisWeek, weekDays, weekRotation, weekSummary } from '../../habit/lib/week'
+import { nextRoutine, restAllowance, restHint, routinesDoneThisWeek, weekDays, weekRotation, weekSummary } from '../../habit/lib/week'
 import { useDerivedMeasurements, useStore } from '../../../lib/store'
 import BottomSheet from '../../../components/BottomSheet'
 import { isBackCarePlan } from '../../../lib/defaultPlan'
@@ -119,6 +119,12 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
   const finishedToday = sessions.some(s => s.finishedAt != null && s.date === iso)
   const strengthDoneToday = sessions.some(s => s.kind === 'strength' && s.finishedAt != null && s.date === iso)
   const checkedToday = config.habitCheckIns.includes(iso)
+  const hint = restHint({
+    restLeft,
+    activeToday: finishedToday || checkedToday,
+    blockEnded,
+    routineName: suggestion != null ? routineDisplayName(suggestion.name) : null,
+  })
 
   // Calendar week (Monday..Sunday): volume stats and the day cells.
   const days = weekDays(iso)
@@ -300,6 +306,7 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
               </span>
               <Icon name="sliders" size={20} />
             </button>
+            {hint != null && <p className="hoy-rest-line">{hint}</p>}
             {picker}
           </section>
         ) : (
