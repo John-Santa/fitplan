@@ -27,9 +27,14 @@ export default function Measure() {
 
   const base = rows[0]
   const last = rows[rows.length - 1]
-  const goal = derive({ date: config.blockEnd, ...config.goal }, config.heightCm)
   // Goals skipped in the welcome are stored as UNSET_GOAL: no target to show.
   const isSet = (v: number) => v !== UNSET_GOAL
+  // Unset goals become absent before deriving, so charts, the goal row and the
+  // derived values (lean mass, ratio, BMI) show "—" instead of a target of 0.
+  const setGoals = Object.fromEntries(
+    Object.entries(config.goal).map(([k, v]) => [k, typeof v === 'number' && isSet(v) ? v : undefined]),
+  ) as unknown as Omit<Measurement, 'date'>
+  const goal = derive({ date: config.blockEnd, ...setGoals }, config.heightCm)
   const anyGoalSet = Object.values(config.goal).some(v => typeof v === 'number' && isSet(v))
   const goalProps = (v: number, text: string, progress?: number) =>
     isSet(v) ? { goalText: text, progress } : {}

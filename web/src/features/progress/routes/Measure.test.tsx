@@ -37,6 +37,29 @@ describe('Measure', () => {
     expect(html).toContain('meta 78,0 kg')
   })
 
+  it('draws no goal line for unset goals in the charts', () => {
+    state.rows = [
+      row({ date: '2026-11-16', weight: 80, waist: 90, muscle: 35, fatMass: 20 }),
+      row({ date: '2026-11-23', weight: 79, waist: 89, muscle: 35.5, fatMass: 19 }),
+    ]
+    state.goal = { weight: UNSET_GOAL, fatMass: UNSET_GOAL, muscle: UNSET_GOAL, waist: UNSET_GOAL }
+    // renderToString splits "meta {value}" with <!-- --> markers.
+    const html = renderToString(<Measure />).replace(/<!-- -->/g, '')
+    expect(html).not.toContain('meta 0,0')
+  })
+
+  it('shows only the goals that were set in the goal row', () => {
+    state.rows = [
+      row({ date: '2026-11-16', weight: 80, waist: 90, muscle: 35, fatMass: 20 }),
+      row({ date: '2026-11-23', weight: 79, waist: 89, muscle: 35.5, fatMass: 19 }),
+    ]
+    state.goal = { weight: 75, fatMass: UNSET_GOAL, muscle: UNSET_GOAL, waist: UNSET_GOAL }
+    const html = renderToString(<Measure />)
+    const goalRow = html.match(/<tr class="goal">(.*?)<\/tr>/)?.[1] ?? ''
+    expect(goalRow).toContain('>75,0<')
+    expect(goalRow).not.toContain('>0,0<')
+  })
+
   it('hides goals that were left unset in the welcome', () => {
     state.rows = [row({ date: '2026-11-16', weight: 80 })]
     state.goal = { weight: UNSET_GOAL, fatMass: UNSET_GOAL, muscle: UNSET_GOAL, waist: UNSET_GOAL }
