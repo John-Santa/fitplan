@@ -1,7 +1,9 @@
 // Per-device reminder preferences. Notification permission is per device, so
 // this lives in localStorage and is never synced (not part of Config).
 
-const KEY = 'fitplan:reminders'
+/** localStorage key of the prefs; the device erase (sync/lib/erase) removes it. */
+export const REMINDER_PREFS_KEY = 'fitplan:reminders'
+const KEY = REMINDER_PREFS_KEY
 
 export interface ReminderPrefs {
   enabled: boolean

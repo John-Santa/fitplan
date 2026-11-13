@@ -7,7 +7,9 @@ import { reminderMessage } from './notify'
 import type { Reminder } from './scheduler'
 
 // Keep in sync with src/sw/reminders-sw.js.
-const CACHE = 'magnifit-reminders'
+/** Cache Storage name of the schedule; the device erase (sync/lib/erase) deletes it. */
+export const REMINDERS_CACHE = 'magnifit-reminders'
+const CACHE = REMINDERS_CACHE
 const SCHEDULE = 'reminders-schedule.json'
 const FIRED = 'reminders-fired.json'
 const SYNC_TAG = 'magnifit-reminders'

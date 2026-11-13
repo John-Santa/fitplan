@@ -14,6 +14,21 @@ function stubLocalStorage() {
   return store
 }
 
+/** Cache Storage with only what the erase uses (open, put, delete). */
+function stubCaches() {
+  const names = new Map<string, Map<string, unknown>>()
+  vi.stubGlobal('caches', {
+    open: async (name: string) => {
+      if (!names.has(name)) names.set(name, new Map())
+      const entries = names.get(name)!
+      return { put: async (k: string, v: unknown) => void entries.set(k, v) }
+    },
+    delete: async (name: string) => names.delete(name),
+    has: async (name: string) => names.has(name),
+  })
+  return names
+}
+
 afterEach(() => vi.unstubAllGlobals())
 
 const session = {
@@ -32,6 +47,7 @@ async function seededDevice() {
   vi.resetModules()
   const idb = installMemoryIdb()
   const ls = stubLocalStorage()
+  const cacheStorage = stubCaches()
   const db = await import('../../../lib/db')
   const sdb = await import('./syncDb')
   const { saveActiveDraft } = await import('../../session/lib/activeSession')
@@ -47,14 +63,26 @@ async function seededDevice() {
   await sdb.saveConfigPushedAt(42)
   await sdb.addConfigConflict(['heightCm'])
   saveActiveDraft({ ...session, finishedAt: null } as never)
+  // Reminders: the per-device prefs in localStorage and the schedule (routine
+  // titles and times) the page hands to the service worker in Cache Storage.
+  const { REMINDER_PREFS_KEY, saveReminderPrefs } = await import('../../reminders/lib/prefs')
+  const { REMINDERS_CACHE } = await import('../../reminders/lib/background')
+  saveReminderPrefs({ enabled: true, lastFired: '2026-09-01:dia1' })
+  await (await caches.open(REMINDERS_CACHE)).put('reminders-schedule.json', new Response(JSON.stringify({ reminders: [{ title: 'Día 1' }] })))
   for (const [store, dbName] of STORES) expect([store, idb.dump(store, dbName).size > 0]).toEqual([store, true])
-  expect(ls.size).toBe(1)
-  return { idb, ls, sdb }
+  expect([...ls.keys()].sort()).toEqual(['fitplan:active-session', REMINDER_PREFS_KEY].sort())
+  expect(cacheStorage.has(REMINDERS_CACHE)).toBe(true)
+  return { idb, ls, sdb, cacheStorage }
 }
 
-function expectErased({ idb, ls }: { idb: ReturnType<typeof installMemoryIdb>; ls: Map<string, string> }) {
+function expectErased({ idb, ls, cacheStorage }: {
+  idb: ReturnType<typeof installMemoryIdb>
+  ls: Map<string, string>
+  cacheStorage: Map<string, unknown>
+}) {
   for (const [store, dbName] of STORES) expect([store, idb.dump(store, dbName).size]).toEqual([store, 0])
-  expect(ls.size).toBe(0)
+  expect([...ls.keys()]).toEqual([])
+  expect([...cacheStorage.keys()]).toEqual([])
 }
 
 describe('eraseLocalCopy', () => {
@@ -89,6 +117,26 @@ describe('eraseLocalCopy', () => {
 // The three ways to erase the device ("Borrar dispositivo", the danger zone and
 // the 410 answer of the API) run the same helper, so none of them can forget a
 // store the others clear.
+describe('eraseLocalCopy without Cache Storage', () => {
+  it('still erases everything else and never throws', async () => {
+    const device = await seededDevice()
+    vi.stubGlobal('caches', undefined)
+    const { eraseLocalCopy } = await import('./erase')
+
+    await expect(eraseLocalCopy()).resolves.toBeUndefined()
+
+    for (const [store, dbName] of STORES) expect([store, device.idb.dump(store, dbName).size]).toEqual([store, 0])
+    expect([...device.ls.keys()]).toEqual([])
+  })
+
+  it('does not throw when Cache Storage rejects', async () => {
+    await seededDevice()
+    vi.stubGlobal('caches', { delete: async () => { throw new Error('SecurityError') } })
+    const { eraseLocalCopy } = await import('./erase')
+    await expect(eraseLocalCopy()).resolves.toBeUndefined()
+  })
+})
+
 describe('one erase helper for every erase path', () => {
   it('"Borrar dispositivo" (eraseDevice) erases exactly what eraseLocalCopy erases', async () => {
     const device = await seededDevice()
