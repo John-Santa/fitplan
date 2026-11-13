@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { RoutineId, Session } from '../../../lib/types'
+import type { RoutineId, Session, StrengthSession } from '../../../lib/types'
 import { nextRoutine } from '../../habit/lib/week'
 import { exerciseNameInRoutine, routineSetCount, routineSlots, weekLabel, routineDisplayName, sortByFocus } from '../../../lib/planQueries'
 import { blockWeekNumber, phaseForWeek } from '../../../lib/phases'
@@ -10,6 +10,7 @@ import { useStore } from '../../../lib/store'
 import { loadActiveDraft, saveActiveDraft } from '../lib/activeSession'
 import { applySessionEdit } from '../lib/editSession'
 import ActiveSession from './ActiveSession'
+import SessionClosing from '../components/SessionClosing'
 import ExerciseProgress from '../../progress/routes/ExerciseProgress'
 import SwimProgress from '../../progress/routes/SwimProgress'
 import PainHistory from '../../progress/routes/PainHistory'
@@ -30,6 +31,9 @@ export default function Train({ autoStart, autoStartMinimal, autoStartDate, onAu
   // Sesion terminada abierta en el editor (separada del borrador activo).
   const [editing, setEditing] = useState<Session | null>(null)
   const [progressFor, setProgressFor] = useState<ProgressTarget | null>(null)
+  // Strength session just finished: shows its closing summary until "Listo".
+  // Memory only: a reload drops the summary, the session is already saved.
+  const [closing, setClosing] = useState<StrengthSession | null>(null)
 
   // Arranque directo desde Hoy: igual que el boton "start" de la rutina.
   useEffect(() => {
@@ -65,12 +69,15 @@ export default function Train({ autoStart, autoStartMinimal, autoStartDate, onAu
               // diferencia de la linea de arriba, que si filtra para fuerza.
               : finishSwimSession(active, Date.now())
           await saveSession(finished)
+          if (finished.kind === 'strength') setClosing(finished)
           setActive(null)
         }}
         onDiscard={() => setActive(null)}
       />
     )
   }
+
+  if (closing) return <SessionClosing finished={closing} onDone={() => setClosing(null)} />
 
   if (editing) {
     const original = sessions.find(x => x.id === editing.id)
