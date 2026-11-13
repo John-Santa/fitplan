@@ -30,6 +30,11 @@ services:
       # Set in the dashboard.
       - key: DATABASE_URL
         sync: false
+      # Optional: Neon DIRECT connection string of the schema owner role, used only
+      # for the boot migrations so DATABASE_URL can be a least-privilege role
+      # (see deploy/env.md). When unset, migrations use DATABASE_URL.
+      - key: MIGRATION_DATABASE_URL
+        sync: false
       # Clerk production secret key (sk_live_...). Set in the dashboard.
       - key: CLERK_SECRET_KEY
         sync: false

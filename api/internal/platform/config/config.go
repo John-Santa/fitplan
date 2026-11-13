@@ -22,6 +22,9 @@ type Config struct {
 	AppEnv string
 	// DatabaseURL is the Postgres connection string. Required unless AppEnv is "test".
 	DatabaseURL string
+	// MigrationDatabaseURL is an optional Postgres connection string used only
+	// for the boot migrations. When empty, migrations run on DatabaseURL.
+	MigrationDatabaseURL string
 	// ClerkSecretKey is the Clerk backend API key. Required unless AppEnv is "test".
 	ClerkSecretKey string
 	// ClerkJWTKey is the Clerk instance's JWT public key. Optional: when set,
@@ -44,6 +47,8 @@ func Load(getenv func(string) string) (Config, error) {
 		DatabaseURL:    strings.TrimSpace(getenv("DATABASE_URL")),
 		ClerkSecretKey: strings.TrimSpace(getenv("CLERK_SECRET_KEY")),
 		ClerkJWTKey:    strings.TrimSpace(getenv("CLERK_JWT_KEY")),
+
+		MigrationDatabaseURL: strings.TrimSpace(getenv("MIGRATION_DATABASE_URL")),
 	}
 	if cfg.Port == "" {
 		cfg.Port = defaultPort
