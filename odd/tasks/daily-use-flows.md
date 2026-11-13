@@ -168,6 +168,8 @@ Owner: "Calendario o historial por mes. Ver de un vistazo qué días entrenaste,
 - First RED test: the pure helper returns the hint for (wildcards 2, not trained, routine "Tren inferior A") and null for wildcards 0.
 - Size: S. Risk: none.
 
+- S9 — S5 amendment (owner decision L8): "Prellenar al editar (Recomendada)": when "Nueva medición" is opened for a date that already has a measurement, the form is prefilled with that date's stored values; what is on screen is what is saved, so emptying a field removes it, and a weight-only save from Hoy (QuickWeight) still merges and never removes fields. Acceptance: for a stored `{date, weight: 80, fatPct: 20, waist: 90}`, opening the form on that date shows 80, 20 and 90; clearing waist and saving stores `{date, weight: 80, fatPct: 20}` and queues that body; QuickWeight with 79 on the same date stores `{date, weight: 79, fatPct: 20, waist: 90}`.
+
 ## Decisions
 All seven were answered by the owner on 2026-11-13 (Log L3-L4): D1 A, D2 A, D3 A, D4 A, D5 A, D6 A, D7 B. The options are kept below for context.
 
@@ -182,14 +184,15 @@ All seven were answered by the owner on 2026-11-13 (Log L3-L4): D1 A, D2 A, D3 A
 ## Tasks
 Suggested routes: inline unless a writer reason holds. T1 and T3 have disjoint surfaces (`session/*` vs `habit/*`) and could run as parallel writers if launched together.
 
-- [ ] T1 — S1 (+ back-dated sessions ordered by their date for "la vez pasada", L5). Unit U1, branch `feat/suggested-load`. Route: delegated (Sonnet, high), parallel writer.
-- [ ] T2 — S4 record detection (`web/src/lib/records.ts`) and its ExerciseProgress/toast use. Unit U2 with T3, branch `feat/records-summary`. Route: delegated (Opus, high), parallel writer; built before T3 in the same unit.
-- [ ] T3 — S2. Unit U2 (after T2).
-- [ ] T4 — S3. Unit U3 with T8 (shared `habit/lib/week.ts`), branch `feat/weekly-review`. Route: delegated (Sonnet, medium), parallel writer.
-- [ ] T5 — S5. Unit U4, branch `feat/quick-weight`. Route: delegated (Sonnet, high), parallel writer. Risk item 1: independent verifier after its checks.
-- [ ] T6 — S6. Unit U5, branch `feat/pain-history`. Route: delegated (Sonnet, medium), parallel writer.
-- [ ] T7 — S7. Unit U6, branch `feat/month-calendar`. Route: delegated (Sonnet, medium), parallel writer. Shares the walk assumption with T4.
-- [ ] T8 — S8. Unit U3 (with T4).
+- [x] T1 — S1 (+ back-dated sessions ordered by their date for "la vez pasada", L5). Unit U1, branch `feat/suggested-load`. Route: delegated (Sonnet, high), parallel writer.
+- [x] T2 — S4 record detection (`web/src/lib/records.ts`) and its ExerciseProgress/toast use. Unit U2 with T3, branch `feat/records-summary`. Route: delegated (Opus, high), parallel writer; built before T3 in the same unit.
+- [x] T3 — S2. Unit U2 (after T2).
+- [x] T4 — S3. Unit U3 with T8 (shared `habit/lib/week.ts`), branch `feat/weekly-review`. Route: delegated (Sonnet, medium), parallel writer.
+- [x] T5 — S5. Unit U4, branch `feat/quick-weight`. Route: delegated (Sonnet, high), parallel writer. Risk item 1: independent verifier after its checks.
+- [x] T6 — S6. Unit U5, branch `feat/pain-history`, commit 6433bea (RED 4 failures → GREEN; typecheck clean; 654/654; parent spot check pain+progress 19/19; Risk: none; session-detail pain display not pinned: internal state unreachable without a DOM). Route: delegated (Sonnet, medium), parallel writer.
+- [x] T7 — S7. Unit U6, branch `feat/month-calendar`, commit 3062928 (RED → GREEN incl. locale-comma label; typecheck clean; 657/657; parent spot check habit 60/60; Risk: none; adds `--fp-swim` token in `styles.css`). Route: delegated (Sonnet, medium), parallel writer. Shares the walk assumption with T4.
+- [x] T8 — S8. Unit U3 (with T4).
+- [ ] T10 — S9 (form prefill) and the read-modify-write of a measurement in one IndexedDB transaction (U4 verifier advisory). Done inside T9.
 - [ ] T9 — integration of U1-U6 on `feat/daily-use-flows` (Opus, high), then one feature-end verifier (Opus, high).
 
 ## Log
@@ -208,3 +211,7 @@ Suggested routes: inline unless a writer reason holds. T1 and T3 have disjoint s
 - L3 — 2026-11-13, owner decision on D1: "Con los datos actuales (Recomendada)" → option A (no shape change; the phase-text match isolated in one function).
 - L4 — 2026-11-13, owner decisions: D2 "Sí, prellena la sugerida (Recomendada)" (A); D3 "Mejor peso y mejor volumen (Recomendada)" (A); D4 "Misma rutina, vez anterior (Recomendada)" (A); D5 "Sección en Hábito (Recomendada)" (A); D6 "Fase y volumen vs semana 1 (Recomendada)" (A); D7 "Sí, una línea en Hoy (Recomendada)" (B) → S8 and T8 added by the parent. Implementation is still not authorized.
 - L5 — 2026-11-13, owner: "Vamos con todos.en paralelo, siguiendo el.flujo odd y cambiando de modelo y effort acorde a las necesidades". Routing: Writer trigger (a), six independent units with overlapping files (`Home.tsx`, `Habit.tsx`, `Train.tsx`, `StrengthBody.tsx`), so each runs in an isolated worktree and is integrated afterwards. Assumption (parent): the back-dated `startedAt` defect found by the audit (L2) is fixed inside T1, because it decides what S1 shows as "la vez pasada".
+- L6 — 2026-11-13, unit results: U5 6433bea (S6), U6 3062928 (S7), U3 57e08bf (S3) + de561c9 (S8); each with RED → GREEN, typecheck clean and full suite green in its worktree; parent spot checks pain+progress 19/19, habit 60/60, habit+today 76/76. U3 assumptions: archived routines use the current rotation for the target; a walk check-in today also hides the rest hint (the day already counts as kept). Home.tsx has no render test (needs the store); S8 acceptance is pinned on the pure `restHint` helper.
+- L7 — 2026-11-13, U1 (S1) defb54c pins, ecfd5e8 back-dated order fix, 18ebfac `suggestLoad`, 926d096 set card + prefill; RED → GREEN per rule; 686/686; differential: no change for same-day sessions, intended change only for back-dated ones; parent spot check lib+session 341/341; Risk: none. Open: ExerciseProgress, SwimProgress and `db.ts` still order by `startedAt`; StrengthBody computes the block week from `startedAt` for back-dated sessions; half weight rounds to the nearest 2.5 kg (assumption). U4 (S5) 83f1682 measurement merge (own commit), 3808e83 QuickWeight; RED → GREEN; 674/674; parent spot check db+today+progress 59/59; Risk: item 1, independent verifier running. Open product point: blank fields in "Nueva medición" no longer clear a stored value; there is no way to remove one field.
+- L8 — 2026-11-13, owner decision on the measurement form: "Prellenar al editar (Recomendada)" → S9 added. U4 independent verifier: S5 PASS, no blockers (weight-only save keeps every field in IndexedDB and in the outbox; every other `saveMeasurement` caller byte-identical to base; two-device sync converges with no outbox loop). Advisories: `withWeight` is named `db.mergeMeasurement`; read-then-put in separate transactions can lose a remote edit applied in between (reproduced; loses strictly less than base) → fixed in T10; `parseWeight` has no upper bound.
+- L9 — 2026-11-13, U2 (S4, S2) 580708b records + in-session notice, 69e4ffe closing summary; RED → GREEN; 684/684; finish-flow differential byte-identical; parent spot check records+session+progress 49/49; Risk: none. Assumptions: a minimal session is never a comparison baseline; the duration delta is not shown (S2 copy has only volume and sets). Integration also aligns the remaining back-dated orderings found by U1 (ExerciseProgress, SwimProgress, `db.ts` list, StrengthBody block week by session date), since S1 and S4 already order by session date.
