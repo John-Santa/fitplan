@@ -1,6 +1,6 @@
 # Daily-use flows (audit 2026-11-12)
 Objective: specify the day-to-day user flows the owner asked for, grounded in what the current screens already do. Branch: `docs/daily-use-flows`. Runners: `cd web && pnpm typecheck && pnpm test` (Vitest in node, `renderToString`, no DOM).
-Status: specification only. Implementation is not authorized yet; the decisions under `## Open decisions` must be answered first for the specs that depend on them.
+Status: implementation authorized on 2026-11-13 (L5) on branch `feat/daily-use-flows`; one isolated worktree and branch per unit (U1-U6), then one integration unit (U7) and a feature-end verifier. Delivery: ask-on-risk; no push without the owner.
 
 ## Current state
 One entry per candidate, in the owner's numbering. Evidence was read at merged main 54a2d7b.
@@ -182,14 +182,15 @@ All seven were answered by the owner on 2026-11-13 (Log L3-L4): D1 A, D2 A, D3 A
 ## Tasks
 Suggested routes: inline unless a writer reason holds. T1 and T3 have disjoint surfaces (`session/*` vs `habit/*`) and could run as parallel writers if launched together.
 
-- [ ] T1 — S1. Route: inline. D1-A, D2-A decided. Independent.
-- [ ] T2 — S4 record detection (`web/src/lib/records.ts`) and its ExerciseProgress/toast use. Route: inline. D3-A decided. Built before T3 because S2 reuses it.
-- [ ] T3 — S2. Route: inline. Depends on T2 (records); D4-A decided.
-- [ ] T4 — S3. Route: inline. D5-A, D6-A decided. Independent of T1–T3.
-- [ ] T5 — S5. Route: inline. Independent. Risk item 1: independent verifier after its checks.
-- [ ] T6 — S6. Route: inline. Independent.
-- [ ] T7 — S7. Route: inline. Shares the walk assumption with T4.
-- [ ] T8 — S8. Route: inline. Independent; smallest unit.
+- [ ] T1 — S1 (+ back-dated sessions ordered by their date for "la vez pasada", L5). Unit U1, branch `feat/suggested-load`. Route: delegated (Sonnet, high), parallel writer.
+- [ ] T2 — S4 record detection (`web/src/lib/records.ts`) and its ExerciseProgress/toast use. Unit U2 with T3, branch `feat/records-summary`. Route: delegated (Opus, high), parallel writer; built before T3 in the same unit.
+- [ ] T3 — S2. Unit U2 (after T2).
+- [ ] T4 — S3. Unit U3 with T8 (shared `habit/lib/week.ts`), branch `feat/weekly-review`. Route: delegated (Sonnet, medium), parallel writer.
+- [ ] T5 — S5. Unit U4, branch `feat/quick-weight`. Route: delegated (Sonnet, high), parallel writer. Risk item 1: independent verifier after its checks.
+- [ ] T6 — S6. Unit U5, branch `feat/pain-history`. Route: delegated (Sonnet, medium), parallel writer.
+- [ ] T7 — S7. Unit U6, branch `feat/month-calendar`. Route: delegated (Sonnet, medium), parallel writer. Shares the walk assumption with T4.
+- [ ] T8 — S8. Unit U3 (with T4).
+- [ ] T9 — integration of U1-U6 on `feat/daily-use-flows` (Opus, high), then one feature-end verifier (Opus, high).
 
 ## Log
 - L1 — 2026-11-13, owner: "Si, delega a opus para que lo haga y arme los specs en relacion a eso". Candidate flows, verbatim:
@@ -206,3 +207,4 @@ Suggested routes: inline unless a writer reason holds. T1 and T3 have disjoint s
 - L2 — 2026-11-12, audit evidence (read-only, no `.codegraph/` index, bounded reads of `features/session`, `today`, `progress`, `habit`, `lib`). Candidate 3 exists in full (session-only `swaps` plus "Guardar en el plan"); candidate 8 exists by design (flexible week, automatic rest wildcards, never-miss-twice streak). Candidates 1, 4, 5, 6, 7 and 9 are partial; 2 is missing. Findings beyond the candidates: ExerciseProgress's "Mejor serie" tile shows the latest session, not the best (`ExerciseProgress.tsx:61,111`); measurements are saved with a whole-record `put` by date, so a weight-only save on a date with a full measurement drops its other fields (`db.ts:164`); in week 7 the stepper prefills the full previous weight under a "la mitad de peso" line; back-dated sessions get `startedAt = Date.now()`, so `lastPerformance` treats them as the latest; no unit test covers `completionPatch`, `lastPerformance` or `shouldProgress`; `weeklySummary`, `weeklyVolume` and `weeklyCount` in `disciplines.ts` have no production caller. No spec needs a synced `Config`, `Session` or plan shape change unless D1-B is chosen.
 - L3 — 2026-11-13, owner decision on D1: "Con los datos actuales (Recomendada)" → option A (no shape change; the phase-text match isolated in one function).
 - L4 — 2026-11-13, owner decisions: D2 "Sí, prellena la sugerida (Recomendada)" (A); D3 "Mejor peso y mejor volumen (Recomendada)" (A); D4 "Misma rutina, vez anterior (Recomendada)" (A); D5 "Sección en Hábito (Recomendada)" (A); D6 "Fase y volumen vs semana 1 (Recomendada)" (A); D7 "Sí, una línea en Hoy (Recomendada)" (B) → S8 and T8 added by the parent. Implementation is still not authorized.
+- L5 — 2026-11-13, owner: "Vamos con todos.en paralelo, siguiendo el.flujo odd y cambiando de modelo y effort acorde a las necesidades". Routing: Writer trigger (a), six independent units with overlapping files (`Home.tsx`, `Habit.tsx`, `Train.tsx`, `StrengthBody.tsx`), so each runs in an isolated worktree and is integrated afterwards. Assumption (parent): the back-dated `startedAt` defect found by the audit (L2) is fixed inside T1, because it decides what S1 shows as "la vez pasada".
