@@ -2,6 +2,8 @@
 // worker vive aquí y no en un script inyectado: la versión nueva espera hasta
 // que la persona toca Actualizar (y el aviso no sale en pleno entrenamiento,
 // ver PwaPrompts). Solo existe en el build; en desarrollo no hay service worker.
+// main.tsx registra al arrancar (registerServiceWorker), así una instalación
+// nueva que se queda en la bienvenida ya funciona sin conexión.
 import { useCallback, useEffect, useState } from 'react'
 import { activateWaiting, trackUpdate } from './swUpdate'
 
@@ -9,7 +11,9 @@ let waitingWorker: ServiceWorker | null = null
 let started = false
 const listeners = new Set<() => void>()
 
-function start() {
+/** Registers the service worker once. Called at startup from main.tsx and
+ *  again (a no-op) by useUpdatePrompt. */
+export function registerServiceWorker() {
   if (started || !import.meta.env.PROD || !('serviceWorker' in navigator)) return
   started = true
   const base = import.meta.env.BASE_URL
@@ -44,7 +48,7 @@ export function useUpdatePrompt(): { needRefresh: boolean; apply: () => void; la
   useEffect(() => {
     const onNeed = () => setNeedRefresh(true)
     listeners.add(onNeed)
-    start()
+    registerServiceWorker()
     return () => {
       listeners.delete(onNeed)
     }
