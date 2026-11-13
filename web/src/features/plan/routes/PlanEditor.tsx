@@ -6,7 +6,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PlanRoutine, TrainingPlan } from '../../../lib/types'
 import { useStore } from '../../../lib/store'
 import { useToast } from '../../../components/ui'
-import { addCustomExercise, addRoutine, archiveRoutine, resetToTemplate, restoreRoutine } from '../../../lib/planEdits'
+import { addCustomExercise, addRoutine, archiveRoutine, restoreRoutine } from '../../../lib/planEdits'
+import { resetPlanToTemplate } from '../lib/warmupEdits'
 import { blockWeekNumber, phaseForWeek } from '../../../lib/phases'
 import { restAllowance, weeklyTarget } from '../../habit/lib/week'
 import ExerciseSheet from '../../../components/ExerciseSheet'
@@ -14,6 +15,7 @@ import ConfirmSheet from '../components/ConfirmSheet'
 import { Icon } from '../components/icons'
 import ExercisePicker from '../components/ExercisePicker'
 import RoutineEditor from '../components/RoutineEditor'
+import WarmupEditor from '../components/WarmupEditor'
 import Sheet from '../../../components/BottomSheet'
 import '../components/plan-editor.css'
 
@@ -32,6 +34,7 @@ export default function PlanEditor({ onOpenGuide }: { onOpenGuide: () => void })
   const { plan, config, savePlan } = useStore()
   const toast = useToast()
   const [openId, setOpenId] = useState<string | null>(null)
+  const [warmupOpen, setWarmupOpen] = useState(false)
   const [dialog, setDialog] = useState<Dialog>(null)
   const [editing, setEditing] = useState(false)
   const [library, setLibrary] = useState(false)
@@ -121,18 +124,28 @@ export default function PlanEditor({ onOpenGuide }: { onOpenGuide: () => void })
           confirmLabel="Restablecer plan"
           onCancel={() => setDialog(null)}
           onConfirm={() => {
-            const next = resetToTemplate(plan)
+            const next = resetPlanToTemplate(plan)
             setDialog(null)
             setOpenId(null)
             commitWithUndo(next, 'Plan restablecido')
           }}
         >
-          <p>Las rutinas del plan original (Día 1 a Día 5) vuelven a como venían: <strong>los cambios que les hiciste se pierden</strong>.</p>
+          <p>Las rutinas del plan original (Día 1 a Día 5) y el calentamiento vuelven a como venían: <strong>los cambios que les hiciste se pierden</strong>.</p>
           <p>Tu historial, tus rutinas propias y tus ejercicios propios se conservan.</p>
         </ConfirmSheet>
       )}
     </>
   )
+
+  if (warmupOpen) {
+    return (
+      <div className="pe-scope">
+        <WarmupEditor plan={plan} onBack={() => setWarmupOpen(false)} onCommit={commit} />
+        {live}
+        {undoBar}
+      </div>
+    )
+  }
 
   if (open) {
     return (
@@ -264,6 +277,22 @@ export default function PlanEditor({ onOpenGuide }: { onOpenGuide: () => void })
             <Icon name="plus" /> Agregar rutina
           </button>
 
+          <h2 className="pe-gap-lg">Calentamiento</h2>
+          <ul className="pe-list">
+            <li>
+              <button type="button" className="pe-routine" onClick={() => setWarmupOpen(true)}>
+                <span className="pe-routine-text">
+                  <span className="pe-name">Calentamiento</span>
+                  <span className="pe-sub">Antes de cada rutina que lo incluye</span>
+                  <span className="pe-meta">
+                    <span className="pill">{exercisesLabel(plan.warmup.slots.length)}</span>
+                  </span>
+                </span>
+                <span className="pe-chev" aria-hidden="true"><Icon name="next" /></span>
+              </button>
+            </li>
+          </ul>
+
           {archived.length > 0 && (
             <details className="pe-archived">
               <summary>Archivadas ({archived.length})</summary>
@@ -285,7 +314,7 @@ export default function PlanEditor({ onOpenGuide }: { onOpenGuide: () => void })
           )}
 
           <h2 className="pe-gap-lg pe-danger-title">Restablecer</h2>
-          <p className="hint">Vuelve a poner las rutinas del plan original. Tu historial y tus rutinas propias se conservan.</p>
+          <p className="hint">Vuelve a poner las rutinas y el calentamiento del plan original. Tu historial y tus rutinas propias se conservan.</p>
           <button type="button" className="danger block pe-gap-md" onClick={() => setDialog({ kind: 'reset' })}>
             Restablecer plan original
           </button>

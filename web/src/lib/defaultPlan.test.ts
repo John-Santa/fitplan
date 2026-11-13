@@ -66,7 +66,7 @@ describe('DEFAULT_PLAN', () => {
 
   it('el calentamiento tiene 7 items de 1 serie y el ultimo es una nota', () => {
     const w = DEFAULT_PLAN.warmup
-    expect(w.title).toBe('Calentamiento fijo (10 min, antes de cada sesión)')
+    expect(w.title).toBe('Calentamiento (antes de cada sesión)')
     expect(w.slots).toHaveLength(7)
     expect(w.slots.every(s => s.sets === 1)).toBe(true)
     expect(w.slots[6].target).toEqual({ kind: 'note' })
