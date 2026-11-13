@@ -1,6 +1,6 @@
 # Discipline switcher (spec 2026-11-13)
 Objective: a Duolingo-style discipline selector that scopes Hoy, Entrenar, Progreso and Perfil to the selected discipline, turns Perfil into a per-discipline metrics summary and moves the technical configuration to a separate Ajustes screen. Branch: `feat/discipline-switcher`. Runners: `cd web && pnpm typecheck && pnpm test` (Vitest in node, `renderToString`, no DOM).
-Status: specification only; implementation is not authorized and D1-D11 are open. Delivery: ask-on-risk; the forecast (~1,900 authored changed lines) exceeds the 400-line slice budget, so the chain strategy is asked before the first work-unit commit. No push without the owner.
+Status: authorized (L6); D1-D11 closed with option A. Delivery: integration branch `integration/discipline-switcher` and one PR, as in the two previous deliveries (L7); the forecast (~1,940 authored changed lines) exceeds the 400-line budget and is recorded as a size exception in the PR. No push or merge without the owner.
 
 ## Current state (audit)
 Evidence read at origin/main 929cd5f. "Gimnasio" below means `SessionKind` `'strength'` (label "Fuerza", `web/src/lib/disciplines.ts:199-200`); "Natación" means `'swim'` (`disciplines.ts:211-212`). The catalog is closed: `SessionKind = 'strength' | 'swim'` (`web/src/lib/types.ts:152`).
@@ -214,7 +214,7 @@ Owner: "…y no mezclar conceptos, es una app para gimnasio (por ahora) y estamo
 - Size: S. Risk: item 1 and item 3 (same fields as S1 and S6; this spec is their contract test).
 
 ## Decisions
-All open. Each option has a Spanish label ready to relay; the recommended one is marked "(Recomendada)".
+Closed 2026-11-13: the owner accepted the recommended option of every decision (L6), so D1-D11 are all A and the specs stand as written.
 
 - **D1 — Where the selector lives (S2).**
   - A — "Chip arriba en cada pestaña (Recomendada)": a chip with icon and name at the top of Hoy, Plan, Progreso and Perfil, like Duolingo's flag; it opens the "Tus disciplinas" sheet.
@@ -273,7 +273,7 @@ All open. Each option has a Spanish label ready to relay; the recommended one is
   - Tradeoff: A keeps four tabs and separates the views; B costs tab-bar space for a rarely used screen; C keeps settings in the metrics view the owner wants clean.
 
 ## Tasks
-Route suggestions follow the Writer trigger: T1 and T3 are shared domain work and run inline first; then T4, T6 and T7 have disjoint surfaces (`today/*`, `habit/*`, `profile/*`) and 200+ lines each, so they can run as parallel writers launched together; T2, T5 and T8 run inline. `App.tsx` is shared by T2, T4, T8: the parent owns it and edits it at the end. Status: all unchecked; none is authorized.
+Routes as run (L7): wave 1 runs T1 and T3 as two parallel writers in isolated worktrees (disjoint files; T3 takes the swim target as an explicit number, so it does not need T1's type). Wave 2 runs T2, T4, T5, T6, T7 and the Settings part of T8 as parallel writers in isolated worktrees from the wave-1 merge (disjoint files, each 150+ lines). T2 builds the component only, and no unit edits `App.tsx`. The parent owns `App.tsx` (the chip above each tab, Perfil vs Ajustes routing, the sync chip target and the swim start from Hoy) and integrates on `integration/discipline-switcher`. T9 runs at the end.
 
 - [ ] T1 — S1, S10 (+ `swimWeeklyTarget` of S6). Config fields, `mergeConfig` defaults, `SCALAR_LABELS`, `disciplineSelection.ts`, hook, erase paths. Files: `web/src/lib/types.ts`, `web/src/lib/plan.ts`, `web/src/features/sync/lib/configMerge.ts`, new `web/src/lib/disciplineSelection.ts` (+ test), `web/src/lib/store.tsx`, `web/src/features/sync/lib/erase.ts`, `web/src/features/account/lib/eraseDevice.ts`, `plan.test.ts`, `configMerge` tests. Route: inline, own commit. Risk: item 1 (persisted synced Config), item 3 (older clients drop the fields) → independent verifier. Forecast: ~250 lines.
 - [ ] T2 — S2, S3. Selector chip and sheet, add/hide. Files: new `web/src/components/DisciplineSwitcher.tsx` (+ test), headers of `Home.tsx` and `PlanEditor.tsx` (chip only). Route: inline. Risk: none. Forecast: ~250 lines.
@@ -293,3 +293,5 @@ Forecast total: ~1,940 authored changed lines (additions plus deletions, tests i
 - L3 — 2026-11-13, owner decision on scope: "Toda la app (Recomendada)". Option description: "Igual que Duolingo con el idioma: Hoy, Entrenar, Progreso y Perfil muestran solo la disciplina elegida, con sus métricas, su racha y su plan. Así no se mezclan conceptos en ninguna pantalla."
 - L4 — 2026-11-13, owner on writing the spec first: "Dale"
 - L5 — 2026-11-13, audit evidence (read-only at 929cd5f, bounded reads of `app`, `lib`, `features/account`, `today`, `session`, `habit`, `progress`, `onboarding`, `sync`, and the API sync contract; no `.codegraph/` index used). Findings: the app has no "Entrenar" tab (D9); Natación has no plan, only the pool length; walks are check-ins, not sessions; the streak and votes are global while the weekly target is gym only and swim days spend no wildcard; `mergeConfig` drops unknown fields, so new Config fields are lost when an older build saves config (S1, S10); the API needs no change. Next step: relay D1-D11 to the owner one at a time, then rewrite only the affected specs.
+- L6 — 2026-11-13, owner on D1-D11: "Aceptar las recomendadas". Option description: "Cierro D1–D11 con la opción recomendada de cada una, las registro en el spec y arranco la implementación."
+- L7 — 2026-11-13, delivery and routing: integration branch plus one PR, reusing the owner's choices from the first delivery ("entrega rama de integración", "PR un solo PR"). Two writer waves (see Tasks). Models: opus for T1 (risk items 1/3), T3 (habit rules) and T7 (largest unit); sonnet for T2, T4, T5, T6 and the Settings part of T8.
