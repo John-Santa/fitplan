@@ -162,6 +162,16 @@ export const PLAN_WEEKLY_ROUTINE: WeeklyRoutine = [
   { kind: 'rest', title: '', note: 'Descanso activo: tus 10.000 pasos' },
 ]
 
+/** Discipline list of a config that never stored one (S1, D2-A): Gimnasio
+ *  only. The "plus Natación when the user already swam" part needs the
+ *  sessions, so it is applied where the list is resolved
+ *  (lib/disciplineSelection.ts), never stored by mergeConfig. */
+export const DEFAULT_DISCIPLINES: readonly SessionKind[] = ['strength']
+
+/** Swim sessions per week when none is stored (S6, D10-A): the legacy week
+ *  has two swim days. */
+export const DEFAULT_SWIM_WEEKLY_TARGET = 2
+
 /** Config of the "espalda protegida" template as the app seeded it on the
  *  first open before the welcome existed: the owner's height, goals and
  *  fixed 12-week block. New installs never get it (they go through the
@@ -191,6 +201,8 @@ export const DEFAULT_CONFIG: Config = {
     { time: '', place: '' }, { time: '', place: '' }, { time: '', place: '' }, { time: '', place: '' },
     { time: '', place: '' }, { time: '', place: '' }, { time: '', place: '' },
   ],
+  disciplines: [...DEFAULT_DISCIPLINES],
+  swimWeeklyTarget: DEFAULT_SWIM_WEEKLY_TARGET,
 }
 
 /** Measurement the app seeded on the first open before the welcome existed.
@@ -254,6 +266,9 @@ export function newInstallConfig(setup: NewInstallSetup): Config {
       { time: '', place: '' }, { time: '', place: '' }, { time: '', place: '' }, { time: '', place: '' },
       { time: '', place: '' }, { time: '', place: '' }, { time: '', place: '' },
     ],
+    // D2-A: a new install starts with Gimnasio only.
+    disciplines: [...DEFAULT_DISCIPLINES],
+    swimWeeklyTarget: DEFAULT_SWIM_WEEKLY_TARGET,
   }
 }
 
@@ -523,6 +538,21 @@ function mergeHabitCheckIns(stored: unknown): string[] {
   return [...new Set(stored.filter(isISODate))].sort()
 }
 
+/** The stored discipline list, deduplicated (first occurrence keeps its
+ *  place) and without ids this build does not know (a newer client may write
+ *  them). Nothing valid left, or no list at all: the default. */
+function mergeDisciplines(stored: unknown): SessionKind[] {
+  const valid = Array.isArray(stored) ? [...new Set(stored.filter(isSessionKind))] : []
+  return valid.length ? valid : [...DEFAULT_DISCIPLINES]
+}
+
+/** An integer from 1 to 7; anything else is the default. */
+function mergeSwimWeeklyTarget(stored: unknown): number {
+  return Number.isInteger(stored) && (stored as number) >= 1 && (stored as number) <= 7
+    ? (stored as number)
+    : DEFAULT_SWIM_WEEKLY_TARGET
+}
+
 /** Each weekday is merged on its own: a bad time resets only the time, never
  *  the place or the other days. Same reason as mergeGoal (see mergeConfig). */
 function mergeIntentions(stored: unknown): WeeklyIntentions {
@@ -580,6 +610,8 @@ export function mergeConfig(stored: unknown): Config {
     routineExercises: mergeRoutineOverrides(c.routineExercises),
     habitCheckIns: mergeHabitCheckIns(c.habitCheckIns),
     intentions: mergeIntentions(c.intentions),
+    disciplines: mergeDisciplines(c.disciplines),
+    swimWeeklyTarget: mergeSwimWeeklyTarget(c.swimWeeklyTarget),
   }
 }
 

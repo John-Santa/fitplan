@@ -210,6 +210,40 @@ describe('mergeMeasurement', () => {
   })
 })
 
+// S1/S10: the new flat Config fields survive a backup v3 round trip.
+describe('backup v3 with disciplines and swimWeeklyTarget', () => {
+  it('export -> import keeps both fields', async () => {
+    const { db } = await freshDb()
+    const { DEFAULT_CONFIG } = await import('./plan')
+    const { DEFAULT_PLAN } = await import('./defaultPlan')
+    await db.saveConfig({ ...DEFAULT_CONFIG, disciplines: ['swim', 'strength'], swimWeeklyTarget: 4 })
+    await db.savePlan(DEFAULT_PLAN)
+    const backup = await db.exportBackup()
+    expect(backup.version).toBe(3)
+    expect(backup.config).toMatchObject({ disciplines: ['swim', 'strength'], swimWeeklyTarget: 4 })
+
+    const { db: other } = await freshDb()
+    await other.importBackup(JSON.parse(JSON.stringify(backup)), 'replace')
+    const restored = await other.getConfig()
+    expect(restored?.disciplines).toEqual(['swim', 'strength'])
+    expect(restored?.swimWeeklyTarget).toBe(4)
+    expect(restored).toEqual(backup.config)
+  })
+
+  it('a backup without the fields imports with the defaults', async () => {
+    const { db } = await freshDb()
+    const { DEFAULT_CONFIG } = await import('./plan')
+    const { DEFAULT_PLAN } = await import('./defaultPlan')
+    const config = structuredClone(DEFAULT_CONFIG) as Partial<typeof DEFAULT_CONFIG>
+    delete config.disciplines
+    delete config.swimWeeklyTarget
+    await db.importBackup({ app: 'fitplan', version: 3, exportedAt: '', sessions: [], measurements: [], exerciseMeta: [], config, plan: DEFAULT_PLAN })
+    const restored = await db.getConfig()
+    expect(restored?.disciplines).toEqual(['strength'])
+    expect(restored?.swimWeeklyTarget).toBe(2)
+  })
+})
+
 describe('getSessions order', () => {
   it('lists the newest first by session date, so a session logged late for an earlier day sits on that day', async () => {
     const { db } = await freshDb()

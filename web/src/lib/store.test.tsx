@@ -69,6 +69,43 @@ describe('existing install (config already stored)', () => {
   })
 })
 
+// S10: booting today's data (no disciplines, no swimWeeklyTarget) changes no
+// stored record and queues nothing for sync; D2-A is never stored on boot.
+describe("boot with today's IndexedDB data", () => {
+  it('keeps sessions, measurements, plan and every existing config field byte-identical, and queues no outbox entry', async () => {
+    const { store, db, plan } = await fresh()
+    const local = await import('../features/sync/lib/localWrites')
+    const sdb = await import('../features/sync/lib/syncDb')
+    local.setTrackingForTests(true)
+    const { DEFAULT_PLAN } = await import('./defaultPlan')
+    const todays = structuredClone(plan.DEFAULT_CONFIG) as Partial<Config>
+    delete todays.disciplines
+    delete todays.swimWeeklyTarget
+    await db.saveConfig(todays as Config)
+    await db.savePlan(DEFAULT_PLAN)
+    await db.saveSession({ id: 'g1', kind: 'strength', routineId: 'dia1', date: '2026-11-10', startedAt: 1, finishedAt: 2, notes: '', sets: [{ exerciseId: 'leg-press', setIndex: 0, weight: 80, reps: 10, done: true }] })
+    await db.saveSession({ id: 's1', kind: 'swim', date: '2026-11-11', startedAt: 3, finishedAt: 4, notes: '', poolLengthM: 25, blocks: [{ index: 0, stroke: 'free', distanceM: 100, timeSec: 120, done: true }] } as never)
+    await db.saveMeasurement({ date: '2026-11-01', weight: 80 })
+    const snapshot = (name: string) => JSON.stringify([...idb.dump(name, 'fitplan').entries()])
+    const before = { sessions: snapshot('sessions'), measurements: snapshot('measurements'), plan: JSON.stringify(await db.getPlan()) }
+
+    await store.prepareLocalData()
+
+    expect(snapshot('sessions')).toBe(before.sessions)
+    expect(snapshot('measurements')).toBe(before.measurements)
+    expect(JSON.stringify(await db.getPlan())).toBe(before.plan)
+    const stored = structuredClone(await db.getConfig()) as Partial<Config>
+    // The user has a swim, yet boot stores no ['strength', 'swim']: only the
+    // mergeConfig default, which reads the same as an absent list.
+    expect(stored.disciplines ?? ['strength']).toEqual(['strength'])
+    delete stored.disciplines
+    delete stored.swimWeeklyTarget
+    expect(JSON.stringify(stored)).toBe(JSON.stringify(todays))
+    expect(await sdb.getOutbox()).toEqual([])
+    local.setTrackingForTests(false)
+  })
+})
+
 describe('restoring a backup from the welcome', () => {
   it('a backup with a config ends the welcome with the restored data', async () => {
     const { store, db, plan } = await fresh()

@@ -1,5 +1,6 @@
 // Leaves the device as a fresh install: the two IndexedDB databases and the
-// session draft in localStorage. It is what "Borrar dispositivo" (sign-out)
+// per-device localStorage keys (session draft, reminder prefs, selected
+// discipline), all through eraseLocalCopy. It is what "Borrar dispositivo" (sign-out)
 // and "Exportar y cambiar" (account switch) run; nothing else is kept, so the
 // next account does not meet data of the previous one.
 import { downloadBackupFile, exportBackup } from '../../../lib/db'

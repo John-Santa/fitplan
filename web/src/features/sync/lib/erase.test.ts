@@ -69,8 +69,11 @@ async function seededDevice() {
   const { REMINDERS_CACHE } = await import('../../reminders/lib/background')
   saveReminderPrefs({ enabled: true, lastFired: '2026-09-01:dia1' })
   await (await caches.open(REMINDERS_CACHE)).put('reminders-schedule.json', new Response(JSON.stringify({ reminders: [{ title: 'Día 1' }] })))
+  // The discipline selected on this device (S1, D3-A).
+  const { DISCIPLINE_STORAGE_KEY, writeStoredDiscipline } = await import('../../../lib/disciplineSelection')
+  writeStoredDiscipline('swim')
   for (const [store, dbName] of STORES) expect([store, idb.dump(store, dbName).size > 0]).toEqual([store, true])
-  expect([...ls.keys()].sort()).toEqual(['fitplan:active-session', REMINDER_PREFS_KEY].sort())
+  expect([...ls.keys()].sort()).toEqual(['fitplan:active-session', REMINDER_PREFS_KEY, DISCIPLINE_STORAGE_KEY].sort())
   expect(cacheStorage.has(REMINDERS_CACHE)).toBe(true)
   return { idb, ls, sdb, cacheStorage }
 }
