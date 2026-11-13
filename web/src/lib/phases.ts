@@ -16,6 +16,20 @@ export function phaseForWeek(plan: Pick<TrainingPlan, 'phases'>, week: number): 
   return plan.phases.find(p => week >= p.fromWeek && week <= p.toWeek) ?? null
 }
 
+export type BlockState = 'upcoming' | 'active' | 'ended'
+
+/** Estado del bloque respecto de hoy: 'ended' cuando hoy es posterior a
+ *  `blockEnd` (el dia de blockEnd todavia es activo), 'upcoming' antes del
+ *  inicio. Funcion aparte para no cambiar lo que devuelve phaseForWeek, que
+ *  tiene otros usuarios. */
+export function blockStatus(today: Date, blockStart: string, blockEnd: string): { state: BlockState; week: number } {
+  const week = blockWeekNumber(today, blockStart)
+  const start = new Date(blockStart + 'T00:00:00')
+  const end = new Date(blockEnd + 'T23:59:59.999')
+  const state: BlockState = today.getTime() < start.getTime() ? 'upcoming' : today.getTime() > end.getTime() ? 'ended' : 'active'
+  return { state, week }
+}
+
 /** Series que toca hacer en un slot durante una fase. Sin fase, las base. */
 export function setsForSlot(slot: PlanSlot, phase: Phase | null): number {
   if (!phase) return slot.sets

@@ -1,7 +1,9 @@
 import { useState, type CSSProperties, type ReactNode } from 'react'
 import { DONE_TODAY, weekdayLabel } from '../../../lib/plan'
 import { planWeekStates, routineShortName, routineSlots, slotExerciseName, weekLabel, routineDisplayName } from '../../../lib/planQueries'
-import { blockWeekNumber, phaseForWeek } from '../../../lib/phases'
+import { blockStatus, blockWeekNumber, phaseForWeek } from '../../../lib/phases'
+import BlockEndCard from '../components/BlockEndCard'
+import { startNewBlock, weekVolumes } from '../lib/blockEnd'
 import { fmtDate, sessionVolume, todayISO } from '../../../lib/calc'
 import { finishedIn } from '../../../lib/disciplines'
 import { dayStatus, intentionFor, missedYesterday, streak as habitStreak, toggleCheckIn, votes as habitVotes } from '../../habit/lib/habit'
@@ -72,6 +74,7 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
   const iso = todayISO(now)
   const week = blockWeekNumber(now, config.blockStart)
   const phase = phaseForWeek(plan, week)
+  const blockEnded = blockStatus(now, config.blockStart, config.blockEnd).state === 'ended'
   const dow = now.getDay()
   const allowance = restAllowance(plan)
   const habitCtx = { sessions, config, today: iso, restAllowance: allowance }
@@ -207,6 +210,13 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
       </header>
 
       <main className="hoy-main">
+        {blockEnded && (
+          <BlockEndCard
+            {...weekVolumes(sessions, config.blockStart, plan.weeks)}
+            weeks={plan.weeks}
+            onStartNew={() => void saveConfig(startNewBlock(config, new Date(), plan.weeks))}
+          />
+        )}
         <section className="hoy-identity" aria-label="Tu racha">
           <div className="hoy-identity-item">
             <span className="hoy-identity-icon flame"><Icon name="flame" size={22} /></span>
