@@ -1,0 +1,21 @@
+/* Welcome (F1). Reuses the global card, formgrid, btnrow and hint styles;
+   only the template choice and the step navigation are its own. The welcome
+   has no tab bar, so the bottom padding of .main is reduced. */
+.onboarding { padding-bottom: calc(var(--sp-6) + var(--safe-b)); }
+.onboarding .card + .card { margin-top: var(--sp-3); }
+
+.ob-sr {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+.ob-templates { border: 0; margin: 0; padding: 0; display: grid; gap: var(--sp-3); }
+.ob-option { display: flex; gap: var(--sp-3); align-items: flex-start; cursor: pointer; margin: 0; }
+.ob-option input { width: auto; margin-top: 4px; flex-shrink: 0; }
+.ob-option.on { outline: 2px solid var(--accent); }
+.ob-option-text { display: block; margin-top: 4px; font-size: var(--t-meta); color: var(--ink-3); }
+
+.ob-error { color: var(--alert); }
+.ob-nav { margin-top: var(--sp-4); }
+.ob-restore { margin-top: var(--sp-6); text-align: center; }
+.ob-restore .hint { margin-bottom: var(--sp-2); }

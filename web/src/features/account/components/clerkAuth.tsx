@@ -1,7 +1,7 @@
 // Puente con Clerk. Solo se importa dinámicamente cuando hay clave (ver
 // main.tsx y Settings.tsx), así el build sin clave no ejecuta nada de Clerk.
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { ClerkProvider, SignInButton, UserButton, useAuth, useClerk, useUser } from '@clerk/react'
+import { ClerkProvider, SignInButton, SignUpButton, UserButton, useAuth, useClerk, useUser } from '@clerk/react'
 import { AuthContext, setSignOutHandler, setTokenGetter, type AuthState } from '../lib/auth'
 import SignOutDialog from './SignOutDialog'
 
@@ -53,6 +53,21 @@ export function SignOutControl() {
       <button onClick={() => setOpen(true)}>Cerrar sesión</button>
       {open && <SignOutDialog signOut={() => clerk.signOut()} onClose={() => setOpen(false)} />}
     </>
+  )
+}
+
+/** Account entry outside Perfil (welcome and Hoy): create an account or sign
+ *  in, both in Clerk's modal. Goes inside ClerkAuthProvider. */
+export function AccountEntryButtons() {
+  return (
+    <div className="btnrow">
+      <SignUpButton mode="modal">
+        <button className="primary">Crear cuenta</button>
+      </SignUpButton>
+      <SignInButton mode="modal">
+        <button>Iniciar sesión</button>
+      </SignInButton>
+    </div>
   )
 }
 

@@ -33,6 +33,7 @@ import * as db from '../../../lib/db'
 import { eraseLocalCopy } from './erase'
 import { planMigration } from '../../../lib/migration'
 import { BASELINE, DEFAULT_CONFIG, mergeConfig, normalizeSession } from '../../../lib/plan'
+import { PLAN_TEMPLATES, templatePlan } from '../../../lib/defaultPlan'
 import { normalizePlan } from '../../../lib/planStorage'
 import type { ChangeSet, ItemResult, PushChangeSet } from '../syncTypes'
 import type { ExerciseMeta, Measurement } from '../../../lib/types'
@@ -507,16 +508,26 @@ function normalized(entity: Entity, key: string, body: unknown): unknown {
   return isObject(body) ? body : null
 }
 
-/** Lo que store.tsx siembra en la primera apertura (config, plan y la medida
- *  BASELINE), normalizado como cualquier otro registro. */
-function seeds(): Map<string, string> {
+/** Seeds by outbox key: values no person chose, normalized like any other
+ *  record. Two generations:
+ *  - Before the welcome, store.tsx seeded config, plan and the BASELINE
+ *    measurement on the first open; older phones still hold them.
+ *  - The welcome (features/onboarding) writes the plan of the chosen template
+ *    as is. Its config carries the person's own height, goals and block, so
+ *    it is real data, not a seed, and it never writes a measurement the
+ *    person did not enter. */
+function seeds(): Map<string, Set<string>> {
+  const out = new Map<string, Set<string>>()
+  const add = (entity: Entity, key: string, body: unknown) => {
+    if (body == null) return
+    const id = sdb.outboxId(entity, key)
+    out.set(id, (out.get(id) ?? new Set<string>()).add(canonical(body)))
+  }
   const migration = planMigration(undefined, DEFAULT_CONFIG)
-  const plan = migration.plan ? normalizePlan(migration.plan) : null
-  const out = new Map<string, string>([
-    [sdb.outboxId('document', 'config'), canonical(mergeConfig(migration.config ?? DEFAULT_CONFIG))],
-    [sdb.outboxId('measurement', BASELINE.date), canonical(BASELINE)],
-  ])
-  if (plan) out.set(sdb.outboxId('document', 'plan'), canonical(plan))
+  add('document', 'config', mergeConfig(migration.config ?? DEFAULT_CONFIG))
+  add('measurement', BASELINE.date, BASELINE)
+  if (migration.plan) add('document', 'plan', normalizePlan(migration.plan))
+  for (const t of PLAN_TEMPLATES) add('document', 'plan', normalizePlan(templatePlan(t.id)))
   return out
 }
 
@@ -579,7 +590,7 @@ async function bootstrap(uid: string, changed: { value: boolean }) {
       continue
     }
     const seed = seeded.get(id)
-    if (seed === t) {
+    if (seed?.has(t)) {
       // El servidor solo tiene la semilla de otro teléfono: gana lo local,
       // que se encola con updatedAt = ahora para pisarla.
       serverKeeps.delete(id)
@@ -587,7 +598,7 @@ async function bootstrap(uid: string, changed: { value: boolean }) {
     }
     // Si lo local es la semilla gana el servidor sin más; si no, también gana
     // el servidor, pero antes se guarda una copia de lo local.
-    if (seed !== m) conflict = true
+    if (!seed?.has(m)) conflict = true
     toApply.push(r)
   }
 

@@ -257,3 +257,169 @@ export const LEGACY_ROUTINES: PlanRoutine[] = ROUTINES.map(r => ({
 export function defaultPlanWithLegacy(): TrainingPlan {
   return structuredClone({ ...DEFAULT_PLAN, routines: [...DEFAULT_PLAN.routines, ...LEGACY_ROUTINES] })
 }
+
+/* ---------- plantilla general (bienvenida) ---------- */
+
+// A neutral 3-day full-body plan for people without the back condition the
+// "espalda protegida" template was written for. Same 12-week structure and
+// phase rules, no disc-specific notes. Only the welcome offers it.
+
+const GENERIC_REST_NOTE = 'Descanso activo: camina 30–45 minutos'
+
+const GENERIC_WARMUP: RoutineBlock = {
+  id: 'warmup',
+  title: 'Calentamiento (8–10 min, antes de cada sesión)',
+  note: 'Sube la temperatura y la movilidad antes de cargar.',
+  slots: [
+    slot('gw-1', 'cardio-warmup', 1, time(300, 300), 0, 'Caminadora, elíptica o bicicleta: 5 min a ritmo moderado.'),
+    slot('gw-2', 'glute-bridge', 1, reps(12, 12), 0, 'Puente de glúteo en el piso: 12 reps controladas.'),
+    slot('gw-3', 'thoracic-rotation', 1, reps(8, 8, { perSide: true }), 0, 'Rotación torácica en cuatro apoyos: 8 por lado.'),
+    slot('gw-4', 'approach-set', 1, { kind: 'note' }, 0, 'Primera serie de cada ejercicio principal con poco peso (aproximación) antes de las series de trabajo.'),
+  ],
+}
+
+const GENERIC_A: PlanRoutine = {
+  id: 'general-a',
+  name: 'Día A – Cuerpo completo',
+  focus: 'pierna, pecho y espalda',
+  intro: 'Sesión de cuerpo completo con máquinas: fácil de aprender y de progresar.',
+  duration: '50–60 min',
+  warmup: true,
+  blocks: [{
+    id: 'general-a-main', title: 'Ejercicios', note: '',
+    slots: [
+      slot('ga-1', 'leg-press', 3, reps(10, 12), 120, 'Baja hasta donde la cadera no se despegue del asiento.', { primary: true }),
+      slot('ga-2', 'chest-press', 3, reps(8, 10), 120, 'Omóplatos atrás y abajo, espalda pegada al respaldo.', { primary: true }),
+      slot('ga-3', 'lat-pulldown', 3, reps(10, 12), 90, 'Lleva la barra a la clavícula sin balancearte.'),
+      slot('ga-4', 'leg-curl', 3, reps(10, 12), 60, 'Sube y baja controlado, sin despegar la cadera.'),
+      slot('ga-5', 'lateral-raise', 2, reps(12, 15), 60, 'Sube hasta la altura del hombro, sin impulso.'),
+      slot('ga-6', 'forearm-plank', 3, time(20, 40), 45, 'Cuerpo en línea recta. Calidad sobre tiempo.'),
+    ],
+  }],
+}
+
+const GENERIC_B: PlanRoutine = {
+  id: 'general-b',
+  name: 'Día B – Cuerpo completo',
+  focus: 'pierna, espalda y hombro',
+  intro: 'Mismo esquema que el Día A con otros ejercicios, para repartir el trabajo de la semana.',
+  duration: '50–60 min',
+  warmup: true,
+  blocks: [{
+    id: 'general-b-main', title: 'Ejercicios', note: '',
+    slots: [
+      slot('gb-1', 'goblet-squat', 3, reps(8, 10), 120, 'Mancuerna pegada al pecho, torso erguido.', { primary: true }),
+      slot('gb-2', 'seated-row', 3, reps(10, 12), 90, 'Torso quieto, codos hacia las costillas.', { primary: true }),
+      slot('gb-3', 'shoulder-press', 3, reps(10, 12), 90, 'Espalda apoyada en el respaldo.'),
+      slot('gb-4', 'hip-thrust', 3, reps(10, 12), 90, 'Aprieta el glúteo arriba sin arquear la zona lumbar.'),
+      slot('gb-5', 'biceps-curl', 2, reps(10, 12), 60, 'Codos quietos junto al cuerpo.'),
+      slot('gb-6', 'triceps-pushdown', 2, reps(12, 15), 60, 'Codos pegados al cuerpo.'),
+      slot('gb-7', 'dead-bug', 3, reps(8, 8, { perSide: true }), 45, 'Zona lumbar suavemente apoyada en el piso.'),
+    ],
+  }],
+}
+
+const GENERIC_C: PlanRoutine = {
+  id: 'general-c',
+  name: 'Día C – Cuerpo completo',
+  focus: 'cadera, pecho y espalda',
+  intro: 'Cierra la semana con bisagra de cadera, empuje inclinado y remo a una mano.',
+  duration: '50–60 min',
+  warmup: true,
+  blocks: [{
+    id: 'general-c-main', title: 'Ejercicios', note: '',
+    slots: [
+      slot('gc-1', 'romanian-deadlift-db', 3, reps(10, 12), 120, 'Cadera atrás y espalda neutra; baja solo hasta donde no se redondee.', { primary: true }),
+      slot('gc-2', 'incline-db-press', 3, reps(8, 10), 90, 'Banco a 30°, pies firmes.', { primary: true }),
+      slot('gc-3', 'single-arm-row', 3, reps(10, 12, { perSide: true }), 90, 'Espalda plana, tira hacia la cadera.'),
+      slot('gc-4', 'step-up', 3, reps(8, 8, { perSide: true, sideUnit: 'pierna' }), 90, 'Empuja con el talón de la pierna de arriba.'),
+      slot('gc-5', 'face-pull', 3, reps(12, 15), 60, 'Cuerda hacia la frente, codos altos.'),
+      slot('gc-6', 'calf-raise', 3, reps(12, 15), 60, 'Pausa abajo estirando, subida completa.'),
+      slot('gc-7', 'side-plank', 3, time(20, 30, true), 30, 'Cadera alineada; empieza con rodillas apoyadas si hace falta.'),
+    ],
+  }],
+}
+
+const GENERIC_PHASES: Phase[] = [
+  { fromWeek: 1, toWeek: 2, sets: '2 por ejercicio', intensity: 'RIR 3–4 (cómodo)', goal: 'Aprender técnica y ajustes de cada máquina', rule: { kind: 'cap', sets: 2 }, loadNote: '' },
+  { fromWeek: 3, toWeek: 6, sets: '3 por ejercicio', intensity: 'RIR 2–3', goal: 'Progresión doble: sumar reps y peso cada semana', rule: { kind: 'base' }, loadNote: '' },
+  { fromWeek: 7, toWeek: 7, sets: 'Igual que semana 3–6, la mitad de peso', intensity: 'Suave', goal: 'Descarga: recuperarse y consolidar', rule: { kind: 'base' }, loadNote: 'la mitad de peso' },
+  { fromWeek: 8, toWeek: 11, sets: '4 en los ejercicios #1 y #2 de cada día', intensity: 'RIR 1–2', goal: 'Más volumen en los ejercicios principales', rule: { kind: 'primaryBoost', sets: 4 }, loadNote: '' },
+  { fromWeek: 12, toWeek: 12, sets: 'La mitad de series', intensity: 'Suave', goal: 'Descarga y revisión: compara tu registro con la semana 1', rule: { kind: 'half' }, loadNote: '' },
+]
+
+/** Indice 0 = domingo .. 6 = sabado: lunes, miercoles y viernes. */
+const GENERIC_WEEK: WeeklyRoutine = [
+  { kind: 'rest', title: '', note: GENERIC_REST_NOTE },
+  { kind: 'training', routineId: 'general-a', title: '', note: GENERIC_A.duration },
+  { kind: 'rest', title: '', note: GENERIC_REST_NOTE },
+  { kind: 'training', routineId: 'general-b', title: '', note: GENERIC_B.duration },
+  { kind: 'rest', title: '', note: GENERIC_REST_NOTE },
+  { kind: 'training', routineId: 'general-c', title: '', note: GENERIC_C.duration },
+  { kind: 'rest', title: '', note: GENERIC_REST_NOTE },
+]
+
+const GENERIC_TIPS: string[] = [
+  'Intensidad (RIR = repeticiones en reserva): termina cada serie sintiendo que podrías hacer 2–3 repeticiones más con buena técnica. Al principio nada de ir al fallo.',
+  [
+    'Progresión doble: cada ejercicio tiene un rango, por ejemplo 3 × 10–12.',
+    '1. Empieza con un peso con el que hagas 10 reps limpias.',
+    '2. Cada sesión intenta sumar 1 repetición.',
+    '3. Cuando completes todas las series en 12, sube el peso lo mínimo posible y vuelve a 10.',
+  ].join('\n'),
+  'Descansos: 90–120 s en ejercicios grandes, 60 s en accesorios y core.',
+  'Anota todo (peso, series, reps) en la app. Sin registro no hay progresión.',
+]
+
+export const GENERIC_PLAN: TrainingPlan = {
+  id: 'general',
+  name: 'Plan general – 3 días (cuerpo completo)',
+  schemaVersion: 1,
+  weeks: 12,
+  warmup: GENERIC_WARMUP,
+  routines: [GENERIC_A, GENERIC_B, GENERIC_C],
+  phases: GENERIC_PHASES,
+  weekTemplate: GENERIC_WEEK,
+  tips: GENERIC_TIPS,
+  customExercises: [],
+}
+
+/* ---------- plantillas que ofrece la bienvenida ---------- */
+
+/** Id of the "espalda protegida" plan. The guide's disc-protrusion content and
+ *  the lower-back tip in Hoy are tied to it. Existing installs keep it: the
+ *  one-time migration wrote this plan with this id. */
+export const BACK_CARE_PLAN_ID = 'espalda-protegida'
+
+export type PlanTemplateId = typeof BACK_CARE_PLAN_ID | 'general'
+
+export interface PlanTemplate {
+  id: PlanTemplateId
+  name: string
+  description: string
+}
+
+export const PLAN_TEMPLATES: readonly PlanTemplate[] = [
+  {
+    id: BACK_CARE_PLAN_ID,
+    name: 'Espalda protegida (5 días)',
+    description: 'Pensado para protrusión discal o dolor lumbar: máquinas y ejercicios que no comprimen ni flexionan la columna bajo carga. Incluye una guía específica.',
+  },
+  {
+    id: 'general',
+    name: 'General (3 días, cuerpo completo)',
+    description: 'Tres sesiones de cuerpo completo por semana con máquinas y mancuernas, para empezar sin una condición particular.',
+  },
+]
+
+/** True for the "espalda protegida" plan (edited or not). */
+export function isBackCarePlan(plan: Pick<TrainingPlan, 'id'>): boolean {
+  return plan.id === BACK_CARE_PLAN_ID
+}
+
+/** Plan a new install starts with. Deep copy, like defaultPlanWithLegacy.
+ *  "espalda protegida" is exactly what the first open used to seed (with the
+ *  earlier routines archived), so the first sign-in recognizes both. */
+export function templatePlan(id: PlanTemplateId): TrainingPlan {
+  return id === BACK_CARE_PLAN_ID ? defaultPlanWithLegacy() : structuredClone(GENERIC_PLAN)
+}

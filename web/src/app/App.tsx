@@ -8,6 +8,7 @@ import { loadActiveDraft } from '../features/session/lib/activeSession'
 import MovedNotice from './MovedNotice'
 import { PwaPrompts } from '../features/pwa/components/PwaPrompts'
 import { SyncIndicator } from '../features/sync/components/SyncIndicator'
+import Welcome from '../features/onboarding/components/Welcome'
 
 const Train = lazy(() => import('../features/session/routes/Train'))
 const Measure = lazy(() => import('../features/progress/routes/Measure'))
@@ -28,8 +29,16 @@ const TABS: { id: Tab; label: string; icon: ReactNode }[] = [
   { id: 'perfil', label: 'Perfil', icon: <><circle cx="12" cy="8" r="4" /><path d="M4.5 20.5c1-3.8 4-5.5 7.5-5.5s6.5 1.7 7.5 5.5" /></> },
 ]
 
+/** Which screen to show. A new install (no stored config) goes through the
+ *  welcome; an existing install never sees it. */
+export function appScreen(s: { ready: boolean; dbError: string | null; needsOnboarding: boolean }): 'error' | 'loading' | 'welcome' | 'app' {
+  if (s.dbError) return 'error'
+  if (!s.ready) return 'loading'
+  return s.needsOnboarding ? 'welcome' : 'app'
+}
+
 function Shell() {
-  const { ready, dbError } = useStore()
+  const { ready, dbError, needsOnboarding } = useStore()
   // A workout in progress survives a reload: reopen it where it was.
   const [tab, setTab] = useState<Tab>(() => (loadActiveDraft() ? 'progreso' : 'home'))
   const [progressView, setProgressView] = useState<ProgressView>(() => (loadActiveDraft() ? 'train' : 'habit'))
@@ -49,11 +58,13 @@ function Shell() {
     setTab('progreso')
   }
 
-  if (dbError) {
-    return <ErrorScreen title="No se pudo abrir la base de datos" message={dbError} />
+  const screen = appScreen({ ready, dbError, needsOnboarding })
+
+  if (screen === 'error') {
+    return <ErrorScreen title="No se pudo abrir la base de datos" message={dbError ?? ''} />
   }
 
-  if (!ready) {
+  if (screen === 'loading') {
     return (
       <div className="app">
         <MovedNotice />
@@ -63,6 +74,8 @@ function Shell() {
       </div>
     )
   }
+
+  if (screen === 'welcome') return <Welcome />
 
   return (
     <div className="app">

@@ -2,7 +2,16 @@
 // anteriores archivadas.
 import { describe, expect, it } from 'vitest'
 import type { PlanRoutine, PlanSlot } from './types'
-import { DEFAULT_PLAN, LEGACY_ROUTINES, defaultPlanWithLegacy } from './defaultPlan'
+import {
+  BACK_CARE_PLAN_ID,
+  DEFAULT_PLAN,
+  GENERIC_PLAN,
+  LEGACY_ROUTINES,
+  PLAN_TEMPLATES,
+  defaultPlanWithLegacy,
+  isBackCarePlan,
+  templatePlan,
+} from './defaultPlan'
 import { EXERCISE_LIBRARY, libraryById } from './library'
 import { ROUTINES } from './plan'
 
@@ -171,5 +180,35 @@ describe('LEGACY_ROUTINES', () => {
     expect(p.customExercises).not.toBe(DEFAULT_PLAN.customExercises)
     p.routines[0].name = 'mutado'
     expect(DEFAULT_PLAN.routines[0].name).toBe('Día 1 – Tren inferior A')
+  })
+})
+
+describe('plan templates offered by the welcome', () => {
+  it('the general template only uses library exercises and its own routines', () => {
+    for (const r of GENERIC_PLAN.routines) {
+      for (const s of allSlots(r)) expect(libraryById(s.exerciseId), `${r.id}/${s.id}`).toBeDefined()
+      const ids = allSlots(r).map(s => s.id)
+      expect(new Set(ids).size, r.id).toBe(ids.length)
+    }
+    for (const s of GENERIC_PLAN.warmup.slots) expect(libraryById(s.exerciseId), s.id).toBeDefined()
+    const routineIds = new Set(GENERIC_PLAN.routines.map(r => r.id))
+    const week = GENERIC_PLAN.weekTemplate.filter(d => d.kind === 'training')
+    expect(week).toHaveLength(3)
+    for (const d of week) if (d.kind === 'training') expect(routineIds.has(d.routineId)).toBe(true)
+    expect(GENERIC_PLAN.weeks).toBe(12)
+  })
+
+  it('the general template carries no disc-specific text', () => {
+    expect(JSON.stringify(GENERIC_PLAN)).not.toMatch(/protrusi|disco|Smart Fit/i)
+  })
+
+  it('templatePlan returns deep copies; "espalda protegida" is the plan seeded before the welcome', () => {
+    expect(PLAN_TEMPLATES.map(t => t.id)).toEqual([BACK_CARE_PLAN_ID, 'general'])
+    expect(templatePlan(BACK_CARE_PLAN_ID)).toEqual(defaultPlanWithLegacy())
+    const g = templatePlan('general')
+    g.routines[0].name = 'mutado'
+    expect(GENERIC_PLAN.routines[0].name).toBe('Día A – Cuerpo completo')
+    expect(isBackCarePlan(DEFAULT_PLAN)).toBe(true)
+    expect(isBackCarePlan(GENERIC_PLAN)).toBe(false)
   })
 })

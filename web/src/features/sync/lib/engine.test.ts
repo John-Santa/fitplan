@@ -578,6 +578,49 @@ describe('primer ingreso con semillas (B1)', () => {
   })
 })
 
+describe('first sign-in after the welcome (F1)', () => {
+  /** What the welcome writes on a new phone with the given template. */
+  async function finishWelcome(d: Device, template: 'espalda-protegida' | 'general') {
+    const { buildOnboarding, initialAnswers } = await import('../../onboarding/lib/onboarding')
+    const today = new Date(2026, 10, 12)
+    const out = buildOnboarding({ ...initialAnswers(today), height: '168', template }, today)
+    await d.db.savePlan(out.plan)
+    await d.db.saveConfig(out.config)
+  }
+
+  it('a phone that just chose the general template takes the account plan without a backup copy', async () => {
+    const { defaultPlanWithLegacy } = await import('../../../lib/defaultPlan')
+    server.seed('documents', 'plan', { ...defaultPlanWithLegacy(), name: 'Mi plan' })
+    const d = await device()
+    await finishWelcome(d, 'general')
+    d.engine.setSyncUser('u1')
+    await d.engine.syncNow()
+
+    expect((d.idb.dump('config', 'fitplan').get('plan') as { name: string }).name).toBe('Mi plan')
+    expect(await d.syncDb.getPreBootstrapBackup()).toBeUndefined()
+    // The welcome's config was this phone's only one: it goes up.
+    expect((server.rows.get('documents:config')?.body as { heightCm: number }).heightCm).toBe(168)
+  })
+
+  it('an edited plan is not overwritten by the general template another phone left on the server', async () => {
+    const other = await device()
+    await finishWelcome(other, 'general')
+    other.engine.setSyncUser('u1')
+    await other.engine.syncNow()
+    expect((server.rows.get('documents:plan')?.body as { id: string }).id).toBe('general')
+
+    const old = await device()
+    await seedFirstOpen(old)
+    const plan = old.idb.dump('config', 'fitplan').get('plan') as Record<string, unknown>
+    await old.db.savePlan({ ...plan, name: 'Mi plan' } as never)
+    old.engine.setSyncUser('u1')
+    await old.engine.syncNow()
+
+    expect((old.idb.dump('config', 'fitplan').get('plan') as { name: string }).name).toBe('Mi plan')
+    expect((server.rows.get('documents:plan')?.body as { name: string }).name).toBe('Mi plan')
+  })
+})
+
 describe('convergencia (B2, B3, A1)', () => {
   it('C3: con un reloj adelantado, el stale vuelve a bajar todo y ambos teléfonos convergen', async () => {
     const { DEFAULT_CONFIG } = await import('../../../lib/plan')
