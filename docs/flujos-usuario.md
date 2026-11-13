@@ -1,6 +1,6 @@
 # MagniFit: flujos de usuario final
 
-Inventario de los flujos que importan a quien usa la app, con su estado actual y el detalle de los que faltan o están incompletos. Fecha: 2026-11-12. Fuente: auditoría de solo lectura sobre `web/`, `api/` y `deploy/`; cada estado cita el archivo que lo respalda.
+Inventario de los flujos que importan a quien usa la app, con su estado actual y el detalle de los que faltan o están incompletos. Fecha: 2026-11-12. Fuente: auditoría de solo lectura sobre `web/`, `api/` y `deploy/`; cada estado cita el archivo que lo respalda. Estados actualizados el 2026-11-12 tras integrar los flujos implementados (`odd/tasks/user-flows.md`); las secciones de detalle describen el plan original.
 
 ## Cómo leer este documento
 
@@ -12,7 +12,7 @@ Inventario de los flujos que importan a quien usa la app, con su estado actual y
 
 ## Contexto técnico
 
-La API expone solo `GET /health`, `GET /readyz`, `GET /v1/me` y `GET|POST /v1/sync` (`api/internal/adapter/httpapi/router.go`, `api/openapi.yaml`). Todos los flujos leen y escriben primero en IndexedDB; con Clerk configurado, cada escritura pasa además por una cola de salida y se sincroniza con `/v1/sync` (`web/src/lib/store.tsx:105-129`, `web/src/features/sync/lib/localWrites.ts:22-73`).
+La API expone `GET /health`, `GET /readyz`, `GET|DELETE /v1/me`, `DELETE /v1/data` y `GET|POST /v1/sync` (`api/internal/adapter/httpapi/router.go`, `api/openapi.yaml`). Todos los flujos leen y escriben primero en IndexedDB; con Clerk configurado, cada escritura pasa además por una cola de salida y se sincroniza con `/v1/sync` (`web/src/lib/store.tsx:105-129`, `web/src/features/sync/lib/localWrites.ts:22-73`).
 
 La sincronización en sí está construida. Lo que falta está alrededor: bienvenida, ciclo de vida de la cuenta, conflictos, borrado y la mudanza de usuarios entre dominios.
 
@@ -25,59 +25,59 @@ No se pudo verificar desde el repositorio:
 
 | Prioridad | Flujo | Estado | Tamaño | Por qué |
 |---|---|---|---|---|
-| P0 | F33 Mudanza de GitHub Pages a app.magnifit.co | Falta | S | Único camino donde un usuario actual pierde todo su historial |
-| P0 | F1 Bienvenida y configuración inicial | Falta | L | Todo usuario nuevo arranca con los datos corporales, metas y plan del dueño |
-| P0 | F19 Crear cuenta e iniciar sesión | Parcial | S | La cuenta solo se alcanza desde Perfil y depende de configurar producción |
-| P0 | F30 Eliminar cuenta y datos en la nube | Falta | M | Con cuentas activas, el usuario no puede borrar sus datos de salud |
-| P1 | F21 Cerrar sesión y cambiar de cuenta | Parcial | M | Los datos del usuario anterior quedan en el dispositivo |
-| P1 | F26 Conflictos entre dispositivos | Parcial | M–L | Registros de hábito y metas se pierden en silencio |
-| P1 | F23 Sesión expirada | Parcial | S | La sincronización se detiene tras un error genérico |
-| P1 | F8 Fin de bloque de 12 semanas | Parcial | M | Todo usuario llega ahí a las 12 semanas |
-| P1 | F7 Editar una sesión terminada | Parcial | M | Un peso mal digitado no se puede corregir |
-| P2 | F16 Instalación, actualización e indicador de estado | Parcial | S–M | Confianza y pulido |
-| P2 | F14 Respaldo robusto y borrado completo | Parcial | S | Fallos poco frecuentes |
-| P2 | F28 Cambios rechazados por el servidor | Parcial | S | Poco frecuente |
-| P2 | F29 Recordatorios de entrenamiento | Falta | M | Capacidad nueva; no está en las especificaciones |
-| P2 | F11 Calentamiento editable | Decisión abierta | — | Espera una decisión de producto |
+| P0 | F33 Mudanza de GitHub Pages a app.magnifit.co | Completo (retirar Pages espera confirmación) | S | Único camino donde un usuario actual pierde todo su historial |
+| P0 | F1 Bienvenida y configuración inicial | Completo | L | Todo usuario nuevo arranca con los datos corporales, metas y plan del dueño |
+| P0 | F19 Crear cuenta e iniciar sesión | Completo en código (falta configurar Clerk en producción) | S | La cuenta solo se alcanza desde Perfil y depende de configurar producción |
+| P0 | F30 Eliminar cuenta y datos en la nube | Completo | M | Con cuentas activas, el usuario no puede borrar sus datos de salud |
+| P1 | F21 Cerrar sesión y cambiar de cuenta | Completo | M | Los datos del usuario anterior quedan en el dispositivo |
+| P1 | F26 Conflictos entre dispositivos | Completo (fusión de config en el cliente) | M–L | Registros de hábito y metas se pierden en silencio |
+| P1 | F23 Sesión expirada | Completo | S | La sincronización se detiene tras un error genérico |
+| P1 | F8 Fin de bloque de 12 semanas | Completo | M | Todo usuario llega ahí a las 12 semanas |
+| P1 | F7 Editar una sesión terminada | Completo | M | Un peso mal digitado no se puede corregir |
+| P2 | F16 Instalación, actualización e indicador de estado | Completo | S–M | Confianza y pulido |
+| P2 | F14 Respaldo robusto y borrado completo | Completo | S | Fallos poco frecuentes |
+| P2 | F28 Cambios rechazados por el servidor | Completo | S | Poco frecuente |
+| P2 | F29 Recordatorios de entrenamiento | Completo (solo locales) | M | Capacidad nueva; no está en las especificaciones |
+| P2 | F11 Calentamiento editable | Completo | — | Espera una decisión de producto |
 
 ## Inventario completo
 
 | # | Flujo | Estado | Evidencia |
 |---|---|---|---|
-| 1 | Bienvenida y configuración inicial | Falta | `web/src/lib/store.tsx:79-82`, `web/src/lib/plan.ts:165-201` siembran los datos del dueño; no hay código de bienvenida |
+| 1 | Bienvenida y configuración inicial | Completo | `web/src/features/onboarding/components/Welcome.tsx` |
 | 2 | Pantalla Hoy (rutina siguiente, racha, registro) | Completo | `web/src/features/today/routes/Home.tsx:244-331` |
 | 3 | Vista semanal flexible | Completo | `Home.tsx:385-402` |
 | 4 | Sesión de fuerza (calentamiento, cronómetros, dolor, descanso) | Completo | `web/src/features/session/routes/Train.tsx:50-68`, `session/lib/activeSession.ts` |
 | 5 | Sesión mínima de "día difícil" | Completo | `Home.tsx:279` |
 | 6 | Sesión de natación | Completo | `Train.tsx:245`, `session/components/SwimBody.tsx` |
-| 7 | Historial y detalle de sesión | Parcial | `Train.tsx:77-175`: se puede eliminar, no editar |
-| 8 | Progresión de 12 semanas y gráficas | Parcial | `web/src/lib/phases.ts:8-17`: después de la semana 12 no pasa nada |
+| 7 | Historial y detalle de sesión | Completo | `web/src/features/session/lib/editSession.ts`: editar desde el detalle |
+| 8 | Progresión de 12 semanas y gráficas | Completo | `web/src/features/today/lib/blockEnd.ts`: fin de bloque y bloque nuevo |
 | 9 | Medidas corporales y gráficas | Completo | `web/src/features/progress/routes/Measure.tsx:22-183` |
 | 10 | Hábitos e intenciones de implementación | Completo | `web/src/features/habit/routes/Habit.tsx:52-62` |
-| 11 | Editor del plan | Completo, salvo el calentamiento | `web/src/features/plan/routes/PlanEditor.tsx`; `odd/tasks/editable-plan.md:51` |
+| 11 | Editor del plan | Completo | `web/src/features/plan/components/WarmupEditor.tsx` |
 | 12 | Ficha de ejercicio y Guía | Completo | `odd/tasks/editable-plan.md:31-35` |
 | 13 | Ajustes (altura, fechas, piscina, metas) | Completo | `web/src/features/account/routes/Settings.tsx:175-229` |
-| 14 | Exportar y restaurar respaldo local | Parcial | `odd/tasks/editable-plan.md:57`: la restauración no es atómica |
-| 15 | Borrar todos los datos | Parcial | `web/src/lib/db.ts:277-284` no borra el borrador de sesión activa |
-| 16 | PWA: sin conexión, instalación, actualización | Parcial | `web/vite.config.ts`: sin aviso de instalación ni de versión nueva |
+| 14 | Exportar y restaurar respaldo local | Completo | `web/src/lib/db.ts` (`importBackup` en una sola transacción) |
+| 15 | Borrar todos los datos | Completo | `web/src/lib/db.ts` (`wipeAll` también borra el borrador de sesión activa) |
+| 16 | PWA: sin conexión, instalación, actualización | Completo | `web/src/features/pwa/components/PwaPrompts.tsx` |
 | 17 | Diseño de escritorio | Completo | `web/src/styles/styles.css:881` |
 | 18 | Estados de carga y error de la base local | Completo | `web/src/app/App.tsx:44-56`, `components/ErrorBoundary.tsx` |
-| 19 | Crear cuenta e iniciar sesión | Parcial | `account/components/clerkAuth.tsx:41-49`: única entrada en Perfil |
+| 19 | Crear cuenta e iniciar sesión | Completo en código (falta configurar Clerk en producción) | `web/src/features/today/components/BackupNotice.tsx` |
 | 20 | Recuperar contraseña y verificar correo | Delegado a Clerk | Sin código en el repositorio; depende del panel de Clerk |
-| 21 | Cerrar sesión | Parcial | `sync/lib/localWrites.ts:5-8`: los datos y la cola quedan en el dispositivo |
-| 22 | Cambiar de cuenta en un dispositivo | Parcial | `sync/lib/engine.ts:36-38,163-166`: se bloquea y la única salida es borrar |
-| 23 | Sesión expirada (401) | Parcial | `engine.ts:186-191,200-206`: error genérico con reintento indefinido |
+| 21 | Cerrar sesión | Completo | `web/src/features/account/components/SignOutDialog.tsx` |
+| 22 | Cambiar de cuenta en un dispositivo | Completo | `web/src/features/account/lib/eraseDevice.ts` (`exportAndEraseDevice`) |
+| 23 | Sesión expirada (401) | Completo | `web/src/features/sync/lib/engine.ts` (estado `auth_expired`) |
 | 24 | Sincronización, cola sin conexión, reintento | Completo | `engine.ts:140-386`, `sync/lib/useSync.ts:12-38` |
 | 25 | Subida de datos locales en el primer inicio de sesión | Completo | `engine.ts:444-504` |
-| 26 | Manejo de conflictos | Parcial | `engine.ts:296-311`: gana la última escritura del documento completo |
-| 27 | Uso en varios dispositivos | Parcial | `useSync.ts:5,25-30`: sondeo cada 5 minutos o al enfocar |
-| 28 | Cambios rechazados por el servidor | Parcial | `sync/lib/statusText.ts:24-27`: muestra un conteo sin acciones |
-| 29 | Recordatorios y notificaciones | Falta | Sin uso de la API de notificaciones en `web/src` |
-| 30 | Eliminar cuenta | Falta | `router.go`: no hay ruta DELETE ni webhook de Clerk |
-| 31 | Borrar datos en la nube y conservar la cuenta | Falta | `statusText.ts:43`: al borrar con sesión iniciada, todo vuelve a descargarse |
+| 26 | Manejo de conflictos | Completo | `web/src/features/sync/lib/configMerge.ts` |
+| 27 | Uso en varios dispositivos | Completo | `web/src/features/sync/lib/configSync.ts` |
+| 28 | Cambios rechazados por el servidor | Completo | `web/src/features/sync/lib/engine.ts` (`retryRejected`, `discardRejected`) |
+| 29 | Recordatorios y notificaciones | Completo (solo locales) | `web/src/features/reminders/components/ReminderRunner.tsx` |
+| 30 | Eliminar cuenta | Completo | `api/internal/adapter/httpapi/account.go` (`DELETE /v1/me`) |
+| 31 | Borrar datos en la nube y conservar la cuenta | Completo | `web/src/features/account/components/CloudDangerZone.tsx` (`DELETE /v1/data`) |
 | 32 | Exportar datos (portabilidad) | Completo | `db.ts:186`, `Settings.tsx:98-105` |
-| 33 | Mudanza de GitHub Pages a app.magnifit.co | Falta | `.github/workflows/deploy.yml`, `deploy/render.yaml:26`; IndexedDB es por origen |
-| 34 | Visibilidad del estado de sincronización | Parcial | `Settings.tsx:48`: solo visible en Ajustes |
+| 33 | Mudanza de GitHub Pages a app.magnifit.co | Completo (retirar Pages espera confirmación) | `web/src/app/MovedNotice.tsx` |
+| 34 | Visibilidad del estado de sincronización | Completo | `web/src/features/sync/components/SyncIndicator.tsx` |
 
 ## Detalle de los flujos por implementar
 
