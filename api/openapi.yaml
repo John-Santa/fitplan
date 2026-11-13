@@ -73,6 +73,8 @@ paths:
           description: The records and the Clerk user are deleted.
         "401":
           $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
         "500":
           $ref: "#/components/responses/Problem"
   /v1/data:
@@ -88,6 +90,8 @@ paths:
           description: The records are deleted.
         "401":
           $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
         "500":
           $ref: "#/components/responses/Problem"
   /v1/sync:
@@ -128,6 +132,8 @@ paths:
           $ref: "#/components/responses/TooManyRequests"
         "500":
           $ref: "#/components/responses/Problem"
+        "504":
+          $ref: "#/components/responses/Problem"
     post:
       operationId: pushChanges
       summary: Push changed records (last write wins per record)
@@ -159,6 +165,8 @@ paths:
         "429":
           $ref: "#/components/responses/TooManyRequests"
         "500":
+          $ref: "#/components/responses/Problem"
+        "504":
           $ref: "#/components/responses/Problem"
 components:
   securitySchemes:
