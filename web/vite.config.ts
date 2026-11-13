@@ -89,6 +89,9 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,png,svg,woff2}'],
+        // Only crawlers (og-image) and the install UI (manifest screenshots)
+        // fetch these; precaching them would cost every install ~250 KB.
+        globIgnores: ['og-image.png', 'screenshots/**'],
         navigateFallback: base + 'index.html',
         cleanupOutdatedCaches: true,
         importScripts: [REMINDERS_SW],
