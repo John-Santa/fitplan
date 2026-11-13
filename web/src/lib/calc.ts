@@ -76,11 +76,14 @@ export function bestSet(sets: SetLog[], exerciseId: string): SetLog | null {
   )
 }
 
-/** Series de la sesion completada mas reciente para ese ejercicio. */
+/** Series de la sesion completada mas reciente para ese ejercicio. "Mas
+ *  reciente" es por la fecha de la sesion (ISO, se ordena como texto) y, a
+ *  igual fecha, por startedAt: una sesion cargada despues para un dia pasado
+ *  recibe startedAt = ahora, y no debe pasar por la ultima. */
 export function lastPerformance(sessions: StrengthSession[], exerciseId: string, excludeId?: string) {
   const ordered = sessions
     .filter(s => s.finishedAt && s.id !== excludeId)
-    .sort((a, b) => b.startedAt - a.startedAt)
+    .sort((a, b) => (a.date === b.date ? b.startedAt - a.startedAt : a.date < b.date ? 1 : -1))
   for (const s of ordered) {
     const sets = s.sets.filter(x => x.exerciseId === exerciseId && x.done && x.weight != null)
     if (sets.length) return { session: s, sets: sets.sort((a, b) => a.setIndex - b.setIndex) }

@@ -42,6 +42,28 @@ describe('lastPerformance', () => {
   })
 })
 
+describe('lastPerformance with back-dated sessions', () => {
+  // A session logged afterwards for a past date gets startedAt = now, so it
+  // must still count by the date it was done on, not by when it was typed in.
+  it('treats a session logged late for an earlier date as older than a session done after that date', () => {
+    const doneOnTheFifth = session('real', 1000, [set('squat', 0, 60, 10)], { date: '2026-01-05' })
+    const loggedLateForTheFirst = session('late', 9000, [set('squat', 0, 40, 10)], { date: '2026-01-01' })
+    expect(lastPerformance([doneOnTheFifth, loggedLateForTheFirst], 'squat')?.session.id).toBe('real')
+  })
+
+  it('falls back to startedAt when two sessions share a date', () => {
+    const morning = session('am', 1000, [set('squat', 0, 50, 10)], { date: '2026-01-05' })
+    const evening = session('pm', 2000, [set('squat', 0, 60, 10)], { date: '2026-01-05' })
+    expect(lastPerformance([evening, morning], 'squat')?.session.id).toBe('pm')
+  })
+
+  it('does not reorder the array it is given', () => {
+    const list = [session('a', 1000, [set('squat', 0, 50, 10)]), session('b', 2000, [set('squat', 0, 60, 10)])]
+    lastPerformance(list, 'squat')
+    expect(list.map(s => s.id)).toEqual(['a', 'b'])
+  })
+})
+
 describe('shouldProgress', () => {
   const three = (reps: number[]) => reps.map((r, i) => set('squat', i, 60, r))
 
