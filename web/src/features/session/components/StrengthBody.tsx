@@ -134,7 +134,7 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
   /** Marks every remaining set of the exercise as done in one tap, using the
    *  values on screen or the last session's as the default. */
   const completeAll = (slot: PlanSlot) => {
-    const prev = lastPerformance(strengthSessions, slot.exerciseId, session.id)
+    const prev = lastPerformance(strengthSessions, slot.exerciseId, session.id, session)
     const next = session.sets.slice()
     for (let i = 0; i < targetOf(slot); i++) {
       const idx = next.findIndex(s => s.exerciseId === slot.exerciseId && s.setIndex === i)
@@ -267,7 +267,7 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
           if (!focus) return
           const { slot, index, isLast } = focus
           const s = logsOf(slot).find(l => l.setIndex === index)
-          const prev = lastPerformance(strengthSessions, slot.exerciseId, session.id)
+          const prev = lastPerformance(strengthSessions, slot.exerciseId, session.id, session)
           update(slot.exerciseId, index, completionPatch(slot, s, refFor(prev, index), suggestionFor(prev, index, slot, targetOf(slot), phase)?.weight))
           if (isLast && slot.restSec > 0) startRest(slot.restSec)
         }
@@ -327,7 +327,7 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
             name={nameOf(slot)}
             sets={targetOf(slot)}
             logs={logsOf(slot)}
-            prev={lastPerformance(strengthSessions, slot.exerciseId, session.id)}
+            prev={lastPerformance(strengthSessions, slot.exerciseId, session.id, session)}
             phase={phase}
             seat={meta[slot.exerciseId]?.seat ?? ''}
             pain={session.pain?.[slot.exerciseId]}

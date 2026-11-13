@@ -88,9 +88,17 @@ export const bySessionTime = (a: Pick<Session, 'date' | 'startedAt'>, b: Pick<Se
 
 /** Series de la sesion completada mas reciente (segun bySessionTime) para ese
  *  ejercicio. */
-export function lastPerformance(sessions: StrengthSession[], exerciseId: string, excludeId?: string) {
+export function lastPerformance(
+  sessions: StrengthSession[],
+  exerciseId: string,
+  excludeId?: string,
+  /** The session being logged: only sessions before it count, so a session
+   *  logged for a past date is compared with what came before that date (the
+   *  same cutoff the records and the closing summary use). */
+  before?: Pick<Session, 'date' | 'startedAt'>,
+) {
   const ordered = sessions
-    .filter(s => s.finishedAt && s.id !== excludeId)
+    .filter(s => s.finishedAt && s.id !== excludeId && (!before || bySessionTime(s, before) < 0))
     .sort((a, b) => bySessionTime(b, a))
   for (const s of ordered) {
     const sets = s.sets.filter(x => x.exerciseId === exerciseId && x.done && x.weight != null)

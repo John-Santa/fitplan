@@ -51,6 +51,15 @@ describe('lastPerformance with back-dated sessions', () => {
     expect(lastPerformance([doneOnTheFifth, loggedLateForTheFirst], 'squat')?.session.id).toBe('real')
   })
 
+  it('for a session being logged for a past date, only sessions before it count as "la vez pasada"', () => {
+    const before = session('nov3', 1000, [set('squat', 0, 50, 10)], { date: '2026-11-03' })
+    const after = session('nov10', 2000, [set('squat', 0, 70, 10)], { date: '2026-11-10' })
+    const current = session('nov5', 9000, [], { date: '2026-11-05', finishedAt: null })
+    expect(lastPerformance([before, after, current], 'squat', current.id, current)?.session.id).toBe('nov3')
+    // Without the current session the reference stays the latest one, as before.
+    expect(lastPerformance([before, after, current], 'squat', current.id)?.session.id).toBe('nov10')
+  })
+
   it('falls back to startedAt when two sessions share a date', () => {
     const morning = session('am', 1000, [set('squat', 0, 50, 10)], { date: '2026-01-05' })
     const evening = session('pm', 2000, [set('squat', 0, 60, 10)], { date: '2026-01-05' })
