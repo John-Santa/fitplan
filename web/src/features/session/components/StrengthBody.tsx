@@ -14,7 +14,7 @@ import SessionShell from './SessionShell'
 import SlotCard from './SlotCard'
 import WarmupStep from './WarmupStep'
 import { ArrowRightIcon, CheckCircle } from './PlanIcons'
-import { completionPatch, refFor } from './SlotCard'
+import { completionPatch, refFor, suggestionFor } from './SlotCard'
 
 interface Props {
   session: StrengthSession
@@ -136,7 +136,7 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
     for (let i = 0; i < targetOf(slot); i++) {
       const idx = next.findIndex(s => s.exerciseId === slot.exerciseId && s.setIndex === i)
       if (idx >= 0 && next[idx].done) continue
-      const patch = completionPatch(slot, idx >= 0 ? next[idx] : undefined, refFor(prev, i))
+      const patch = completionPatch(slot, idx >= 0 ? next[idx] : undefined, refFor(prev, i), suggestionFor(prev, i, slot, targetOf(slot), phase)?.weight)
       if (idx >= 0) next[idx] = { ...next[idx], ...patch }
       else next.push({ exerciseId: slot.exerciseId, setIndex: i, weight: null, reps: null, done: false, ...patch })
     }
@@ -262,7 +262,8 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
           if (!focus) return
           const { slot, index, isLast } = focus
           const s = logsOf(slot).find(l => l.setIndex === index)
-          update(slot.exerciseId, index, completionPatch(slot, s, refFor(lastPerformance(strengthSessions, slot.exerciseId, session.id), index)))
+          const prev = lastPerformance(strengthSessions, slot.exerciseId, session.id)
+          update(slot.exerciseId, index, completionPatch(slot, s, refFor(prev, index), suggestionFor(prev, index, slot, targetOf(slot), phase)?.weight))
           if (isLast && slot.restSec > 0) startRest(slot.restSec)
         }
         const skip = () => {
@@ -322,6 +323,7 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
             sets={targetOf(slot)}
             logs={logsOf(slot)}
             prev={lastPerformance(strengthSessions, slot.exerciseId, session.id)}
+            phase={phase}
             seat={meta[slot.exerciseId]?.seat ?? ''}
             pain={session.pain?.[slot.exerciseId]}
             current={currentOf(slot)}

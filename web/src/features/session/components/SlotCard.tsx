@@ -1,6 +1,7 @@
-import type { PlanSlot, SetLog } from '../../../lib/types'
+import type { Phase, PlanSlot, SetLog } from '../../../lib/types'
 import type { lastPerformance } from '../../../lib/calc'
-import { progressLine, shouldProgress } from '../../../lib/calc'
+import { progressLine } from '../../../lib/calc'
+import { fmtKg, suggestLoad, type LoadSuggestion } from '../../../lib/load'
 import { formatTarget } from '../../../lib/phases'
 import { Check } from '../../../components/ui'
 import HoldTimer from './HoldTimer'
@@ -17,6 +18,8 @@ export interface SlotCardProps {
   /** Series ya registradas de este ejercicio en la sesion. */
   logs: SetLog[]
   prev: Prev
+  /** Fase de la semana: decide si hoy se baja la carga (descarga). */
+  phase: Phase | null
   seat: string
   pain: number | undefined
   /** Indice de la serie actual (null = todas hechas o saltadas). */
@@ -47,13 +50,23 @@ const fmtN = (n: number | null | undefined): string => (n == null ? '—' : Numb
 /** Referencia de la sesion anterior para la serie i (o su ultima serie). */
 export const refFor = (prev: Prev, i: number): SetLog | undefined => prev?.sets[i] ?? prev?.sets[prev.sets.length - 1]
 
+/** Carga sugerida para hoy en la serie i (null = sin sugerencia). */
+export const suggestionFor = (prev: Prev, i: number, slot: Pick<PlanSlot, 'target'>, n: number, phase: Phase | null): LoadSuggestion | null =>
+  prev ? suggestLoad(prev.sets, i, slot, n, phase) : null
+
 /** Lo que registra "Completar serie" para la serie i de un slot: igual que el
- *  check de siempre (valores tecleados, o la referencia / el objetivo). */
-export function completionPatch(slot: PlanSlot, s: SetLog | undefined, ref: SetLog | undefined): Partial<SetLog> {
+ *  check de siempre (valores tecleados, o la sugerencia / la referencia / el
+ *  objetivo). Lo que se ve en pantalla es lo que se guarda. */
+export function completionPatch(
+  slot: PlanSlot,
+  s: SetLog | undefined,
+  ref: SetLog | undefined,
+  suggestedWeight?: number,
+): Partial<SetLog> {
   const t = slot.target
   switch (t.kind) {
     case 'reps':
-      return { done: true, weight: s?.weight ?? ref?.weight ?? null, reps: s?.reps ?? t.high }
+      return { done: true, weight: s?.weight ?? suggestedWeight ?? ref?.weight ?? null, reps: s?.reps ?? t.high }
     case 'time':
       return { done: true, durationSec: s?.durationSec ?? t.lowSec }
     case 'distance':
@@ -103,28 +116,31 @@ function Stepper(p: {
  *  lista de series, dolor al terminar y ajuste del equipo. La accion de
  *  "Completar serie" vive en la zona del pulgar de StrengthBody. */
 export default function SlotCard(p: SlotCardProps) {
-  const { slot, name, sets: n, logs, prev, current } = p
+  const { slot, name, sets: n, logs, prev, phase, current } = p
   const target = slot.target
   const mine = logs.slice().sort((a, b) => a.setIndex - b.setIndex)
   const logAt = (i: number) => mine.find(x => x.setIndex === i)
   const label = formatTarget(target)
-  const progress = target.kind === 'reps' && prev != null && shouldProgress(prev.sets, n, target.high)
   const cur = current !== null ? logAt(current) : undefined
   const curRef = current !== null ? refFor(prev, current) : undefined
+  const suggestion = current !== null ? suggestionFor(prev, current, slot, n, phase) : null
+  // "Sube peso hoy" y la linea de progresion solo cuando la sugerencia sube de
+  // placa: en la semana de descarga la sugerencia manda.
+  const progress = suggestion?.reason === 'progress'
   const stateOf = (i: number): 'done' | 'current' | 'skipped' | 'pending' =>
     logAt(i)?.done ? 'done' : i === current ? 'current' : p.skipped.has(i) ? 'skipped' : 'pending'
 
   const doneText = (s: SetLog | undefined): string => {
     if (!s) return '—'
-    if (target.kind === 'reps') return `${fmtN(s.weight)} kg × ${fmtN(s.reps)}`
+    if (target.kind === 'reps') return `${fmtKg(s.weight)} kg × ${fmtN(s.reps)}`
     if (target.kind === 'time') return `${fmtN(s.durationSec)} s`
     if (target.kind === 'distance') return label
     return 'Hecho'
   }
   const plannedText = (i: number): string => {
     if (target.kind === 'reps') {
-      const ref = refFor(prev, i)
-      return `${fmtN(ref?.weight)} kg × ${target.high}`
+      const weight = suggestionFor(prev, i, slot, n, phase)?.weight ?? refFor(prev, i)?.weight
+      return `${fmtKg(weight)} kg × ${target.high}`
     }
     if (target.kind === 'time') return `${target.lowSec} s`
     if (target.kind === 'distance') return label
@@ -144,14 +160,17 @@ export default function SlotCard(p: SlotCardProps) {
             <div className="ses-now-title">
               <span>{target.kind === 'note' ? 'Pendiente' : `Serie ${i + 1} de ${n}`}</span>
               {progress && (
-                <span className="ses-pill good"><TrendIcon /> Sube peso la próxima</span>
+                <span className="ses-pill good"><TrendIcon /> Sube peso hoy</span>
               )}
               {isLast && n > 1 && <span className="ses-pill">La última</span>}
             </div>
             {target.kind === 'reps' && (
               <p className="ses-prevline">
-                {curRef ? `Anterior: ${fmtN(curRef.weight)} kg × ${fmtN(curRef.reps)}` : 'Primera vez: empieza liviano, la primera serie es de reconocimiento.'}
+                {curRef ? `La vez pasada: ${fmtKg(curRef.weight)} kg × ${fmtN(curRef.reps)}` : 'Primera vez: empieza liviano, la primera serie es de reconocimiento.'}
               </p>
+            )}
+            {suggestion && target.kind === 'reps' && (
+              <p className="ses-prevline">{`Sugerido hoy: ${fmtKg(suggestion.weight)} kg · ${suggestion.text}`}</p>
             )}
             {progress && prev && target.kind === 'reps' && (
               <p className="ses-prevline">{progressLine(prev.sets.length, Math.min(...prev.sets.map(s => s.reps ?? target.high)))}</p>
@@ -164,7 +183,7 @@ export default function SlotCard(p: SlotCardProps) {
           <div className="ses-steppers">
             <Stepper
               label="Peso" unit="kg" step={2.5} min={0} decimal
-              value={cur?.weight ?? curRef?.weight ?? null}
+              value={cur?.weight ?? suggestion?.weight ?? curRef?.weight ?? null}
               onChange={v => p.onUpdate(i, { weight: v })}
             />
             <Stepper
@@ -192,7 +211,7 @@ export default function SlotCard(p: SlotCardProps) {
             <button
               type="button" role="checkbox" aria-checked={!!cur?.done}
               className={cur?.done ? 'ses-tick on' : 'ses-tick'}
-              onClick={() => p.onUpdate(i, cur?.done ? { done: false } : completionPatch(slot, cur, curRef))}
+              onClick={() => p.onUpdate(i, cur?.done ? { done: false } : completionPatch(slot, cur, curRef, suggestion?.weight))}
             >
               <span className="ses-tick-box"><Check on={!!cur?.done} /></span>
               <span className="ses-tick-text">Hecha</span>

@@ -46,7 +46,7 @@ describe('suggestLoad', () => {
     expect(suggestLoad([prevSet(0, 60, 12), prevSet(1, 60, 12)], 0, reps, 3, base)?.reason).toBe('same')
   })
 
-  it('has no suggestion on the first time, for a missing weight, or without a phase it still works', () => {
+  it('has no suggestion on the first time or without a previous weight, and works without a phase', () => {
     expect(suggestLoad([], 0, reps, 3, base)).toBeNull()
     expect(suggestLoad([prevSet(0, null, 10)], 0, reps, 3, base)).toBeNull()
     expect(suggestLoad(threeAt(60, 10), 0, reps, 3, null)?.weight).toBe(60)
