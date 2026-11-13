@@ -161,7 +161,19 @@ export const deleteSession = (id: string) => del(STORE_SESSIONS, id)
 /* ---------- medidas ---------- */
 export const getMeasurements = () =>
   getAll<Measurement>(STORE_MEASUREMENTS).then(list => list.sort((a, b) => (a.date < b.date ? -1 : 1)))
+export const getMeasurement = (date: string) =>
+  tx<Measurement | undefined>(STORE_MEASUREMENTS, 'readonly', s => s.get(date) as IDBRequest<Measurement | undefined>)
+/** Whole-record put by date: it REPLACES the stored measurement, so a record
+ *  with fewer fields drops the rest. Callers that only know some fields (a
+ *  weight-only log, a form with empty inputs) go through `mergeMeasurement`. */
 export const saveMeasurement = (m: Measurement) => put(STORE_MEASUREMENTS, m)
+/** What to store when `patch` is saved over the measurement already stored for
+ *  its date: every field of `existing` survives unless `patch` carries it.
+ *  Fields a patch leaves out are "not entered", never "cleared". */
+export const mergeMeasurement = (existing: Measurement | undefined, patch: Measurement): Measurement => ({
+  ...existing,
+  ...patch,
+})
 export const deleteMeasurement = (date: string) => del(STORE_MEASUREMENTS, date)
 
 /* ---------- notas por ejercicio ---------- */

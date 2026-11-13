@@ -5,7 +5,7 @@
 // ejercitan en este archivo llama a `indexedDB.open`.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Session } from './types'
-import { checkBackupVersion } from './db'
+import { checkBackupVersion, mergeMeasurement } from './db'
 import { normalizeSession } from './plan'
 import { installMemoryIdb } from './testing/memoryIdb'
 
@@ -191,5 +191,21 @@ describe('importBackup', () => {
     await expect(db.importBackup(backup({ config: structuredClone(DEFAULT_CONFIG) }), 'merge')).rejects.toThrow()
     idb.failPuts(null)
     expect((await db.getSessions()).sessions.map(s => s.id)).toEqual(['old-1'])
+  })
+})
+
+describe('mergeMeasurement', () => {
+  it('keeps the stored fields the patch does not carry and takes the ones it does', () => {
+    const stored = { date: '2026-11-12', weight: 80, fatPct: 20, waist: 90 }
+    expect(mergeMeasurement(stored, { date: '2026-11-12', weight: 79, waist: 89 })).toEqual({
+      date: '2026-11-12', weight: 79, fatPct: 20, waist: 89,
+    })
+  })
+
+  it('returns the patch as it is when nothing is stored for the date, and does not mutate the stored row', () => {
+    expect(mergeMeasurement(undefined, { date: '2026-11-12', weight: 79 })).toEqual({ date: '2026-11-12', weight: 79 })
+    const stored = { date: '2026-11-12', weight: 80, fatPct: 20 }
+    mergeMeasurement(stored, { date: '2026-11-12', weight: 79 })
+    expect(stored).toEqual({ date: '2026-11-12', weight: 80, fatPct: 20 })
   })
 })
