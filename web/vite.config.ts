@@ -1,7 +1,9 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { guardImportScripts } from './src/features/reminders/lib/swImportGuard'
 
 // Extra worker code for local reminders (notification click + periodic sync).
 // The generateSW worker loads it with importScripts, so the strategy stays the
@@ -12,6 +14,26 @@ const remindersSw = {
   name: 'magnifit-reminders-sw',
   generateBundle(this: { emitFile: (f: { type: 'asset'; fileName: string; source: string }) => void }) {
     this.emitFile({ type: 'asset', fileName: REMINDERS_SW, source: readFileSync(new URL('./src/sw/reminders-sw.js', import.meta.url), 'utf8') })
+  },
+}
+
+// A failed import of the reminders code must never take the precache and the
+// SKIP_WAITING listener down with it: once VitePWA has written sw.js (its
+// closeBundle runs in the normal order), wrap that import in a try/catch.
+let outDir = 'dist'
+const guardRemindersImport = {
+  name: 'magnifit-guard-reminders-import',
+  apply: 'build' as const,
+  configResolved(config: { root: string; build: { outDir: string } }) {
+    outDir = resolve(config.root, config.build.outDir)
+  },
+  closeBundle: {
+    order: 'post' as const,
+    sequential: true,
+    handler() {
+      const sw = resolve(outDir, 'sw.js')
+      writeFileSync(sw, guardImportScripts(readFileSync(sw, 'utf8'), REMINDERS_SW))
+    },
   },
 }
 
@@ -73,5 +95,6 @@ export default defineConfig({
       },
       devOptions: { enabled: false },
     }),
+    guardRemindersImport,
   ],
 })
