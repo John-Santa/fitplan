@@ -317,7 +317,7 @@ export function downloadBackupFile(data: Backup): void {
 
 /** Empties the fitplan database and the session draft kept in localStorage
  *  (the workout in progress is user data too). The sync database is not
- *  touched here: eraseDevice (features/account) combines both. */
+ *  touched here: eraseLocalCopy (features/sync/lib/erase) combines both. */
 export async function wipeAll() {
   await Promise.all([
     clear(STORE_SESSIONS),
