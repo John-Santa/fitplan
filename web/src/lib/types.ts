@@ -307,6 +307,15 @@ export interface Config {
   habitCheckIns: string[]
   /** Implementation intention per weekday (see WeeklyIntentions). */
   intentions: WeeklyIntentions
+  /** The user's disciplines ("Tus disciplinas"): an ordered, unique,
+   *  non-empty subset of the catalog. Synced; absent from configs written
+   *  before it and by older clients, so mergeConfig fills it on every read.
+   *  Flat on purpose, same reason as poolLengthM. The selected discipline is
+   *  per device and does not live here (lib/disciplineSelection.ts). */
+  disciplines: SessionKind[]
+  /** Swim sessions per week, an integer 1-7 (Natación's plan). Flat and
+   *  optional in stored bodies, like `disciplines`. */
+  swimWeeklyTarget: number
 }
 
 /** version 1 = una sola disciplina (fuerza), sin `kind` en el registro de

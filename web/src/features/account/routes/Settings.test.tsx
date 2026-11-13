@@ -1,8 +1,66 @@
 // El entorno de vitest es 'node': se renderiza a string, sin DOM.
 import { describe, expect, it } from 'vitest'
 import { renderToString } from 'react-dom/server'
-import { AccountCard, SyncStatusLines } from './Settings'
+import Settings, { AccountCard, SyncStatusLines } from './Settings'
 import { authEnabled } from '../lib/auth'
+import { DisciplineCtx, StoreProvider } from '../../../lib/store'
+import { disciplineActions } from '../../../lib/disciplineSelection'
+import { mergeConfig } from '../../../lib/plan'
+import type { SessionKind } from '../../../lib/types'
+
+describe('Ajustes regrouped by concern (S9)', () => {
+  const render = (list: SessionKind[], props: { onBack?: () => void } = {}) => {
+    const api = disciplineActions({ config: mergeConfig({}), stored: null, setStored: () => {}, saveConfig: async () => {} })
+    return renderToString(
+      <StoreProvider>
+        <DisciplineCtx.Provider value={{ ...api, list }}>
+          <Settings {...props} />
+        </DisciplineCtx.Provider>
+      </StoreProvider>,
+    ).replace(/<!-- -->/g, '')
+  }
+
+  it('hides the pool length while Natación is not listed', () => {
+    expect(render(['strength'])).not.toContain('Largo de la piscina (m)')
+  })
+
+  it('shows the pool length when Natación is listed', () => {
+    expect(render(['strength', 'swim'])).toContain('Largo de la piscina (m)')
+    expect(render(['swim'])).toContain('Largo de la piscina (m)')
+  })
+
+  it('renders the groups in order, keeping the title and footer', () => {
+    const html = render(['strength', 'swim'])
+    const order = ['Cuenta', 'Tus datos', 'Tu cuerpo', 'Gimnasio', 'Natación', 'Zona de peligro']
+      .map(t => html.indexOf(`>${t}</div>`))
+    expect(order.every(i => i >= 0)).toBe(true)
+    expect([...order].sort((a, b) => a - b)).toEqual(order)
+    expect(html).toContain('<h1>Ajustes</h1>')
+    expect(html).toContain('Herramienta personal de seguimiento')
+  })
+
+  it('puts height and goals under "Tu cuerpo" and the block dates under "Gimnasio"', () => {
+    const html = render(['strength'])
+    const body = html.indexOf('>Tu cuerpo</div>')
+    const gym = html.indexOf('>Gimnasio</div>')
+    expect(html.indexOf('Estatura (cm)')).toBeGreaterThan(body)
+    expect(html.indexOf('Metas del bloque')).toBeGreaterThan(body)
+    expect(html.indexOf('Metas del bloque')).toBeLessThan(gym)
+    expect(html.indexOf('Inicio del bloque')).toBeGreaterThan(gym)
+    expect(html.indexOf('Fin del bloque')).toBeGreaterThan(gym)
+  })
+
+  it('shows no discipline chip', () => {
+    expect(render(['strength', 'swim'])).not.toContain('discipline-chip')
+  })
+
+  it('renders "Volver" only when onBack is given', () => {
+    expect(render(['strength'])).not.toContain('Volver')
+    const html = render(['strength'], { onBack: () => {} })
+    expect(html).toContain('Volver')
+    expect(html.indexOf('Volver')).toBeLessThan(html.indexOf('<h1>'))
+  })
+})
 
 describe('AccountCard sin Clerk configurado', () => {
   it('authEnabled es falso sin VITE_CLERK_PUBLISHABLE_KEY', () => {

@@ -2,6 +2,7 @@ import type { Config, Session, StrengthSession } from '../../../lib/types'
 import { doneSets, sessionVolume } from '../../../lib/calc'
 import { isBefore, recordsBroken, type BrokenRecord } from '../../../lib/records'
 import { streak } from '../../habit/lib/habit'
+import { sessionsOf } from '../../habit/lib/disciplineHabit'
 
 /** Totals against the previous finished session of the same routine (D4-A). */
 export type SummaryComparison =
@@ -17,7 +18,8 @@ export interface SessionSummaryData {
   records: BrokenRecord[]
   /** Null when the comparison does not apply (a minimal session). */
   comparison: SummaryComparison | null
-  /** Streak including the finished session's day. */
+  /** Gimnasio's streak (S4: gym sessions and walks, never swims) including
+   *  the finished session's day. */
   streakDays: number
 }
 
@@ -52,6 +54,6 @@ export function summarizeSession(
     durationMs: finished.finishedAt != null ? finished.finishedAt - finished.startedAt : null,
     records: recordsBroken(finished, all),
     comparison,
-    streakDays: streak({ sessions: all, config: habit.config, today: habit.today, restAllowance: habit.restAllowance }).days,
+    streakDays: streak({ sessions: sessionsOf('strength', all), config: habit.config, today: habit.today, restAllowance: habit.restAllowance }).days,
   }
 }

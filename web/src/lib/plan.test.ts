@@ -285,3 +285,61 @@ describe('routineExercises heredado', () => {
     expect(mergeConfig({ heightCm: 170 }).routineExercises).toEqual({})
   })
 })
+
+// S1/S6/S10: the discipline list and the swim weekly target are flat Config
+// fields, optional in every stored and synced body, filled on every read.
+describe('mergeConfig: disciplines and swimWeeklyTarget', () => {
+  it('fills the discipline list with the default', () => {
+    expect(mergeConfig({}).disciplines).toEqual(['strength'])
+  })
+
+  it('deduplicates the list and drops ids this build does not know', () => {
+    expect(mergeConfig({ disciplines: ['swim', 'swim', 'running'] }).disciplines).toEqual(['swim'])
+    expect(mergeConfig({ disciplines: ['swim', 'strength', 'swim'] }).disciplines).toEqual(['swim', 'strength'])
+  })
+
+  it('falls back to the default when nothing valid is left', () => {
+    expect(mergeConfig({ disciplines: [] }).disciplines).toEqual(['strength'])
+    expect(mergeConfig({ disciplines: ['running', 3, null] }).disciplines).toEqual(['strength'])
+    expect(mergeConfig({ disciplines: 'swim' }).disciplines).toEqual(['strength'])
+  })
+
+  it('keeps a valid stored list as it is, order included', () => {
+    expect(mergeConfig({ disciplines: ['swim', 'strength'] }).disciplines).toEqual(['swim', 'strength'])
+  })
+
+  it('never shares the default list between two configs', () => {
+    const a = mergeConfig({})
+    a.disciplines.push('swim')
+    expect(mergeConfig({}).disciplines).toEqual(['strength'])
+    expect(DEFAULT_CONFIG.disciplines).toEqual(['strength'])
+  })
+
+  it('fills swimWeeklyTarget with 2', () => {
+    expect(mergeConfig({}).swimWeeklyTarget).toBe(2)
+  })
+
+  it('keeps an integer target from 1 to 7 and falls back to 2 otherwise', () => {
+    expect(mergeConfig({ swimWeeklyTarget: 1 }).swimWeeklyTarget).toBe(1)
+    expect(mergeConfig({ swimWeeklyTarget: 7 }).swimWeeklyTarget).toBe(7)
+    for (const bad of [0, 8, -1, 2.5, Number.NaN, Infinity, '3', null, true]) {
+      expect([bad, mergeConfig({ swimWeeklyTarget: bad }).swimWeeklyTarget]).toEqual([bad, 2])
+    }
+  })
+
+  it("today's stored DEFAULT_CONFIG (no new fields) keeps every other field byte-identical", () => {
+    const todays = structuredClone(DEFAULT_CONFIG) as Partial<Config>
+    delete todays.disciplines
+    delete todays.swimWeeklyTarget
+    const merged = mergeConfig(todays) as Partial<Config>
+    expect(merged.disciplines).toEqual(['strength'])
+    expect(merged.swimWeeklyTarget).toBe(2)
+    delete merged.disciplines
+    delete merged.swimWeeklyTarget
+    expect(JSON.stringify(merged)).toBe(JSON.stringify(todays))
+  })
+
+  it('appends the new fields after every existing one, so existing key order is unchanged', () => {
+    expect(Object.keys(mergeConfig({})).slice(-2)).toEqual(['disciplines', 'swimWeeklyTarget'])
+  })
+})

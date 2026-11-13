@@ -18,7 +18,7 @@ const SWIM_NOTE =
 
 /** DEFAULT_CONFIG tal como la traia la app en 4d0c2c0, antes del plan editable
  *  (y antes de routineExercises, que llego con el PR #1). */
-const OLD_SHIPPED_CONFIG: Omit<Config, 'routineExercises' | 'habitCheckIns' | 'intentions'> = {
+const OLD_SHIPPED_CONFIG: Omit<Config, 'routineExercises' | 'habitCheckIns' | 'intentions' | 'disciplines' | 'swimWeeklyTarget'> = {
   heightCm: 173,
   blockStart: '2026-08-04',
   blockEnd: '2026-09-28',
@@ -36,12 +36,15 @@ const OLD_SHIPPED_CONFIG: Omit<Config, 'routineExercises' | 'habitCheckIns' | 'i
 }
 
 /** La misma config tal como la deja mergeConfig hoy: routineExercises vacio y
- *  los campos de habitos (habitCheckIns, intentions) en su valor por defecto. */
+ *  los campos de habitos (habitCheckIns, intentions) y de disciplinas
+ *  (disciplines, swimWeeklyTarget) en su valor por defecto. */
 const oldConfig = (): Config => ({
   ...structuredClone(OLD_SHIPPED_CONFIG),
   routineExercises: {},
   habitCheckIns: [],
   intentions: structuredClone(DEFAULT_CONFIG.intentions),
+  disciplines: ['strength'],
+  swimWeeklyTarget: 2,
 })
 
 const legacySet = { exerciseId: 'leg-press', setIndex: 0, weight: 80, reps: 10, done: true }

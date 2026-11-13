@@ -1,7 +1,25 @@
 import { describe, expect, it } from 'vitest'
 import { renderToString } from 'react-dom/server'
 import type { Session, StrengthSession, TrainingPlan } from '../../../lib/types'
+import type { ReactNode } from 'react'
+import type { SessionKind } from '../../../lib/types'
+import { DisciplineCtx } from '../../../lib/store'
+import { disciplineActions } from '../../../lib/disciplineSelection'
+import { DEFAULT_CONFIG } from '../../../lib/plan'
 import WeekReview from './WeekReview'
+
+const as = (kind: SessionKind, node: ReactNode) => {
+  const api = disciplineActions({
+    config: { ...DEFAULT_CONFIG, disciplines: ['strength', 'swim'] }, stored: kind,
+    setStored: () => {}, saveConfig: async () => {},
+  })
+  return <DisciplineCtx.Provider value={api}>{node}</DisciplineCtx.Provider>
+}
+let sn = 0
+const swim = (date: string, distanceM: number): Session => ({
+  id: `sw${sn++}`, kind: 'swim', date, startedAt: 1, finishedAt: 2, notes: '', poolLengthM: 25, rpe: null,
+  blocks: [{ id: 'b', done: true, distanceM }],
+}) as unknown as Session
 
 const routines = ['a', 'b', 'c', 'd', 'e'].map(id => ({ id, name: id, archived: false }))
 const plan = {
@@ -21,7 +39,7 @@ const sessions: Session[] = [
 
 describe('WeekReview', () => {
   // Today is Wednesday 2026-11-25: the last closed week is 16..22 nov.
-  const html = renderToString(<WeekReview plan={plan} sessions={sessions} config={config} today="2026-11-25" />)
+  const html = renderToString(as('strength', <WeekReview plan={plan} sessions={sessions} config={{ ...config, swimWeeklyTarget: 2 }} today="2026-11-25" />))
   it('shows the closed week with done of target, walks, volume and block line', () => {
     expect(html).toContain('Semana del 16 al 22 nov')
     expect(html).toContain('Entrenamientos: 4 de 5')
@@ -34,7 +52,29 @@ describe('WeekReview', () => {
     expect(html).toContain('+100 % frente a la semana anterior')
   })
   it('without any activity shows an empty state', () => {
-    const empty = renderToString(<WeekReview plan={plan} sessions={[]} config={{ ...config, habitCheckIns: [] }} today="2026-11-25" />)
+    const empty = renderToString(as('strength', <WeekReview plan={plan} sessions={[]} config={{ ...config, habitCheckIns: [], swimWeeklyTarget: 2 }} today="2026-11-25" />))
     expect(empty).toContain('Aún no hay semanas cerradas')
+  })
+  it('Gimnasio ignores swims: gym-only review equals today\'s with a swim added', () => {
+    const mixed = [...sessions, swim('2026-11-18', 1000)]
+    const out = renderToString(as('strength', <WeekReview plan={plan} sessions={mixed} config={{ ...config, swimWeeklyTarget: 2 }} today="2026-11-25" />))
+    expect(out).toBe(html)
+  })
+})
+
+describe('WeekReview under Natación', () => {
+  // 16..22 nov: swims of 1.500 m and 1.500 m; week before: 2.730 m.
+  const swims: Session[] = [
+    swim('2026-11-16', 1500), swim('2026-11-19', 1500),
+    swim('2026-11-09', 2730),
+  ]
+  const out = renderToString(as('swim', <WeekReview plan={plan} sessions={swims} config={{ ...config, swimWeeklyTarget: 2 }} today="2026-11-25" />)).replace(/<!-- -->/g, '')
+  it('shows sessions, distance and the change, without volume or block', () => {
+    expect(out).toContain('Sesiones: 2 de 2')
+    expect(out).toContain('Distancia: 3.000 m')
+    expect(out).toContain('+10 % frente a la semana anterior')
+    expect(out).not.toContain('Volumen')
+    expect(out).not.toContain('Bloque')
+    expect(out).not.toContain('Caminatas')
   })
 })

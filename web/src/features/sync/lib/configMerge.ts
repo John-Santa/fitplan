@@ -4,9 +4,9 @@
 // Inputs: the last synced base (what both sides started from, or null when
 // this install never stored one), the local copy and the remote copy, each
 // with the updatedAt of its whole document. Rules, per unit:
-// - Scalars (heightCm, poolLengthM, each goal field, each weekday of the
-//   weekly routine, the block dates as one pair, any field this module does
-//   not know): the side that changed it against the base wins; when both
+// - Scalars (heightCm, poolLengthM, swimWeeklyTarget, the disciplines list as
+//   one value, each goal field, each weekday of the weekly routine, the block
+//   dates as one pair, any field this module does not know): the side that changed it against the base wins; when both
 //   changed it differently, the later updatedAt wins (a tie keeps remote,
 //   which the server already holds).
 // - habitCheckIns, a set keyed by date: a date added on either side stays,
@@ -53,6 +53,8 @@ const SCALAR_LABELS: Record<string, string> = {
   heightCm: 'Altura',
   poolLengthM: 'Largo de la piscina',
   block: 'Fechas del bloque',
+  disciplines: 'Tus disciplinas',
+  swimWeeklyTarget: 'Sesiones de natación por semana',
 }
 
 /** Notice shown when a local change lost to another device. */

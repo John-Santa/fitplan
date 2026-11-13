@@ -1,9 +1,9 @@
 // Flexible week: routines are not tied to weekdays. The goal is to do every
 // active routine once per calendar week (Monday..Sunday), on any day and in
 // any order; the remaining days are rest wildcards used whenever you want.
-import type { PlanRoutine, Session, TrainingPlan } from '../../../lib/types'
+import type { PlanRoutine, Session, SessionKind, TrainingPlan } from '../../../lib/types'
 import { sessionVolume, todayISO } from '../../../lib/calc'
-import { finishedIn } from '../../../lib/disciplines'
+import { finishedIn, swimDistance } from '../../../lib/disciplines'
 import { blockWeekNumber, phaseForWeek } from '../../../lib/phases'
 import { blockWeekVolume } from '../../today/lib/blockEnd'
 
@@ -32,6 +32,23 @@ export function weeklyTarget(plan: Pick<TrainingPlan, 'routines'>): number {
 /** Rest wildcards per week: the days the target leaves free. */
 export function restAllowance(plan: Pick<TrainingPlan, 'routines'>): number {
   return Math.max(0, 7 - weeklyTarget(plan))
+}
+
+/** Bounds that make `finishedIn` match every date of the history. */
+export const ALL_DATES = { start: '0000-01-01', end: '9999-12-31' } as const
+
+/** A weekly target as a whole number of days, 0..7 (non-numbers are 0). */
+const clampTarget = (n: number): number => (Number.isFinite(n) ? Math.min(7, Math.max(0, Math.round(n))) : 0)
+
+/** Workouts per week of one discipline (D10-A): Gimnasio's comes from the
+ *  plan (`weeklyTarget`), Natación's is the swim weekly target. */
+export function weeklyTargetFor(kind: SessionKind, plan: Pick<TrainingPlan, 'routines'>, swimWeeklyTarget: number): number {
+  return kind === 'strength' ? weeklyTarget(plan) : clampTarget(swimWeeklyTarget)
+}
+
+/** Rest wildcards per week of one discipline: 7 minus its target. */
+export function restAllowanceFor(kind: SessionKind, plan: Pick<TrainingPlan, 'routines'>, swimWeeklyTarget: number): number {
+  return kind === 'strength' ? restAllowance(plan) : 7 - clampTarget(swimWeeklyTarget)
 }
 
 /** Routine ids with a finished strength session in today's calendar week. */
@@ -68,6 +85,29 @@ export function weekSummary(plan: Pick<TrainingPlan, 'routines'>, sessions: read
   const allowance = restAllowance(plan)
   const empty = days.filter(d => d < today && !active.has(d) && !checkIns.includes(d)).length
   return { target: weeklyTarget(plan), done, restAllowance: allowance, restUsed: Math.min(empty, allowance) }
+}
+
+/** `weekSummary` for one discipline (S4, D5-A). A day is active only with a
+ *  finished session of that kind; walk check-ins count for Gimnasio only
+ *  (D4-A), so a swim-only day spends a Gimnasio wildcard. Gimnasio's target
+ *  and "done" are the plan's routines, as in `weekSummary`; Natación's done is
+ *  the number of distinct days with a finished swim this week. */
+export function weekSummaryFor(
+  kind: SessionKind,
+  plan: Pick<TrainingPlan, 'routines'>,
+  sessions: readonly Session[],
+  checkIns: readonly string[],
+  today: string,
+  swimWeeklyTarget: number,
+): WeekSummary {
+  const days = weekDays(today)
+  const own = finishedIn([...sessions], kind, days[0], days[6])
+  const active = new Set<string>(own.map(s => s.date))
+  const walks = kind === 'strength' ? checkIns : []
+  const allowance = restAllowanceFor(kind, plan, swimWeeklyTarget)
+  const empty = days.filter(d => d < today && !active.has(d) && !walks.includes(d)).length
+  const done = kind === 'strength' ? weekSummary(plan, own, [], today).done : active.size
+  return { target: weeklyTargetFor(kind, plan, swimWeeklyTarget), done, restAllowance: allowance, restUsed: Math.min(empty, allowance) }
 }
 
 /** Hoy's one-line reminder that resting is allowed: shown while wildcards
@@ -110,6 +150,45 @@ export function closedWeekSummary(plan: Pick<TrainingPlan, 'routines'>, sessions
     walks: new Set(checkIns.filter(d => d >= days[0] && d <= days[6])).size,
     volume: volumeOf(days),
     prevVolume: volumeOf(weekDays(addDays(days[0], -7))),
+  }
+}
+
+/** Natación's numbers for a closed week (S7): sessions as distinct swim days
+ *  against the swim target, and distance (m) of that week and the one before. */
+export interface ClosedSwimWeekSummary {
+  monday: string
+  target: number
+  /** Distinct days with a finished swim that week. */
+  done: number
+  distance: number
+  prevDistance: number
+}
+
+export type DisciplineClosedWeek =
+  | ({ kind: 'strength' } & ClosedWeekSummary)
+  | ({ kind: 'swim' } & ClosedSwimWeekSummary)
+
+/** `closedWeekSummary` for one discipline: Gimnasio's is exactly today's
+ *  (routines, walks, volume); Natación's has no walks and no volume. */
+export function closedWeekSummaryFor(
+  kind: SessionKind,
+  plan: Pick<TrainingPlan, 'routines'>,
+  sessions: readonly Session[],
+  checkIns: readonly string[],
+  day: string,
+  swimWeeklyTarget: number,
+): DisciplineClosedWeek {
+  if (kind === 'strength') return { kind, ...closedWeekSummary(plan, sessions, checkIns, day) }
+  const days = weekDays(day)
+  const prev = weekDays(addDays(days[0], -7))
+  const distanceOf = (week: string[]) => finishedIn([...sessions], 'swim', week[0], week[6]).reduce((a, s) => a + swimDistance(s), 0)
+  return {
+    kind,
+    monday: days[0],
+    target: weeklyTargetFor(kind, plan, swimWeeklyTarget),
+    done: new Set(finishedIn([...sessions], 'swim', days[0], days[6]).map(s => s.date)).size,
+    distance: distanceOf(days),
+    prevDistance: distanceOf(prev),
   }
 }
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { RoutineId, Session, StrengthSession } from '../../../lib/types'
+import type { RoutineId, Session, SessionKind, StrengthSession } from '../../../lib/types'
 import { nextRoutine } from '../../habit/lib/week'
 import { exerciseNameInRoutine, routineSetCount, routineSlots, weekLabel, routineDisplayName, sortByFocus } from '../../../lib/planQueries'
 import { blockWeekNumber, phaseForWeek } from '../../../lib/phases'
@@ -7,8 +7,10 @@ import { isPainValue, painVerdict } from '../../../lib/pain'
 import { doneSets, fmtDate, fmtDuration, mmss, sessionVolume, todayISO } from '../../../lib/calc'
 import { DISCIPLINES, SWIM_STROKE_LABELS, finishSwimSession, metresToLaps, sessionDigest, swimDistance, swimPaceSecPer100m } from '../../../lib/disciplines'
 import { useStore } from '../../../lib/store'
+import { useDiscipline } from '../../../lib/useDiscipline'
 import { loadActiveDraft, saveActiveDraft } from '../lib/activeSession'
 import { applySessionEdit } from '../lib/editSession'
+import { autoStartSession } from '../lib/autoStart'
 import ActiveSession from './ActiveSession'
 import SessionClosing from '../components/SessionClosing'
 import ExerciseProgress from '../../progress/routes/ExerciseProgress'
@@ -22,8 +24,15 @@ import { Empty } from '../../../components/ui'
  *  una disciplina nueva con progresion propia exige agregarle su rama aca. */
 type ProgressTarget = { kind: 'strength'; routineId: RoutineId } | { kind: 'swim' } | { kind: 'pain' }
 
-export default function Train({ autoStart, autoStartMinimal, autoStartDate, onAutoStarted }: { autoStart?: string; autoStartMinimal?: boolean; autoStartDate?: string; onAutoStarted?: () => void } = {}) {
+const EMPTY_HISTORY_COPY: Record<SessionKind, string> = {
+  strength: 'Cuando termines la primera, aquí vas a ver series y peso de cada sesión.',
+  swim: 'Cuando termines la primera, aquí vas a ver largos y tiempo de cada sesión.',
+}
+
+export default function Train({ autoStart, autoStartMinimal, autoStartDate, autoStartSwim, onAutoStarted }: { autoStart?: string; autoStartMinimal?: boolean; autoStartDate?: string; autoStartSwim?: boolean; onAutoStarted?: () => void } = {}) {
   const { sessions, config, plan, saveSession, deleteSession } = useStore()
+  // S6: starting and history show only the selected discipline.
+  const { active: discipline } = useDiscipline()
   // Restores the workout in progress after a reload.
   const [active, setActive] = useState<Session | null>(() => loadActiveDraft())
   useEffect(() => { saveActiveDraft(active) }, [active])
@@ -37,14 +46,19 @@ export default function Train({ autoStart, autoStartMinimal, autoStartDate, onAu
 
   // Arranque directo desde Hoy: igual que el boton "start" de la rutina.
   useEffect(() => {
-    if (!autoStart || active) return
+    if ((!autoStart && !autoStartSwim) || active) return
     // A past date logs that day's workout retroactively.
-    const created = DISCIPLINES.strength.create(autoStartDate ?? todayISO(), autoStart)
-    setActive(autoStartMinimal ? { ...created, minimal: true } : created)
+    const created = autoStartSession(
+      { routineId: autoStart, minimal: autoStartMinimal, date: autoStartDate, swim: autoStartSwim },
+      todayISO(),
+      config.poolLengthM,
+    )
+    if (created) setActive(created)
     onAutoStarted?.()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoStart])
+  }, [autoStart, autoStartSwim])
 
+  const history = sessions.filter(s => s.kind === discipline)
   const week = blockWeekNumber(new Date(), config.blockStart)
   const phase = phaseForWeek(plan, week)
   const suggested = nextRoutine(plan, sessions, todayISO())
@@ -212,7 +226,7 @@ export default function Train({ autoStart, autoStartMinimal, autoStartDate, onAu
       <div className="eyebrow">{weekLabel(plan.weeks, week)}</div>
       <h1>Entrenar</h1>
 
-      {phase && (
+      {discipline === 'strength' && phase && (
         <div className="card accent tight">
           <div className="row">
             <div className="grow">
@@ -228,7 +242,7 @@ export default function Train({ autoStart, autoStartMinimal, autoStartDate, onAu
 
       <div className="col-a">
         <div className="section-title">Empezar sesión</div>
-        {routines.map(r => (
+        {discipline === 'strength' && routines.map(r => (
           <div className="card" key={r.id} style={{ marginBottom: 10 }}>
             <div className="row">
               <div className="grow">
@@ -253,7 +267,7 @@ export default function Train({ autoStart, autoStartMinimal, autoStartDate, onAu
           </div>
         ))}
 
-        {archivedWithHistory.map(r => (
+        {discipline === 'strength' && archivedWithHistory.map(r => (
           <div className="card" key={r.id} style={{ marginBottom: 10 }}>
             <strong>{routineDisplayName(r.name)}</strong> <span className="pill">archivada</span>
             <div className="muted">Ya no se empieza desde aquí; tu historial se conserva.</div>
@@ -263,7 +277,7 @@ export default function Train({ autoStart, autoStartMinimal, autoStartDate, onAu
           </div>
         ))}
 
-        <div className="card" style={{ marginBottom: 10 }}>
+        {discipline === 'swim' && <div className="card" style={{ marginBottom: 10 }}>
           <div className="row">
             <div className="grow">
               <strong>{DISCIPLINES.swim.label}</strong>
@@ -280,21 +294,23 @@ export default function Train({ autoStart, autoStartMinimal, autoStartDate, onAu
           <button className="ghost" style={{ marginTop: 10, padding: '7px 12px', fontSize: 13 }} onClick={() => setProgressFor({ kind: 'swim' })}>
             Ver progresión
           </button>
-        </div>
-        <button className="ghost" style={{ padding: '7px 12px', fontSize: 13 }} onClick={() => setProgressFor({ kind: 'pain' })}>
-          Ver registro de dolor
-        </button>
+        </div>}
+        {discipline === 'strength' && (
+          <button className="ghost" style={{ padding: '7px 12px', fontSize: 13 }} onClick={() => setProgressFor({ kind: 'pain' })}>
+            Ver registro de dolor
+          </button>
+        )}
       </div>
 
       <div className="col-b">
         <div className="section-title">Historial</div>
-        {sessions.length === 0 ? (
+        {history.length === 0 ? (
           <Empty title="Todavía no hay sesiones">
-            Cuando termines la primera, aquí vas a ver el detalle de cada sesión — series y peso en fuerza, largos y tiempo en natación.
+            {EMPTY_HISTORY_COPY[discipline]}
           </Empty>
         ) : (
           <div className="tablewrap">
-            {sessions.map(s => {
+            {history.map(s => {
               const digest = sessionDigest(s, plan)
               const metaLine =
                 s.kind === 'strength'

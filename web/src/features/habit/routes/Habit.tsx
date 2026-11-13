@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { useStore } from '../../../lib/store'
 import { todayISO } from '../../../lib/calc'
-import { bestStreak, consistency, habitGrid, intentionFor, streak, votes, type DayStatus, type HabitContext } from '../lib/habit'
-import { restAllowance, weekSummary } from '../lib/week'
+import { bestStreak, consistency, habitGrid, intentionFor, streak, votes, type DayStatus } from '../lib/habit'
+import { weekSummaryFor } from '../lib/week'
+import { habitContextFor } from '../lib/disciplineHabit'
+import { useDiscipline } from '../../../lib/useDiscipline'
 import type { Intention, WeeklyIntentions } from '../../../lib/types'
 import { MonthCalendar } from '../components/MonthCalendar'
 import WeekReview from '../components/WeekReview'
@@ -34,21 +36,22 @@ const plural = (n: number, one: string, many: string) => (n === 1 ? one : many)
 
 export default function Habit() {
   const { sessions, config, plan, saveConfig } = useStore()
+  const { active } = useDiscipline()
   const [openDow, setOpenDow] = useState<number | null>(null)
   const [time, setTime] = useState('')
   const [place, setPlace] = useState('')
   const [saving, setSaving] = useState(false)
 
   const today = todayISO()
-  const ctx: HabitContext = { sessions, config, today, restAllowance: restAllowance(plan) }
+  const ctx = habitContextFor(active, sessions, config, plan, today, config.swimWeeklyTarget)
   const { days } = streak(ctx)
   const best = Math.max(bestStreak(ctx), days)
   const pct = consistency(ctx, 12)
   const grid = habitGrid(ctx, 12)
   const total = votes(ctx)
-  const sessionDates = new Set(sessions.filter(s => s.finishedAt != null).map(s => s.date))
+  const sessionDates = new Set(ctx.sessions.map(s => s.date))
 
-  const { done, target } = weekSummary(plan, sessions, config.habitCheckIns, today)
+  const { done, target } = weekSummaryFor(active, plan, sessions, config.habitCheckIns, today, config.swimWeeklyTarget)
 
   const toggle = (dow: number) => {
     if (openDow === dow) { setOpenDow(null); return }
@@ -121,8 +124,14 @@ export default function Habit() {
           </div>
         </div>
         <ul className="hab-legend">
-          <li><i className="hab-cell kept-session" />Entrenado</li>
-          <li><i className="hab-cell kept-check" />Hecho</li>
+          {active === 'swim' ? (
+            <li><i className="hab-cell kept-session" />Nadado</li>
+          ) : (
+            <>
+              <li><i className="hab-cell kept-session" />Entrenado</li>
+              <li><i className="hab-cell kept-check" />Caminata</li>
+            </>
+          )}
           <li><i className="hab-cell rest" />Comodín de descanso</li>
           <li><i className="hab-cell missed" />Faltó</li>
         </ul>
@@ -134,7 +143,11 @@ export default function Habit() {
         <p className="hab-sub strong">Votos por tu identidad</p>
         <p className="hab-big">
           <span className="hab-num">{total}</span>
-          <span className="hab-unit plain">{plural(total, 'entrenamiento completado', 'entrenamientos completados')}</span>
+          <span className="hab-unit plain">
+            {active === 'swim'
+              ? plural(total, 'sesión de natación', 'sesiones de natación')
+              : plural(total, 'entrenamiento completado', 'entrenamientos completados')}
+          </span>
         </p>
         <blockquote className="hab-quote">Cada sesión es un voto por el atleta que estás construyendo.</blockquote>
         <div className="hab-row hab-week">

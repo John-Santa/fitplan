@@ -37,6 +37,8 @@ async function fresh() {
   await sdb.updateMeta({ userId: 'user_A', cursor: 7 })
   await sdb.savePreBootstrapBackup(await db.exportBackup())
   storage.setItem('fitplan:active-session', JSON.stringify({ ...session, finishedAt: null }))
+  // The discipline selected on this device (S1, D3-A).
+  storage.setItem('fitplan:discipline', 'swim')
   return { db, sdb, erase, idb, storage }
 }
 

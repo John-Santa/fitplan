@@ -13,6 +13,8 @@ import { exportAndEraseDevice } from '../lib/eraseDevice'
 import PlanDamagedNotice from '../components/PlanDamagedNotice'
 import { BACKUP_NOTICE, REJECTED_DISCARD_HINT, rejectedLabel, restoreHint, syncStatusLines, wipeConfirmTexts } from '../../sync/lib/statusText'
 import { useRejectedEntries, useSyncStatus } from '../../sync/lib/useSync'
+import { useDiscipline } from '../../../lib/useDiscipline'
+import { blockEndPatch, blockStartPatch, goalPatch, heightPatch, poolLengthPatch } from '../lib/settingsPatch'
 import { CloudDangerZone } from '../components/CloudDangerZone'
 
 // Clerk solo se carga si hay clave; sin ella este módulo nunca se importa.
@@ -178,10 +180,11 @@ export function SyncStatusLines({ status, onSync, onDownloadBackup, onExportAndS
   )
 }
 
-export default function Settings() {
+export default function Settings({ onBack }: { onBack?: () => void } = {}) {
   const { config, saveConfig, reload, sessions, droppedSessionCount, measurements, planDamaged } = useStore()
   const auth = useAuthState()
   const signedIn = authEnabled && auth.enabled && auth.isSignedIn
+  const { list } = useDiscipline()
   const toast = useToast()
   const fileRef = useRef<HTMLInputElement>(null)
   const [height, setHeight] = useState(String(config.heightCm))
@@ -216,6 +219,7 @@ export default function Settings() {
 
   return (
     <>
+      {onBack && <button className="ghost" onClick={onBack}>Volver</button>}
       <div className="eyebrow">
         Bloque {fmtDate(config.blockStart)} – {fmtDate(config.blockEnd, true)}
       </div>
@@ -269,40 +273,18 @@ export default function Settings() {
           </p>
         </div>
 
-        <div className="section-title">Configuración</div>
+        <div className="section-title">Tu cuerpo</div>
         <div className="card">
           <label htmlFor="h">Estatura (cm)</label>
           <input
             id="h" type="number" inputMode="decimal" step="0.5" value={height}
             onChange={e => setHeight(e.target.value)}
             onBlur={() => {
-              const v = Number(height)
-              if (!Number.isNaN(v) && v > 100) saveConfig({ ...config, heightCm: v })
+              const next = heightPatch(config, height)
+              if (next) saveConfig(next)
             }}
           />
           <p className="hint">Se usa para el IMC, el FFMI y el índice cintura/estatura.</p>
-          <div className="formgrid" style={{ marginTop: 12 }}>
-            <div>
-              <label htmlFor="block-start">Inicio del bloque</label>
-              <input id="block-start" type="date" value={config.blockStart} onChange={e => saveConfig({ ...config, blockStart: e.target.value })} />
-            </div>
-            <div>
-              <label htmlFor="block-end">Fin del bloque</label>
-              <input id="block-end" type="date" value={config.blockEnd} onChange={e => saveConfig({ ...config, blockEnd: e.target.value })} />
-            </div>
-          </div>
-          <label htmlFor="pool" style={{ marginTop: 12 }}>Largo de la piscina (m)</label>
-          <input
-            id="pool" type="number" inputMode="decimal" step="0.5" defaultValue={config.poolLengthM}
-            onBlur={e => {
-              const v = Number(e.target.value)
-              if (!Number.isNaN(v) && v > 0) saveConfig({ ...config, poolLengthM: v })
-            }}
-          />
-          <p className="hint">
-            Convierte los largos que cargas en la pantalla de natación a metros. Cambiarlo no reescribe el
-            historial ya guardado.
-          </p>
         </div>
       </div>
 
@@ -316,14 +298,50 @@ export default function Settings() {
                 <input
                   id={`g-${k}`} type="number" inputMode="decimal" step="0.1" defaultValue={fmt(config.goal[k]).replace(',', '.')}
                   onBlur={e => {
-                    const v = Number(e.target.value)
-                    if (!Number.isNaN(v)) saveConfig({ ...config, goal: { ...config.goal, [k]: v } })
+                    const next = goalPatch(config, k, e.target.value)
+                    if (next) saveConfig(next)
                   }}
                 />
               </div>
             ))}
           </div>
         </div>
+      </div>
+
+      <div className="col-a">
+        <div className="section-title">Gimnasio</div>
+        <div className="card">
+          <div className="formgrid">
+            <div>
+              <label htmlFor="block-start">Inicio del bloque</label>
+              <input id="block-start" type="date" value={config.blockStart} onChange={e => saveConfig(blockStartPatch(config, e.target.value))} />
+            </div>
+            <div>
+              <label htmlFor="block-end">Fin del bloque</label>
+              <input id="block-end" type="date" value={config.blockEnd} onChange={e => saveConfig(blockEndPatch(config, e.target.value))} />
+            </div>
+          </div>
+        </div>
+
+        {list.includes('swim') && (
+          <>
+            <div className="section-title">Natación</div>
+            <div className="card">
+              <label htmlFor="pool">Largo de la piscina (m)</label>
+              <input
+                id="pool" type="number" inputMode="decimal" step="0.5" defaultValue={config.poolLengthM}
+                onBlur={e => {
+                  const next = poolLengthPatch(config, e.target.value)
+                  if (next) saveConfig(next)
+                }}
+              />
+              <p className="hint">
+                Convierte los largos que cargas en la pantalla de natación a metros. Cambiarlo no reescribe el
+                historial ya guardado.
+              </p>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="col-b">

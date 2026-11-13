@@ -39,7 +39,7 @@ import type { ChangeSet, ItemResult, PushChangeSet } from '../syncTypes'
 import type { ExerciseMeta, Measurement } from '../../../lib/types'
 import * as sdb from './syncDb'
 import type { Entity, OutboxEntry } from './syncDb'
-import { mergePendingConfig, noteConfigSynced } from './configSync'
+import { mergePendingConfig, noteConfigSynced, withLocalNewFields } from './configSync'
 
 export const OTHER_ACCOUNT_ERROR =
   'Esta app tiene datos de otra cuenta. Para no mezclarlos, la sincronización está en pausa: vuelve a iniciar ' +
@@ -448,7 +448,9 @@ async function applyRemote(r: Remote, allowDelete: boolean): Promise<boolean> {
     await db.saveExerciseMeta(r.body as unknown as ExerciseMeta)
   } else if (r.key === 'config') {
     if (!isObject(r.body)) return false
-    await db.saveConfig(mergeConfig(r.body))
+    // A body from an older client lacks the new fields: the local values
+    // stay (withLocalNewFields, same helper as the queued-merge path).
+    await db.saveConfig(await withLocalNewFields(r.body, mergeConfig(r.body), await db.getConfig()))
     await noteConfigSynced(r.body)
   } else if (r.key === 'plan') {
     const plan = normalizePlan(r.body)
