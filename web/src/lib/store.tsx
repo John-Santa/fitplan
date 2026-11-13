@@ -37,6 +37,9 @@ interface Store {
   saveSession: (s: Session) => Promise<void>
   deleteSession: (id: string) => Promise<void>
   saveMeasurement: (m: Measurement) => Promise<void>
+  /** Saves `m` over the stored measurement of the same date: fields `m` does
+   *  not carry are kept. Use it whenever the caller knows only some fields. */
+  mergeMeasurement: (m: Measurement) => Promise<void>
   deleteMeasurement: (date: string) => Promise<void>
   saveMeta: (m: ExerciseMeta) => Promise<void>
   saveConfig: (c: Config) => Promise<void>
@@ -153,6 +156,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       saveSession: async s => { await local.saveSession(s); await reload() },
       deleteSession: async id => { await local.deleteSession(id); await reload() },
       saveMeasurement: async m => { await local.saveMeasurement(m); await reload() },
+      mergeMeasurement: async m => { await local.mergeMeasurement(m); await reload() },
       deleteMeasurement: async d => { await local.deleteMeasurement(d); await reload() },
       saveMeta: async m => { await local.saveExerciseMeta(m); await reload() },
       // The edit is applied over the stored config: a sync may have merged

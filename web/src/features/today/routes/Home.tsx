@@ -12,6 +12,7 @@ import { useDerivedMeasurements, useStore } from '../../../lib/store'
 import BottomSheet from '../../../components/BottomSheet'
 import { isBackCarePlan } from '../../../lib/defaultPlan'
 import HoyBackupNotice from '../components/BackupNotice'
+import QuickWeight from '../components/QuickWeight'
 import './home.css'
 
 type Tab = 'plan' | 'progreso' | 'perfil'
@@ -344,6 +345,8 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
             {checkedToday ? 'Caminata hecha ✓ · Deshacer' : 'Marcar caminata hecha'}
           </button>
         )}
+
+        <QuickWeight />
 
         <section className="hoy-section" aria-label="Esta semana">
           <div className="hoy-section-head">

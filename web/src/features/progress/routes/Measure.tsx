@@ -19,7 +19,7 @@ const CAMPOS: { k: keyof Omit<Measurement, 'date'>; label: string; unit: string;
   }))
 
 export default function Measure() {
-  const { config, saveMeasurement, deleteMeasurement } = useStore()
+  const { config, mergeMeasurement, deleteMeasurement } = useStore()
   const rows = useDerivedMeasurements()
   const toast = useToast()
   const [form, setForm] = useState<Record<string, string>>({ date: todayISO() })
@@ -51,7 +51,9 @@ export default function Measure() {
       const v = Number(form[c.k])
       if (form[c.k] !== '' && form[c.k] != null && !Number.isNaN(v)) (m as any)[c.k] = v
     })
-    await saveMeasurement(m)
+    // Empty inputs mean "not entered", not "cleared": a date that already has
+    // a measurement keeps the fields this form leaves blank.
+    await mergeMeasurement(m)
     setForm({ date: todayISO() })
     setShowForm(false)
     toast.show('Medición guardada')
@@ -136,7 +138,7 @@ export default function Measure() {
               <button className="primary grow" onClick={submit}>Guardar</button>
               <button className="ghost" onClick={() => setShowForm(false)}>Cancelar</button>
             </div>
-            <p className="hint">Si dejas un campo vacío, esa fila simplemente no lo grafica. Fecha y peso son obligatorios.</p>
+            <p className="hint">Si dejas un campo vacío, esa fila simplemente no lo grafica; si esa fecha ya tenía una medición, conserva el valor que tenía. Fecha y peso son obligatorios.</p>
           </div>
         )}
       </div>

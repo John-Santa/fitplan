@@ -54,6 +54,14 @@ export async function saveMeasurement(m: Measurement) {
   await upsert('measurement', m.date, m)
 }
 
+/** Saves `patch` over the measurement stored for its date (see
+ *  db.mergeMeasurement) through saveMeasurement, so the outbox gets the merged
+ *  record. The stored copy is read here, not taken from a screen's memory,
+ *  which may be stale after a sync. */
+export async function mergeMeasurement(patch: Measurement) {
+  await saveMeasurement(db.mergeMeasurement(await db.getMeasurement(patch.date), patch))
+}
+
 export async function deleteMeasurement(date: string) {
   const last = tracking ? (await db.getMeasurements()).find(m => m.date === date) : undefined
   await db.deleteMeasurement(date)

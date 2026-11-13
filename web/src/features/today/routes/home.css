@@ -357,3 +357,4 @@ button.hoy-checklist-row:hover { border-color: var(--fp-ink3); }
   background: var(--fp-s2); color: var(--fp-ink); font: inherit; font-size: 16px; color-scheme: dark;
 }
 .hoy-log-note { margin: 0 0 12px; font-size: 14px; color: var(--fp-ink2); }
+.hoy-log-error { margin: 0 0 12px; font-size: 14px; color: var(--fp-danger); }
