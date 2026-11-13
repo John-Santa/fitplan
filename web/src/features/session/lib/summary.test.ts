@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { SetLog, StrengthSession } from '../../../lib/types'
+import type { SetLog, StrengthSession, SwimSession } from '../../../lib/types'
 import { DEFAULT_CONFIG } from '../../../lib/plan'
 import { summarizeSession } from './summary'
 
@@ -76,6 +76,20 @@ describe('summarizeSession', () => {
     const yesterday = session('2026-11-11', sets(3, 10), { routineId: 'espalda-d2' })
     const done = session('2026-11-12', sets(3, 10))
     expect(summarizeSession(done, [yesterday], habit('2026-11-12')).streakDays).toBe(2)
+  })
+
+  it('counts only Gimnasio days (and walks) in the streak, never swims (S4)', () => {
+    // Swims Mon 09 and Tue 10, nothing else, no wildcards: for Gimnasio those
+    // days are misses, so only today counts. A walk on Wed 11 still keeps it.
+    const swim = (date: string): SwimSession => ({
+      id: `w${++seq}`, kind: 'swim', date, startedAt: 1, finishedAt: 2, notes: '', poolLengthM: 25, rpe: null,
+      blocks: [{ index: 0, distanceM: 500, timeSec: 600, stroke: 'freestyle', done: true }],
+    })
+    const done = session('2026-11-12', sets(3, 10))
+    const noRest = { config: { ...DEFAULT_CONFIG, habitCheckIns: [] }, today: '2026-11-12', restAllowance: 0 }
+    expect(summarizeSession(done, [swim('2026-11-09'), swim('2026-11-10'), swim('2026-11-11')], noRest).streakDays).toBe(1)
+    const walked = { ...noRest, config: { ...noRest.config, habitCheckIns: ['2026-11-11'] } }
+    expect(summarizeSession(done, [swim('2026-11-11')], walked).streakDays).toBe(2)
   })
 
   it('reports the duration and a zero volume for a session without weights', () => {

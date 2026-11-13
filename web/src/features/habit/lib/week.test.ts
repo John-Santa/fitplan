@@ -2,7 +2,10 @@
 // any day; the free days are rest wildcards.
 import { describe, expect, it } from 'vitest'
 import type { PlanRoutine, Session, StrengthSession, TrainingPlan } from '../../../lib/types'
-import { blockReview, closedWeekSummary, deltaPct, nextRoutine, restAllowance, restHint, routinesDoneThisWeek, weekDays, weekSummary, weeklyTarget, weekTitle } from './week'
+import {
+  blockReview, closedWeekSummary, closedWeekSummaryFor, deltaPct, nextRoutine, restAllowance, restAllowanceFor, restHint,
+  routinesDoneThisWeek, weekDays, weekSummary, weekSummaryFor, weeklyTarget, weeklyTargetFor, weekTitle,
+} from './week'
 
 const routine = (id: string, archived = false): PlanRoutine => ({ id, name: id, archived } as unknown as PlanRoutine)
 const plan = (...rs: PlanRoutine[]): Pick<TrainingPlan, 'routines'> => ({ routines: rs })
@@ -70,6 +73,67 @@ describe('closedWeekSummary', () => {
   })
   it('a Sunday date inside the week resolves to the same Monday', () => {
     expect(closedWeekSummary(P, week, [], '2026-11-22').monday).toBe(MON)
+  })
+})
+
+const swim = (date: string, distanceM = 1000, finished = true): Session => ({
+  id: `w${n++}`, kind: 'swim', date, startedAt: 1, finishedAt: finished ? 2 : null, notes: '', poolLengthM: 25, rpe: null,
+  blocks: [{ index: 0, distanceM, timeSec: 1200, stroke: 'freestyle', done: true }],
+})
+
+describe('weekSummaryFor (per discipline, S4)', () => {
+  const MON = '2026-11-09'
+  const THU = '2026-11-12'
+  it("Natación's week: done is distinct swim days, target the swim target, 7 − target wildcards", () => {
+    const sessions = [swim(MON), swim(THU), swim(THU), swim('2026-11-10', 500, false), done('a', '2026-11-10')]
+    expect(weekSummaryFor('swim', P, sessions, [], '2026-11-15', 2)).toMatchObject({ done: 2, target: 2, restAllowance: 5 })
+  })
+
+  it('a swim-only Tuesday spends a Gimnasio wildcard and keeps Natación', () => {
+    // Today Wed: Mon trained a, Tue only swam.
+    const sessions = [done('a', MON), swim('2026-11-10')]
+    expect(weekSummaryFor('strength', P, sessions, [], WED, 2)).toEqual({ target: 5, done: 1, restAllowance: 2, restUsed: 1 })
+    // Natación: Mon had no swim (a wildcard), Tue was kept.
+    expect(weekSummaryFor('swim', P, sessions, [], WED, 2)).toEqual({ target: 2, done: 1, restAllowance: 5, restUsed: 1 })
+  })
+
+  it('walks save a Gimnasio wildcard but never a Natación one', () => {
+    const sessions = [swim('2026-11-10')]
+    expect(weekSummaryFor('strength', P, sessions, [MON, '2026-11-10'], WED, 2).restUsed).toBe(0)
+    expect(weekSummaryFor('swim', P, sessions, [MON], WED, 2).restUsed).toBe(1)
+  })
+
+  it('the target and wildcards of each discipline', () => {
+    expect([weeklyTargetFor('strength', P, 3), restAllowanceFor('strength', P, 3)]).toEqual([5, 2])
+    expect([weeklyTargetFor('swim', P, 3), restAllowanceFor('swim', P, 3)]).toEqual([3, 4])
+    expect([weeklyTargetFor('swim', P, 12), restAllowanceFor('swim', P, 12)]).toEqual([7, 0])
+  })
+})
+
+describe('closedWeekSummaryFor (per discipline)', () => {
+  const MON = '2026-11-16'
+  it("Gimnasio's closed week is today's closedWeekSummary, swims ignored", () => {
+    const sessions = [lift('a', MON, 100), swim('2026-11-17'), lift('b', '2026-11-10', 200)]
+    expect(closedWeekSummaryFor('strength', P, sessions, ['2026-11-18'], MON, 2)).toEqual({
+      kind: 'strength', ...closedWeekSummary(P, sessions, ['2026-11-18'], MON),
+    })
+  })
+
+  it("Natación's closed week: distinct swim days against the target and distance vs the week before", () => {
+    const sessions = [swim(MON, 1500), swim('2026-11-19', 1500), swim('2026-11-19', 300, false), swim('2026-11-11', 2700), lift('a', MON, 100)]
+    expect(closedWeekSummaryFor('swim', P, sessions, ['2026-11-18'], '2026-11-22', 2)).toEqual({
+      kind: 'swim', monday: MON, target: 2, done: 2, distance: 3000, prevDistance: 2700,
+    })
+  })
+})
+
+// The calls without a discipline are rewired by later units: until then they
+// return exactly what they returned before S4 (a swim day is still active).
+describe('calls without a discipline keep their previous results', () => {
+  it('weekSummary and closedWeekSummary still count every finished session', () => {
+    const sessions = [done('a', '2026-11-09'), swim('2026-11-10')]
+    expect(weekSummary(P, sessions, [], WED)).toEqual({ target: 5, done: 1, restAllowance: 2, restUsed: 0 })
+    expect(closedWeekSummary(P, sessions, [], WED)).toMatchObject({ done: 1, walks: 0, volume: 0 })
   })
 })
 
