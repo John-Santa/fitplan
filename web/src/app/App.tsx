@@ -9,6 +9,7 @@ import MovedNotice from './MovedNotice'
 import { PwaPrompts } from '../features/pwa/components/PwaPrompts'
 import { SyncIndicator } from '../features/sync/components/SyncIndicator'
 import Welcome from '../features/onboarding/components/Welcome'
+import { ReminderRunner } from '../features/reminders/components/ReminderRunner'
 
 const Train = lazy(() => import('../features/session/routes/Train'))
 const Measure = lazy(() => import('../features/progress/routes/Measure'))
@@ -85,6 +86,7 @@ function Shell() {
           <SyncIndicator onOpenAccount={() => selectTab('perfil')} />
           <PwaPrompts />
         </div>
+        <ReminderRunner onOpen={() => selectTab('home')} />
         <Suspense fallback={<ScreenFallback />}>
         {guideOpen ? (
           <Guide onBack={() => setGuideOpen(false)} />

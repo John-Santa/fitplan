@@ -1,6 +1,19 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { readFileSync } from 'node:fs'
+
+// Extra worker code for local reminders (notification click + periodic sync).
+// The generateSW worker loads it with importScripts, so the strategy stays the
+// same. Emitted verbatim, next to sw.js, so the relative import resolves under
+// any base path.
+const REMINDERS_SW = 'sw-reminders.js'
+const remindersSw = {
+  name: 'magnifit-reminders-sw',
+  generateBundle(this: { emitFile: (f: { type: 'asset'; fileName: string; source: string }) => void }) {
+    this.emitFile({ type: 'asset', fileName: REMINDERS_SW, source: readFileSync(new URL('./src/sw/reminders-sw.js', import.meta.url), 'utf8') })
+  },
+}
 
 // En GitHub Pages de proyecto la app vive en https://usuario.github.io/<repo>/
 // El workflow inyecta VITE_BASE=/<repo>/. En local queda en "/".
@@ -10,6 +23,7 @@ export default defineConfig({
   base,
   plugins: [
     react(),
+    remindersSw,
     VitePWA({
       // 'prompt': la versión nueva espera hasta que la persona toque Actualizar,
       // y el aviso no aparece en medio de un entrenamiento (features/pwa).
@@ -55,6 +69,7 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,png,svg,woff2}'],
         navigateFallback: base + 'index.html',
         cleanupOutdatedCaches: true,
+        importScripts: [REMINDERS_SW],
       },
       devOptions: { enabled: false },
     }),
