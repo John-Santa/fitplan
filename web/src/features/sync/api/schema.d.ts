@@ -95,7 +95,12 @@ export interface paths {
         /** Pull records changed since a cursor */
         get: operations["pullChanges"];
         put?: never;
-        /** Push changed records (last write wins per record) */
+        /**
+         * Push changed records (last write wins per record)
+         * @description At most 500 records in total across all four collections, and 5 MB of
+         *     body; beyond either the answer is 413 and nothing is applied. The
+         *     web client sends batches of at most 200 records.
+         */
         post: operations["pushChanges"];
         delete?: never;
         options?: never;
@@ -252,6 +257,21 @@ export interface components {
             };
         };
         /**
+         * @description The caller exceeded its per-user request limit on `/v1/*` (a token
+         *     bucket per Clerk user id; `/health` and `/readyz` are not limited).
+         *     Nothing was processed: retry the same request after `Retry-After`.
+         */
+        TooManyRequests: {
+            headers: {
+                /** @description Seconds to wait before retrying (a whole number, at least 1). */
+                "Retry-After"?: number;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /**
          * @description The account of the caller was deleted (DELETE /v1/me). Nothing is
          *     read or written; the client erases its local copy.
          */
@@ -333,6 +353,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Problem"];
+            429: components["responses"]["TooManyRequests"];
             500: components["responses"]["Problem"];
         };
     };
@@ -353,6 +374,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Problem"];
+            429: components["responses"]["TooManyRequests"];
             500: components["responses"]["Problem"];
         };
     };
@@ -373,6 +395,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Problem"];
+            429: components["responses"]["TooManyRequests"];
             500: components["responses"]["Problem"];
         };
     };
@@ -402,7 +425,9 @@ export interface operations {
             400: components["responses"]["Problem"];
             401: components["responses"]["Problem"];
             410: components["responses"]["AccountDeleted"];
+            429: components["responses"]["TooManyRequests"];
             500: components["responses"]["Problem"];
+            504: components["responses"]["Problem"];
         };
     };
     pushChanges: {
@@ -431,7 +456,9 @@ export interface operations {
             401: components["responses"]["Problem"];
             410: components["responses"]["AccountDeleted"];
             413: components["responses"]["Problem"];
+            429: components["responses"]["TooManyRequests"];
             500: components["responses"]["Problem"];
+            504: components["responses"]["Problem"];
         };
     };
 }
