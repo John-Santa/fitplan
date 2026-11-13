@@ -162,8 +162,8 @@ Owner: "Calendario o historial por mes. Ver de un vistazo qué días entrenaste,
 - Goal: make the existing flexible-week behavior discoverable; no behavior or data change.
 - Happy path: while rest wildcards remain this week and today's routine is not done, Hoy's hero shows one informational line, proposed copy: "¿Hoy no puedes? Descansa: usas un comodín y mañana sigue {rutina}." where {rutina} is the routine Hoy suggests today.
 - Edge cases: no wildcards left → no line; today already trained or a rest day → no line; block ended → no line.
-- Data: reuses the wildcard count and suggested routine Hoy already computes (`web/src/features/today/lib/week.ts:46-60`, `Home.tsx:341-347`); nothing stored or synced.
-- Files likely touched: `web/src/features/today/routes/Home.tsx`, a pure helper next to `week.ts`, its test.
+- Data: reuses the wildcard count and suggested routine Hoy already computes (`web/src/features/habit/lib/week.ts:46-60`, `Home.tsx:341-347`); nothing stored or synced.
+- Files likely touched: `web/src/features/today/routes/Home.tsx`, a pure helper in `web/src/features/habit/lib/week.ts` (or beside it), its test.
 - Acceptance: with wildcards left and an untrained training day, the rendered Hoy contains the line with the suggested routine's name; with zero wildcards it does not.
 - First RED test: the pure helper returns the hint for (wildcards 2, not trained, routine "Tren inferior A") and null for wildcards 0.
 - Size: S. Risk: none.
