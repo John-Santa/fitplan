@@ -1,28 +1,18 @@
 import { useState } from 'react'
 import type { Measurement } from '../../../lib/types'
 import { derive, fmt, fmtDate, progressPct, todayISO } from '../../../lib/calc'
-import { MEASUREMENT_KEYS, MEASUREMENT_LABELS, MEASUREMENT_STEPS, MEASUREMENT_UNITS, UNSET_GOAL } from '../../../lib/plan'
+import { UNSET_GOAL } from '../../../lib/plan'
 import { useDerivedMeasurements, useStore } from '../../../lib/store'
 import Chart, { type Series } from '../components/Chart'
+import MeasurementForm from '../components/MeasurementForm'
+import { formForDate, measurementFromForm, type MeasureForm } from '../lib/measureForm'
 import { Tile, useToast } from '../../../components/ui'
 
-/** Deriva de las tablas de plan.ts (MEASUREMENT_LABELS/UNITS/STEPS), en vez
- *  de repetir a mano una segunda lista de nueve campos: esa duplicacion es
- *  justo lo que dejaba a esta lista incompleta en silencio cuando se agregaba
- *  un campo a Measurement sin tocar este archivo. */
-const CAMPOS: { k: keyof Omit<Measurement, 'date'>; label: string; unit: string; step: string }[] =
-  MEASUREMENT_KEYS.map(k => ({
-    k,
-    label: MEASUREMENT_LABELS[k],
-    unit: MEASUREMENT_UNITS[k],
-    step: MEASUREMENT_STEPS[k],
-  }))
-
 export default function Measure() {
-  const { config, mergeMeasurement, deleteMeasurement } = useStore()
+  const { config, measurements, saveMeasurement, deleteMeasurement } = useStore()
   const rows = useDerivedMeasurements()
   const toast = useToast()
-  const [form, setForm] = useState<Record<string, string>>({ date: todayISO() })
+  const [form, setForm] = useState<MeasureForm>({ date: todayISO() })
   const [showForm, setShowForm] = useState(false)
 
   const base = rows[0]
@@ -39,21 +29,24 @@ export default function Measure() {
   const goalProps = (v: number, text: string, progress?: number) =>
     isSet(v) ? { goalText: text, progress } : {}
 
+  // A date that already has a measurement opens with its stored values (S9).
+  const openForm = () => {
+    setForm(formForDate(todayISO(), measurements))
+    setShowForm(true)
+  }
+  const change = (key: string, value: string) =>
+    setForm(key === 'date' ? formForDate(value, measurements, form) : { ...form, [key]: value })
+
   const submit = async () => {
-    const weight = Number(form.weight)
-    if (!form.date || !form.weight || Number.isNaN(weight)) {
+    const m = measurementFromForm(form)
+    if (!m) {
       toast.show('Faltan la fecha o el peso')
       return
     }
-    const m: Measurement = { date: form.date, weight }
-    CAMPOS.forEach(c => {
-      if (c.k === 'weight') return
-      const v = Number(form[c.k])
-      if (form[c.k] !== '' && form[c.k] != null && !Number.isNaN(v)) (m as any)[c.k] = v
-    })
-    // Empty inputs mean "not entered", not "cleared": a date that already has
-    // a measurement keeps the fields this form leaves blank.
-    await mergeMeasurement(m)
+    // What is on screen is what is saved: the form was prefilled with the
+    // date's stored values, so a field emptied here is removed. Only the
+    // weight-only log on Hoy merges (QuickWeight).
+    await saveMeasurement(m)
     setForm({ date: todayISO() })
     setShowForm(false)
     toast.show('Medición guardada')
@@ -114,32 +107,11 @@ export default function Measure() {
 
       <div className="col-b">
         {!showForm ? (
-          <button className="primary big block" style={{ marginTop: 12 }} onClick={() => setShowForm(true)}>
+          <button className="primary big block" style={{ marginTop: 12 }} onClick={openForm}>
             Nueva medición
           </button>
         ) : (
-          <div className="card" style={{ marginTop: 12 }}>
-            <div className="formgrid">
-              <div>
-                <label htmlFor="f-date">Fecha</label>
-                <input id="f-date" type="date" value={form.date ?? ''} onChange={e => setForm({ ...form, date: e.target.value })} />
-              </div>
-              {CAMPOS.map(c => (
-                <div key={c.k}>
-                  <label htmlFor={`f-${c.k}`}>{c.label} ({c.unit})</label>
-                  <input
-                    id={`f-${c.k}`} type="number" inputMode="decimal" step={c.step}
-                    value={form[c.k] ?? ''} onChange={e => setForm({ ...form, [c.k]: e.target.value })}
-                  />
-                </div>
-              ))}
-            </div>
-            <div className="btnrow" style={{ marginTop: 12 }}>
-              <button className="primary grow" onClick={submit}>Guardar</button>
-              <button className="ghost" onClick={() => setShowForm(false)}>Cancelar</button>
-            </div>
-            <p className="hint">Si dejas un campo vacío, esa fila simplemente no lo grafica; si esa fecha ya tenía una medición, conserva el valor que tenía. Fecha y peso son obligatorios.</p>
-          </div>
+          <MeasurementForm form={form} onChange={change} onSubmit={submit} onCancel={() => setShowForm(false)} />
         )}
       </div>
 
