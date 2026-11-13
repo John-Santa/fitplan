@@ -91,7 +91,9 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,png,svg,woff2}'],
         // Only crawlers (og-image) and the install UI (manifest screenshots)
         // fetch these; precaching them would cost every install ~250 KB.
-        globIgnores: ['og-image.png', 'screenshots/**'],
+        // The reminders script is cached by the browser as part of the worker
+        // (importScripts); precaching it too would make a 404 fail the install.
+        globIgnores: ['og-image.png', 'screenshots/**', REMINDERS_SW],
         navigateFallback: base + 'index.html',
         cleanupOutdatedCaches: true,
         importScripts: [REMINDERS_SW],

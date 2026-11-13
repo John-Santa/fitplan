@@ -1,12 +1,13 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
-import { downloadBackupFile, exportBackup, getLastBackupAt, importBackup, saveLastBackupAt, wipeAll } from '../../../lib/db'
+import { downloadBackupFile, exportBackup, getLastBackupAt, importBackup, saveLastBackupAt } from '../../../lib/db'
+import { eraseLocalCopy } from '../../sync/lib/erase'
 import { useStore } from '../../../lib/store'
 import { Tile, useToast } from '../../../components/ui'
 import { daysSince, fmt, fmtDate } from '../../../lib/calc'
 import { authEnabled, useAuthState } from '../lib/auth'
 import { MEASUREMENT_KEYS, MEASUREMENT_LABELS, MEASUREMENT_UNITS } from '../../../lib/plan'
 import { discardRejected, enqueueAllLocalChanges, retryRejected, syncNow, type SyncStatus } from '../../sync/lib/engine'
-import { clearConfigConflict, getConfigConflict, getPreBootstrapBackup, resetSyncState, type RejectedEntry } from '../../sync/lib/syncDb'
+import { clearConfigConflict, getConfigConflict, getPreBootstrapBackup, type RejectedEntry } from '../../sync/lib/syncDb'
 import { ConfigConflictNotice } from '../../sync/components/ConfigConflictNotice'
 import { exportAndEraseDevice } from '../lib/eraseDevice'
 import PlanDamagedNotice from '../components/PlanDamagedNotice'
@@ -336,9 +337,9 @@ export default function Settings() {
               const [first, last] = wipeConfirmTexts(signedIn)
               if (!confirm(first)) return
               if (!confirm(last)) return
-              await wipeAll()
-              // Sin datos locales tampoco hay dueño: la próxima cuenta empieza de cero.
-              if (authEnabled) await resetSyncState()
+              // Same erase as every other path: IndexedDB, sync state, the workout
+              // draft and the reminder prefs and schedule.
+              await eraseLocalCopy()
               location.reload()
             }}
           >
