@@ -242,6 +242,40 @@ describe('backup v3 with disciplines and swimWeeklyTarget', () => {
     expect(restored?.disciplines).toEqual(['strength'])
     expect(restored?.swimWeeklyTarget).toBe(2)
   })
+
+  it('a backup without the list gets D2-A from the sessions the import leaves stored', async () => {
+    const { DEFAULT_CONFIG } = await import('./plan')
+    const { DEFAULT_PLAN } = await import('./defaultPlan')
+    const config = structuredClone(DEFAULT_CONFIG) as Partial<typeof DEFAULT_CONFIG>
+    delete config.disciplines
+    const swim = { id: 'sw1', kind: 'swim', date: '2026-10-02', startedAt: 1, finishedAt: 2, notes: '', poolLengthM: 25, blocks: [] }
+    const backup = (sessions: unknown[]) => ({ app: 'fitplan', version: 3, exportedAt: '', sessions, measurements: [], exerciseMeta: [], config, plan: DEFAULT_PLAN })
+
+    const { db } = await freshDb()
+    await db.importBackup(backup([swim]), 'replace')
+    expect((await db.getConfig())?.disciplines).toEqual(['strength', 'swim'])
+
+    // Merge: a swim already on the device counts too.
+    const { db: other } = await freshDb()
+    await other.saveSession(swim as never)
+    await other.importBackup(backup([]), 'merge')
+    expect((await other.getConfig())?.disciplines).toEqual(['strength', 'swim'])
+
+    // Replace drops the device's sessions, so they do not count.
+    const { db: third } = await freshDb()
+    await third.saveSession(swim as never)
+    await third.importBackup(backup([]), 'replace')
+    expect((await third.getConfig())?.disciplines).toEqual(['strength'])
+  })
+
+  it('a backup that carries a list keeps it, even with swim sessions', async () => {
+    const { DEFAULT_CONFIG } = await import('./plan')
+    const { DEFAULT_PLAN } = await import('./defaultPlan')
+    const swim = { id: 'sw1', kind: 'swim', date: '2026-10-02', startedAt: 1, finishedAt: 2, notes: '', poolLengthM: 25, blocks: [] }
+    const { db } = await freshDb()
+    await db.importBackup({ app: 'fitplan', version: 3, exportedAt: '', sessions: [swim], measurements: [], exerciseMeta: [], config: { ...DEFAULT_CONFIG, disciplines: ['strength'] }, plan: DEFAULT_PLAN })
+    expect((await db.getConfig())?.disciplines).toEqual(['strength'])
+  })
 })
 
 describe('getSessions order', () => {

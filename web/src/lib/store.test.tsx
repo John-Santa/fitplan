@@ -70,9 +70,10 @@ describe('existing install (config already stored)', () => {
 })
 
 // S10: booting today's data (no disciplines, no swimWeeklyTarget) changes no
-// stored record and queues nothing for sync; D2-A is never stored on boot.
+// existing stored record and queues nothing for sync. D2-A is stored once,
+// locally, while the raw config still shows it has no list.
 describe("boot with today's IndexedDB data", () => {
-  it('keeps sessions, measurements, plan and every existing config field byte-identical, and queues no outbox entry', async () => {
+  async function todaysDevice(withSwim: boolean) {
     const { store, db, plan } = await fresh()
     const local = await import('../features/sync/lib/localWrites')
     const sdb = await import('../features/sync/lib/syncDb')
@@ -84,9 +85,14 @@ describe("boot with today's IndexedDB data", () => {
     await db.saveConfig(todays as Config)
     await db.savePlan(DEFAULT_PLAN)
     await db.saveSession({ id: 'g1', kind: 'strength', routineId: 'dia1', date: '2026-11-10', startedAt: 1, finishedAt: 2, notes: '', sets: [{ exerciseId: 'leg-press', setIndex: 0, weight: 80, reps: 10, done: true }] })
-    await db.saveSession({ id: 's1', kind: 'swim', date: '2026-11-11', startedAt: 3, finishedAt: 4, notes: '', poolLengthM: 25, blocks: [{ index: 0, stroke: 'free', distanceM: 100, timeSec: 120, done: true }] } as never)
+    if (withSwim) await db.saveSession({ id: 's1', kind: 'swim', date: '2026-11-11', startedAt: 3, finishedAt: 4, notes: '', poolLengthM: 25, blocks: [{ index: 0, stroke: 'free', distanceM: 100, timeSec: 120, done: true }] } as never)
     await db.saveMeasurement({ date: '2026-11-01', weight: 80 })
-    const snapshot = (name: string) => JSON.stringify([...idb.dump(name, 'fitplan').entries()])
+    return { store, db, local, sdb, todays }
+  }
+  const snapshot = (name: string) => JSON.stringify([...idb.dump(name, 'fitplan').entries()])
+
+  it('with a swim session: stores ["strength", "swim"] locally, queues no outbox entry and keeps every other record byte-identical', async () => {
+    const { store, db, local, sdb, todays } = await todaysDevice(true)
     const before = { sessions: snapshot('sessions'), measurements: snapshot('measurements'), plan: JSON.stringify(await db.getPlan()) }
 
     await store.prepareLocalData()
@@ -95,12 +101,29 @@ describe("boot with today's IndexedDB data", () => {
     expect(snapshot('measurements')).toBe(before.measurements)
     expect(JSON.stringify(await db.getPlan())).toBe(before.plan)
     const stored = structuredClone(await db.getConfig()) as Partial<Config>
-    // The user has a swim, yet boot stores no ['strength', 'swim']: only the
-    // mergeConfig default, which reads the same as an absent list.
-    expect(stored.disciplines ?? ['strength']).toEqual(['strength'])
+    expect(stored.disciplines).toEqual(['strength', 'swim'])
+    expect(stored.swimWeeklyTarget).toBe(2)
     delete stored.disciplines
     delete stored.swimWeeklyTarget
     expect(JSON.stringify(stored)).toBe(JSON.stringify(todays))
+    expect(await sdb.getOutbox()).toEqual([])
+    local.setTrackingForTests(false)
+  })
+
+  it('gym only: stores ["strength"]', async () => {
+    const { store, db, local } = await todaysDevice(false)
+    await store.prepareLocalData()
+    expect((await db.getConfig())?.disciplines).toEqual(['strength'])
+    local.setTrackingForTests(false)
+  })
+
+  it('runs once: a list stored after it (Natación hidden) survives the next boot', async () => {
+    const { store, db, local, sdb } = await todaysDevice(true)
+    await store.prepareLocalData()
+    await db.saveConfig({ ...(await db.getConfig())!, disciplines: ['strength'] })
+    const first = JSON.stringify(await db.getConfig())
+    await store.prepareLocalData()
+    expect(JSON.stringify(await db.getConfig())).toBe(first)
     expect(await sdb.getOutbox()).toEqual([])
     local.setTrackingForTests(false)
   })

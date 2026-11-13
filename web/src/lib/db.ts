@@ -6,6 +6,7 @@ import { defaultPlanWithLegacy } from './defaultPlan'
 import { migrateLegacyConfig } from './legacyConfig'
 import { saveActiveDraft } from '../features/session/lib/activeSession'
 import { addLegacyCustomExercises, applyLegacyRoutineExercises, legacyRoutinesUntouched } from './legacyRoutines'
+import { defaultDisciplines, withDisciplines } from './disciplineSelection'
 
 const DB_NAME = 'fitplan'
 const DB_VERSION = 1
@@ -291,7 +292,11 @@ export async function importBackup(data: unknown, mode: 'replace' | 'merge' = 'r
   let planToSave: TrainingPlan | null = planFromBackup(b)
   let configToSave: Config | null = null
   if (b.config) {
-    let config = mergeConfig(b.config)
+    // A backup from before the discipline list gets D2-A once, from the
+    // sessions this import leaves stored.
+    let config = await withDisciplines(b.config, mergeConfig(b.config), async () =>
+      defaultDisciplines(mode === 'replace' ? sessions : [...(await getSessions()).sessions, ...sessions]),
+    )
     if (!planToSave) {
       // La config de un respaldo sin plan es de antes del plan editable: puede
       // traer la semana dia1..dia3 y el bloque viejo, y la migracion de
