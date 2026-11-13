@@ -5,6 +5,7 @@ import { routineDisplayName, sortByFocus } from '../../../lib/planQueries'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PlanRoutine, TrainingPlan } from '../../../lib/types'
 import { useStore } from '../../../lib/store'
+import { useDiscipline } from '../../../lib/useDiscipline'
 import { useToast } from '../../../components/ui'
 import { addCustomExercise, addRoutine, archiveRoutine, restoreRoutine } from '../../../lib/planEdits'
 import { resetPlanToTemplate } from '../lib/warmupEdits'
@@ -15,6 +16,7 @@ import ConfirmSheet from '../components/ConfirmSheet'
 import { Icon } from '../components/icons'
 import ExercisePicker from '../components/ExercisePicker'
 import RoutineEditor from '../components/RoutineEditor'
+import SwimPlan from '../components/SwimPlan'
 import WarmupEditor from '../components/WarmupEditor'
 import Sheet from '../../../components/BottomSheet'
 import '../components/plan-editor.css'
@@ -30,7 +32,16 @@ const weeksLabel = (from: number, to: number, short = false) =>
 
 type Dialog = { kind: 'new' } | { kind: 'archive'; routineId: string } | { kind: 'reset' } | null
 
+/** S6: Gimnasio keeps today's editor; Natación shows its own plan view. */
 export default function PlanEditor({ onOpenGuide }: { onOpenGuide: () => void }) {
+  const { active } = useDiscipline()
+  const { config, saveConfig } = useStore()
+  return active === 'swim'
+    ? <SwimPlan config={config} saveConfig={saveConfig} />
+    : <GymPlanEditor onOpenGuide={onOpenGuide} />
+}
+
+function GymPlanEditor({ onOpenGuide }: { onOpenGuide: () => void }) {
   const { plan, config, savePlan } = useStore()
   const toast = useToast()
   const [openId, setOpenId] = useState<string | null>(null)
