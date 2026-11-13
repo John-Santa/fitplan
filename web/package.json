@@ -3,6 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "packageManager": "pnpm@11.20.0",
   "description": "Bitacora personal de entrenamiento y composicion corporal. PWA local-first, sin backend.",
   "scripts": {
     "dev": "vite",

@@ -2,6 +2,8 @@ module github.com/John-Santa/fitplan/api
 
 go 1.27
 
+toolchain go1.27.4
+
 require (
 	github.com/clerk/clerk-sdk-go/v2 v2.8.0
 	github.com/go-chi/chi/v5 v5.3.1
