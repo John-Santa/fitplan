@@ -1005,3 +1005,16 @@ figcaption {
 .moved-notice p { margin: 0 0 8px; }
 .moved-notice-error { color: var(--danger, #c0392b); }
 .moved-notice-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Visually hidden, still announced by screen readers (e.g. view headings that have no visible title). */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

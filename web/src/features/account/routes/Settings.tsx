@@ -220,7 +220,7 @@ export default function Settings() {
             <button className="primary" onClick={doExport}>Exportar respaldo</button>
             <button onClick={() => fileRef.current?.click()}>Restaurar</button>
             <input
-              ref={fileRef} type="file" accept="application/json" hidden
+              ref={fileRef} type="file" accept="application/json" hidden aria-label="Archivo de respaldo"
               onChange={e => { const f = e.target.files?.[0]; if (f) doImport(f); e.target.value = '' }}
             />
           </div>
@@ -244,12 +244,12 @@ export default function Settings() {
           <p className="hint">Se usa para el IMC, el FFMI y el índice cintura/estatura.</p>
           <div className="formgrid" style={{ marginTop: 12 }}>
             <div>
-              <label>Inicio del bloque</label>
-              <input type="date" value={config.blockStart} onChange={e => saveConfig({ ...config, blockStart: e.target.value })} />
+              <label htmlFor="block-start">Inicio del bloque</label>
+              <input id="block-start" type="date" value={config.blockStart} onChange={e => saveConfig({ ...config, blockStart: e.target.value })} />
             </div>
             <div>
-              <label>Fin del bloque</label>
-              <input type="date" value={config.blockEnd} onChange={e => saveConfig({ ...config, blockEnd: e.target.value })} />
+              <label htmlFor="block-end">Fin del bloque</label>
+              <input id="block-end" type="date" value={config.blockEnd} onChange={e => saveConfig({ ...config, blockEnd: e.target.value })} />
             </div>
           </div>
           <label htmlFor="pool" style={{ marginTop: 12 }}>Largo de la piscina (m)</label>

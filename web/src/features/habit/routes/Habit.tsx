@@ -76,6 +76,7 @@ export default function Habit() {
 
   return (
     <div className="hab">
+      <h1 className="sr-only">Hábito</h1>
       <section className="hab-card hab-hero" aria-label="Racha actual">
         <div className="hab-row">
           <span className="hab-badge warm">No rompas la cadena</span>
