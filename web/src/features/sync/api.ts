@@ -64,6 +64,18 @@ export async function pullChanges(since: number, limit = 200): Promise<ChangeSet
   return res.json()
 }
 
+/** DELETE /v1/me: borra todos los datos de la cuenta en el servidor y, al
+ *  final, la cuenta de Clerk. Responde 204; se puede reintentar. */
+export async function deleteAccount(): Promise<void> {
+  await apiFetch('/v1/me', { method: 'DELETE' })
+}
+
+/** DELETE /v1/data: borra todos los datos de la cuenta en el servidor y
+ *  conserva la cuenta. Responde 204. */
+export async function deleteCloudData(): Promise<void> {
+  await apiFetch('/v1/data', { method: 'DELETE' })
+}
+
 export async function pushChanges(changes: PushChangeSet): Promise<PushResult> {
   const res = await apiFetch('/v1/sync', {
     method: 'POST',

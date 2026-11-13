@@ -19,3 +19,7 @@ SELECT * FROM user_documents
 WHERE user_id = $1 AND rev > $2
 ORDER BY rev
 LIMIT $3;
+
+-- name: DeleteUserDocuments :exec
+-- Deletes every row of one user, tombstones included (DELETE /v1/data).
+DELETE FROM user_documents WHERE user_id = $1;

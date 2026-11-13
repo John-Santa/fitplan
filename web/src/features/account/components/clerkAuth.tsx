@@ -2,16 +2,21 @@
 // main.tsx y Settings.tsx), así el build sin clave no ejecuta nada de Clerk.
 import { useEffect, useMemo, type ReactNode } from 'react'
 import { ClerkProvider, SignInButton, UserButton, useAuth, useUser } from '@clerk/react'
-import { AuthContext, setTokenGetter, type AuthState } from '../lib/auth'
+import { AuthContext, setSignOutHandler, setTokenGetter, type AuthState } from '../lib/auth'
 
 function Bridge({ children }: { children: ReactNode }) {
-  const { isLoaded, isSignedIn, userId, getToken } = useAuth()
+  const { isLoaded, isSignedIn, userId, getToken, signOut } = useAuth()
   const { user } = useUser()
 
   useEffect(() => {
     setTokenGetter(() => getToken())
     return () => setTokenGetter(null)
   }, [getToken])
+
+  useEffect(() => {
+    setSignOutHandler(() => signOut())
+    return () => setSignOutHandler(null)
+  }, [signOut])
 
   const value = useMemo<AuthState>(
     () => ({

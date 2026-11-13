@@ -19,3 +19,7 @@ SELECT * FROM exercise_meta
 WHERE user_id = $1 AND rev > $2
 ORDER BY rev
 LIMIT $3;
+
+-- name: DeleteExerciseMeta :exec
+-- Deletes every row of one user, tombstones included (DELETE /v1/data).
+DELETE FROM exercise_meta WHERE user_id = $1;

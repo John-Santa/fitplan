@@ -39,7 +39,7 @@ func newServiceWithClock(t *testing.T, clock port.Clock) (*sync.Service, *pgxpoo
 	if err := postgres.Migrate(ctx, pool); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	if _, err := pool.Exec(ctx, `TRUNCATE users CASCADE`); err != nil {
+	if _, err := pool.Exec(ctx, `TRUNCATE users, deleted_users CASCADE`); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}
 	st := postgres.NewSyncStore(pool)

@@ -23,8 +23,14 @@
 // (o lo que gana localmente). Nunca borra datos locales. Si meta.userId es
 // OTRA cuenta, no mezcla: se detiene con OTHER_ACCOUNT_ERROR hasta que se
 // vuelva a entrar con la cuenta original o se borren los datos del teléfono.
+//
+// Cuenta eliminada (S4): si la API responde 410 a la subida o a la bajada, la
+// cuenta se eliminó (por ejemplo desde otro dispositivo). Se borra la copia
+// local (eraseLocalCopy), se deja de sincronizar y el estado queda 'blocked'
+// con ACCOUNT_DELETED_ERROR.
 import { ApiError, pullChanges, pushChanges } from '../api'
 import * as db from '../../../lib/db'
+import { eraseLocalCopy } from './erase'
 import { planMigration } from '../../../lib/migration'
 import { BASELINE, DEFAULT_CONFIG, mergeConfig, normalizeSession } from '../../../lib/plan'
 import { normalizePlan } from '../../../lib/planStorage'
@@ -37,6 +43,8 @@ export const OTHER_ACCOUNT_ERROR =
   'Esta app tiene datos de otra cuenta. Para no mezclarlos, la sincronización está en pausa: vuelve a iniciar ' +
   'sesión con la cuenta original, o exporta un respaldo y borra los datos de este dispositivo.'
 export const OFFLINE_ERROR = 'Sin conexión'
+export const ACCOUNT_DELETED_ERROR =
+  'Esta cuenta fue eliminada. Borramos sus datos de este dispositivo; para volver a sincronizar, crea una cuenta nueva.'
 
 export const PUSH_MAX_ITEMS = 200
 export const PUSH_MAX_BYTES = 4 * 1024 * 1024
@@ -184,6 +192,11 @@ async function runOnce(): Promise<boolean> {
     setStatus({ state: 'idle', lastSyncAt: saved.lastSyncAt, lastError: null })
     return true
   } catch (e) {
+    if (isGone(e)) {
+      await accountDeleted()
+      changed.value = true
+      return false
+    }
     const offline = isOffline(e)
     const waitMs = rateLimitWait(e)
     const message = offline
@@ -200,6 +213,20 @@ async function runOnce(): Promise<boolean> {
     await refreshStatus().catch(() => {})
     if (status.state === 'syncing') setStatus({ state: 'idle' })
   }
+}
+
+const isGone = (e: unknown) => e instanceof ApiError && e.status === 410
+
+/** La API dice que la cuenta ya no existe: se borra la copia local y se deja
+ *  de sincronizar hasta que otra sesión vuelva a fijar el usuario. */
+async function accountDeleted() {
+  currentUser = null
+  clearTimers()
+  failures = 0
+  // syncNow nunca rechaza: si el borrado local falla, igual queda bloqueado.
+  await eraseLocalCopy().catch(() => {})
+  await sdb.updateMeta({ lastError: ACCOUNT_DELETED_ERROR }).catch(() => {})
+  setStatus({ state: 'blocked', lastError: ACCOUNT_DELETED_ERROR })
 }
 
 function isOffline(e: unknown): boolean {

@@ -59,6 +59,37 @@ paths:
           $ref: "#/components/responses/TooManyRequests"
         "500":
           $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteMe
+      summary: Delete the account and every record of the caller
+      description: |
+        Deletes every synced record of the caller under the same per-user lock
+        a push takes, remembers the deleted user id so a later push or pull
+        with it answers 410, and only then deletes the user in Clerk. If the
+        Clerk deletion fails the records are already gone and the account
+        still exists, so the call can be retried: it is idempotent.
+      responses:
+        "204":
+          description: The records and the Clerk user are deleted.
+        "401":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
+  /v1/data:
+    delete:
+      operationId: deleteData
+      summary: Delete every synced record of the caller, keeping the account
+      description: |
+        Deletes every synced record of the caller under the same per-user lock
+        a push takes. The account stays: a later push from any device uploads
+        its records again, so the client erases its local copy afterwards.
+      responses:
+        "204":
+          description: The records are deleted.
+        "401":
+          $ref: "#/components/responses/Problem"
+        "500":
+          $ref: "#/components/responses/Problem"
   /v1/sync:
     get:
       operationId: pullChanges
@@ -91,6 +122,8 @@ paths:
           $ref: "#/components/responses/Problem"
         "401":
           $ref: "#/components/responses/Problem"
+        "410":
+          $ref: "#/components/responses/AccountDeleted"
         "429":
           $ref: "#/components/responses/TooManyRequests"
         "500":
@@ -119,10 +152,12 @@ paths:
           $ref: "#/components/responses/Problem"
         "401":
           $ref: "#/components/responses/Problem"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
+        "410":
+          $ref: "#/components/responses/AccountDeleted"
         "413":
           $ref: "#/components/responses/Problem"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
         "500":
           $ref: "#/components/responses/Problem"
 components:
@@ -149,6 +184,14 @@ components:
           schema:
             type: integer
             minimum: 1
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    AccountDeleted:
+      description: |
+        The account of the caller was deleted (DELETE /v1/me). Nothing is
+        read or written; the client erases its local copy.
       content:
         application/problem+json:
           schema:

@@ -19,6 +19,8 @@ function fakeServer(pageSize = 500) {
   let active = 0
   let maxActive = 0
   let offline = false
+  // Cuenta eliminada (DELETE /v1/me): la API responde 410 a todo /v1/sync.
+  let gone = false
 
   function seed(coll: Coll, key: string, body: unknown, updatedAt = 1000, deletedAt: number | null = null) {
     rows.set(`${coll}:${key}`, { coll, key, body, updatedAt, deletedAt, rev: ++rev })
@@ -26,6 +28,7 @@ function fakeServer(pageSize = 500) {
 
   const fetch = vi.fn(async (url: string, init?: RequestInit) => {
     if (offline) throw new TypeError('Failed to fetch')
+    if (gone) return json({ type: 'about:blank', title: 'Gone', status: 410, detail: 'account deleted' }, 410)
     active++
     maxActive = Math.max(maxActive, active)
     try {
@@ -77,6 +80,7 @@ function fakeServer(pageSize = 500) {
     seed,
     get maxActive() { return maxActive },
     setOffline(v: boolean) { offline = v },
+    setGone(v: boolean) { gone = v },
     gets: () => fetch.mock.calls.filter(c => !c[1] || c[1].method !== 'POST').length,
   }
 }
@@ -384,6 +388,52 @@ describe('concurrencia y errores', () => {
     await mods.engine.syncNow()
     expect(server.fetch).not.toHaveBeenCalled()
     expect(outbox().size).toBe(1)
+  })
+})
+
+describe('cuenta eliminada (S4)', () => {
+  it('un 410 al subir borra la copia local y el estado de sincronización, y deja de sincronizar', async () => {
+    await asKnownUser()
+    await mods.local.saveSession(session('s1') as never)
+    await mods.local.saveMeasurement(measurement('2026-11-01', 80) as never)
+    server.setGone(true)
+    await mods.engine.syncNow()
+
+    expect(sessionsOnDisk().size).toBe(0)
+    expect(idb.dump('measurements', 'fitplan').size).toBe(0)
+    expect(outbox().size).toBe(0)
+    expect((await mods.syncDb.getMeta()).userId).toBeNull()
+    expect(mods.engine.getSyncStatus()).toMatchObject({
+      state: 'blocked', lastError: mods.engine.ACCOUNT_DELETED_ERROR, pending: 0,
+    })
+    // Sin reintentos: la siguiente vuelta no toca la red.
+    const calls = server.fetch.mock.calls.length
+    await mods.engine.syncNow()
+    expect(server.fetch.mock.calls.length).toBe(calls)
+  })
+
+  it('un 410 al bajar también borra la copia local y recarga la tienda', async () => {
+    await asKnownUser()
+    await mods.db.saveSession(session('s1') as never)
+    const reload = vi.fn()
+    mods.engine.setRemoteChangeHandler(reload)
+    server.setGone(true)
+    await mods.engine.syncNow()
+
+    expect(sessionsOnDisk().size).toBe(0)
+    expect(reload).toHaveBeenCalledTimes(1)
+    expect(mods.engine.getSyncStatus().state).toBe('blocked')
+  })
+
+  it('otros errores del servidor no borran nada', async () => {
+    await asKnownUser()
+    await mods.local.saveSession(session('s1') as never)
+    server.fetch.mockImplementationOnce(async () => json({ detail: 'boom' }, 500))
+    await mods.engine.syncNow()
+
+    expect(sessionsOnDisk().size).toBe(1)
+    expect(outbox().has('session:s1')).toBe(true)
+    expect(mods.engine.getSyncStatus().state).toBe('error')
   })
 })
 

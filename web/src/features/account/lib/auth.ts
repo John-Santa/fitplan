@@ -46,3 +46,16 @@ export function setTokenGetter(fn: TokenGetter | null): void {
 export async function getAuthToken(): Promise<string | null> {
   return tokenGetter ? tokenGetter() : null
 }
+
+// Cierre de sesión para código fuera del árbol de Clerk (zona de peligro):
+// el puente lo fija al montarse. Sin Clerk no hace nada.
+type SignOut = () => Promise<void>
+let signOutHandler: SignOut | null = null
+
+export function setSignOutHandler(fn: SignOut | null): void {
+  signOutHandler = fn
+}
+
+export async function signOutOfAuth(): Promise<void> {
+  if (signOutHandler) await signOutHandler()
+}

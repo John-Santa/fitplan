@@ -21,6 +21,7 @@ import (
 	"github.com/John-Santa/fitplan/api/internal/platform/logging"
 	"github.com/John-Santa/fitplan/api/internal/platform/postgresdb"
 	"github.com/John-Santa/fitplan/api/internal/port"
+	accountuc "github.com/John-Santa/fitplan/api/internal/usecase/account"
 	syncuc "github.com/John-Santa/fitplan/api/internal/usecase/sync"
 )
 
@@ -105,6 +106,14 @@ func run(log *slog.Logger) error {
 		store := postgres.NewSyncStore(pool)
 		routes.Sync = syncuc.NewService(syncuc.Deps{Reader: store, Writer: store, Clock: port.SystemClock})
 		routes.Readiness = pool
+		// Deleting an account also deletes the Clerk user, which needs the
+		// secret key; without it the deletion routes stay unmounted.
+		if cfg.ClerkSecretKey != "" {
+			routes.Account = accountuc.NewService(accountuc.Deps{
+				Store:    store,
+				Identity: clerk.NewUserDeleter(cfg.ClerkSecretKey),
+			})
+		}
 	} else {
 		log.WarnContext(ctx, "DATABASE_URL not set; /v1 routes disabled")
 	}

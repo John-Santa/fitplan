@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, apiFetch, getMe, pullChanges, pushChanges } from './api'
+import { ApiError, apiFetch, deleteAccount, deleteCloudData, getMe, pullChanges, pushChanges } from './api'
 import { setTokenGetter } from '../account/lib/auth'
 
 const json = (body: unknown, status = 200) =>
@@ -117,5 +117,29 @@ describe('helpers tipados', () => {
     expect(init.method).toBe('POST')
     expect(JSON.parse(init.body)).toEqual(cs)
     expect(new Headers(init.headers).get('Content-Type')).toBe('application/json')
+  })
+
+  it('deleteAccount hace DELETE /v1/me con el token y acepta el 204 sin cuerpo', async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }))
+    await expect(deleteAccount()).resolves.toBeUndefined()
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://api.example.test/v1/me')
+    expect(init.method).toBe('DELETE')
+    expect(new Headers(init.headers).get('Authorization')).toBe('Bearer t')
+  })
+
+  it('deleteCloudData hace DELETE /v1/data y acepta el 204 sin cuerpo', async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }))
+    await expect(deleteCloudData()).resolves.toBeUndefined()
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://api.example.test/v1/data')
+    expect(init.method).toBe('DELETE')
+  })
+
+  it('un fallo del borrado llega como ApiError con su status', async () => {
+    fetchMock.mockResolvedValue(json({ type: 'about:blank', title: 'Internal Server Error', status: 500, detail: 'internal server error' }, 500))
+    const err = await deleteAccount().catch(e => e)
+    expect(err).toBeInstanceOf(ApiError)
+    expect(err.status).toBe(500)
   })
 })
