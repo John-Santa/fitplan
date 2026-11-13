@@ -13,15 +13,14 @@ interface Props {
   onInfo: (slot: PlanSlot) => void
 }
 
-/** Calentamiento fijo: lista de verificacion al inicio de la sesion. */
+/** Calentamiento: lista de verificacion al inicio de la sesion. */
 export default function WarmupStep({ plan, block, ticked, onToggle, onInfo }: Props) {
   const done = block.slots.filter(s => ticked[s.id]).length
   return (
     <section className="ses-warm">
-      <h1 className="ses-title">Calentamiento fijo</h1>
+      <h1 className="ses-title">Calentamiento</h1>
       <div className="ses-chips">
         <span className="ses-chip strong">{done} de {block.slots.length}</span>
-        <span className="ses-chip">10 min</span>
       </div>
       {block.note && <p className="ses-cue">{block.note}</p>}
       <ul className="ses-checklist">

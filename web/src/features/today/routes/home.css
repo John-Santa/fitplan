@@ -220,6 +220,12 @@
 .hoy-nudge p { margin: 0; font-size: 12px; line-height: 1.4; color: var(--fp-ink2); }
 .hoy-nudge strong { display: block; font-size: 13px; color: var(--fp-ink); }
 
+/* ---- respaldo y cuenta (F19/F20) ---- */
+.hoy-backup { flex-direction: column; align-items: stretch; }
+.hoy-backup .btnrow { margin: 0; }
+.hoy-backup .hint { margin: 0; }
+.hoy-connecting { margin: 0; font-size: 12px; line-height: 1.4; color: var(--fp-ink2); text-align: center; }
+
 
 /* ---- habito: identidad, aviso, intencion, version minima, faltó ---- */
 .hoy-identity {

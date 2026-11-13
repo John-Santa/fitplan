@@ -15,10 +15,13 @@ import (
 	"github.com/John-Santa/fitplan/api/internal/domain/shared"
 	domain "github.com/John-Santa/fitplan/api/internal/domain/sync"
 	"github.com/John-Santa/fitplan/api/internal/platform/postgresdb"
+	"github.com/John-Santa/fitplan/api/internal/port"
+	accountuc "github.com/John-Santa/fitplan/api/internal/usecase/account"
 	syncuc "github.com/John-Santa/fitplan/api/internal/usecase/sync"
 )
 
-// SyncStore implements the sync use case's ChangeReader and ChangeApplier.
+// SyncStore implements the sync use case's ChangeReader and ChangeApplier,
+// and the account use case's Store.
 type SyncStore struct {
 	pool *pgxpool.Pool
 }
@@ -29,15 +32,42 @@ func NewSyncStore(pool *pgxpool.Pool) *SyncStore { return &SyncStore{pool: pool}
 var (
 	_ syncuc.ChangeReader  = (*SyncStore)(nil)
 	_ syncuc.ChangeApplier = (*SyncStore)(nil)
+	_ accountuc.Store      = (*SyncStore)(nil)
 )
 
+// lockUser takes the per-user advisory lock for the rest of tx. Pushes and
+// deletions of the same user take it, so they run one at a time: revs of one
+// user commit in order and a deletion never interleaves with a push.
+func lockUser(ctx context.Context, tx pgx.Tx, uid string) error {
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, uid); err != nil {
+		return fmt.Errorf("lock user: %w", err)
+	}
+	return nil
+}
+
+// refuseDeleted answers port.ErrGone when the account of uid was deleted.
+func refuseDeleted(ctx context.Context, q *sqlcgen.Queries, uid string) error {
+	deleted, err := q.IsUserDeleted(ctx, uid)
+	if err != nil {
+		return fmt.Errorf("check deleted user: %w", err)
+	}
+	if deleted {
+		return port.ErrGone
+	}
+	return nil
+}
+
 // Changes reads all collections in one REPEATABLE READ snapshot so the
-// cursor never skips a row committed between two of the queries.
+// cursor never skips a row committed between two of the queries. A deleted
+// account answers port.ErrGone.
 func (s *SyncStore) Changes(ctx context.Context, userID shared.UserID, since int64, limit int) (domain.ChangeSet, error) {
 	var cs domain.ChangeSet
 	err := postgresdb.WithTx(ctx, s.pool, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
 		q := sqlcgen.New(tx)
 		uid, lim := string(userID), int32(limit) //nolint:gosec // limit is capped by the use case (≤ MaxPullLimit+1)
+		if err := refuseDeleted(ctx, q, uid); err != nil {
+			return err
+		}
 
 		docs, err := q.ListUserDocumentsChangedSince(ctx, sqlcgen.ListUserDocumentsChangedSinceParams{UserID: uid, Rev: since, Limit: lim})
 		if err != nil {
@@ -77,15 +107,22 @@ func (s *SyncStore) Changes(ctx context.Context, userID shared.UserID, since int
 
 // Apply writes the set in one transaction. A per-user advisory lock
 // serializes pushes of the same user, so revs of one user commit in order and
-// a pull cursor can never pass a rev that is still uncommitted.
+// a pull cursor can never pass a rev that is still uncommitted. A deleted
+// account answers port.ErrGone and nothing is written.
 func (s *SyncStore) Apply(ctx context.Context, userID shared.UserID, cs domain.ChangeSet) (domain.PushResult, error) {
 	var res domain.PushResult
 	err := postgresdb.WithTx(ctx, s.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		uid := string(userID)
-		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, uid); err != nil {
-			return fmt.Errorf("lock user: %w", err)
+		if err := lockUser(ctx, tx, uid); err != nil {
+			return err
 		}
 		q := sqlcgen.New(tx)
+		// Checked under the lock: a deletion that committed while this push
+		// waited is visible here (READ COMMITTED), so the push cannot
+		// recreate the user.
+		if err := refuseDeleted(ctx, q, uid); err != nil {
+			return err
+		}
 		if err := q.UpsertUser(ctx, uid); err != nil {
 			return fmt.Errorf("upsert user: %w", err)
 		}
@@ -155,4 +192,51 @@ func result(key string, rev int64, err error) (domain.ItemResult, error) {
 		return domain.ItemResult{}, err
 	}
 	return domain.ItemResult{Key: key, Status: domain.StatusApplied, Rev: rev}, nil
+}
+
+// DeleteAccount deletes the user row (the synced tables cascade) and
+// remembers the user as deleted, in one transaction under the per-user lock.
+// Deleting an account twice, or one that never synced, succeeds.
+func (s *SyncStore) DeleteAccount(ctx context.Context, userID shared.UserID) error {
+	return postgresdb.WithTx(ctx, s.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		uid := string(userID)
+		if err := lockUser(ctx, tx, uid); err != nil {
+			return err
+		}
+		q := sqlcgen.New(tx)
+		if err := q.DeleteUser(ctx, uid); err != nil {
+			return fmt.Errorf("delete user: %w", err)
+		}
+		if err := q.MarkUserDeleted(ctx, uid); err != nil {
+			return fmt.Errorf("mark user deleted: %w", err)
+		}
+		return nil
+	})
+}
+
+// DeleteData deletes every synced row of the user, tombstones included, in
+// one transaction under the per-user lock. The users row stays, so the
+// account keeps working.
+func (s *SyncStore) DeleteData(ctx context.Context, userID shared.UserID) error {
+	return postgresdb.WithTx(ctx, s.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		uid := string(userID)
+		if err := lockUser(ctx, tx, uid); err != nil {
+			return err
+		}
+		q := sqlcgen.New(tx)
+		for _, d := range []struct {
+			name string
+			del  func(context.Context, string) error
+		}{
+			{"documents", q.DeleteUserDocuments},
+			{"sessions", q.DeleteSessions},
+			{"measurements", q.DeleteMeasurements},
+			{"exercise meta", q.DeleteExerciseMeta},
+		} {
+			if err := d.del(ctx, uid); err != nil {
+				return fmt.Errorf("delete %s: %w", d.name, err)
+			}
+		}
+		return nil
+	})
 }

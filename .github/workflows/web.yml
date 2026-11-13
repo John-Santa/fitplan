@@ -20,21 +20,28 @@ jobs:
       run:
         working-directory: web
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # pnpm va ANTES de setup-node: setup-node necesita pnpm en el PATH
       # para resolver la ruta del store y poder cachearlo.
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
-          version: 11
+          # The pnpm version comes from packageManager in web/package.json.
+          package_json_file: web/package.json
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
 
       - run: pnpm install --frozen-lockfile
+
+      # Reports known vulnerabilities in production dependencies without
+      # failing the pipeline.
+      - name: Audit production dependencies (report only)
+        continue-on-error: true
+        run: pnpm audit --prod
 
       - name: Typecheck
         run: pnpm typecheck

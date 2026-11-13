@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -25,17 +26,24 @@ type RouterConfig struct {
 	AllowedOrigins []string
 	// Authenticator verifies credentials; nil rejects every protected route.
 	Authenticator port.Authenticator
-	// Sync serves /v1/sync and /v1/me; nil leaves the /v1 routes unmounted
+	// Sync serves /v1/sync and GET /v1/me; nil leaves those routes unmounted
 	// (no database configured).
 	Sync SyncService
+	// Account serves DELETE /v1/me and DELETE /v1/data; nil leaves them
+	// unmounted (no database or no Clerk secret key configured).
+	Account AccountService
 	// Readiness is pinged by /readyz; nil answers 503.
 	Readiness Pinger
+	// Timeout bounds one request; zero means the default (25 s). Tests shorten it.
+	Timeout time.Duration
+	// RateLimit tunes the per-user limit on /v1/*; zero fields take defaults.
+	RateLimit RateLimitConfig
 	// Extra registers additional routes (tests only).
 	Extra func(r chi.Router)
 }
 
 // NewRouter builds the router. Middleware order, outermost first:
-// RequestID → Logger → Recover → CORS → Auth. The logger sees the final
+// RequestID → SecurityHeaders → Logger → Recover → CORS → Auth → RateLimit → Timeout. The logger sees the final
 // status of recovered panics; CORS headers are set before Auth and the
 // handlers run, so 401 and 500 answers still carry them and preflights are
 // answered without credentials.
@@ -46,10 +54,17 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	}
 	r := chi.NewRouter()
 	r.Use(requestID)
+	r.Use(securityHeaders)
 	r.Use(requestLogger(log))
 	r.Use(recoverer(log))
 	r.Use(cors(cfg.AllowedOrigins))
 	r.Use(authenticate(cfg.Authenticator, r))
+	r.Use(rateLimit(cfg.RateLimit))
+	timeout := cfg.Timeout
+	if timeout <= 0 {
+		timeout = handlerTimeout
+	}
+	r.Use(middleware.Timeout(timeout))
 	r.Use(middleware.GetHead)
 
 	r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
@@ -69,6 +84,11 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.Get("/v1/me", s.me)
 		r.Get("/v1/sync", s.pull)
 		r.Post("/v1/sync", s.push)
+	}
+	if cfg.Account != nil {
+		a := accountHandlers{svc: cfg.Account, log: log}
+		r.Delete("/v1/me", a.deleteMe)
+		r.Delete("/v1/data", a.deleteData)
 	}
 	if cfg.Extra != nil {
 		cfg.Extra(r)

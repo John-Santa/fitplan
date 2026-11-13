@@ -1,13 +1,17 @@
 import { useState, type CSSProperties, type ReactNode } from 'react'
 import { DONE_TODAY, weekdayLabel } from '../../../lib/plan'
 import { planWeekStates, routineShortName, routineSlots, slotExerciseName, weekLabel, routineDisplayName } from '../../../lib/planQueries'
-import { blockWeekNumber, phaseForWeek } from '../../../lib/phases'
+import { blockStatus, blockWeekNumber, phaseForWeek } from '../../../lib/phases'
+import BlockEndCard from '../components/BlockEndCard'
+import { startNewBlock, weekVolumes } from '../lib/blockEnd'
 import { fmtDate, sessionVolume, todayISO } from '../../../lib/calc'
 import { finishedIn } from '../../../lib/disciplines'
 import { dayStatus, intentionFor, missedYesterday, streak as habitStreak, toggleCheckIn, votes as habitVotes } from '../../habit/lib/habit'
 import { nextRoutine, restAllowance, routinesDoneThisWeek, weekDays, weekRotation, weekSummary } from '../../habit/lib/week'
 import { useDerivedMeasurements, useStore } from '../../../lib/store'
 import BottomSheet from '../../../components/BottomSheet'
+import { isBackCarePlan } from '../../../lib/defaultPlan'
+import HoyBackupNotice from '../components/BackupNotice'
 import './home.css'
 
 type Tab = 'plan' | 'progreso' | 'perfil'
@@ -72,6 +76,7 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
   const iso = todayISO(now)
   const week = blockWeekNumber(now, config.blockStart)
   const phase = phaseForWeek(plan, week)
+  const blockEnded = blockStatus(now, config.blockStart, config.blockEnd).state === 'ended'
   const dow = now.getDay()
   const allowance = restAllowance(plan)
   const habitCtx = { sessions, config, today: iso, restAllowance: allowance }
@@ -189,6 +194,11 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
     </div>
   )
 
+  // The lower-back tip belongs to the "espalda protegida" template.
+  const tip = isBackCarePlan(plan)
+    ? { kicker: 'Cuidado lumbar', text: 'Columna neutra: piensa en sacar un poco la cola' }
+    : { kicker: 'Técnica', text: 'Termina cada serie con 2 o 3 repeticiones en reserva' }
+
   const restLine =
     summary.restAllowance === 0
       ? 'Esta semana no hay comodines de descanso'
@@ -207,6 +217,13 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
       </header>
 
       <main className="hoy-main">
+        {blockEnded && (
+          <BlockEndCard
+            {...weekVolumes(sessions, config.blockStart, plan.weeks)}
+            weeks={plan.weeks}
+            onStartNew={() => void saveConfig(startNewBlock(config, new Date(), plan.weeks))}
+          />
+        )}
         <section className="hoy-identity" aria-label="Tu racha">
           <div className="hoy-identity-item">
             <span className="hoy-identity-icon flame"><Icon name="flame" size={22} /></span>
@@ -279,7 +296,7 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
             <button type="button" className="hoy-minimal" onClick={() => startRoutine(selected.id, { minimal: true })}>
               <span>
                 <strong>Día difícil: versión mínima</strong>
-                <small>Calentamiento + primer ejercicio · ~10 min</small>
+                <small>Calentamiento + primer ejercicio</small>
               </span>
               <Icon name="sliders" size={20} />
             </button>
@@ -471,8 +488,8 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
           <div className="hoy-tip-body">
             <div className="hoy-tip-icon"><Icon name="shield" size={20} /></div>
             <div>
-              <span className="hoy-tip-kicker">Cuidado lumbar</span>
-              <p className="hoy-tip-text">Columna neutra: piensa en sacar un poco la cola</p>
+              <span className="hoy-tip-kicker">{tip.kicker}</span>
+              <p className="hoy-tip-text">{tip.text}</p>
             </div>
           </div>
           <button type="button" className="hoy-link" onClick={() => go('plan')}>
@@ -480,6 +497,8 @@ export default function Home({ go, startRoutine }: { go: (tab: Tab) => void; sta
             <Icon name="chevron" size={16} />
           </button>
         </section>
+
+        <HoyBackupNotice />
 
         {rows.length <= 1 && (
           <section className="hoy-nudge">

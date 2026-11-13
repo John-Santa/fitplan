@@ -49,7 +49,37 @@ export interface paths {
         get: operations["getMe"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete the account and every record of the caller
+         * @description Deletes every synced record of the caller under the same per-user lock
+         *     a push takes, remembers the deleted user id so a later push or pull
+         *     with it answers 410, and only then deletes the user in Clerk. If the
+         *     Clerk deletion fails the records are already gone and the account
+         *     still exists, so the call can be retried: it is idempotent.
+         */
+        delete: operations["deleteMe"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/data": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete every synced record of the caller, keeping the account
+         * @description Deletes every synced record of the caller under the same per-user lock
+         *     a push takes. The account stays: a later push from any device uploads
+         *     its records again, so the client erases its local copy afterwards.
+         */
+        delete: operations["deleteData"];
         options?: never;
         head?: never;
         patch?: never;
@@ -65,7 +95,12 @@ export interface paths {
         /** Pull records changed since a cursor */
         get: operations["pullChanges"];
         put?: never;
-        /** Push changed records (last write wins per record) */
+        /**
+         * Push changed records (last write wins per record)
+         * @description At most 500 records in total across all four collections, and 5 MB of
+         *     body; beyond either the answer is 413 and nothing is applied. The
+         *     web client sends batches of at most 200 records.
+         */
         post: operations["pushChanges"];
         delete?: never;
         options?: never;
@@ -221,6 +256,33 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
+        /**
+         * @description The caller exceeded its per-user request limit on `/v1/*` (a token
+         *     bucket per Clerk user id; `/health` and `/readyz` are not limited).
+         *     Nothing was processed: retry the same request after `Retry-After`.
+         */
+        TooManyRequests: {
+            headers: {
+                /** @description Seconds to wait before retrying (a whole number, at least 1). */
+                "Retry-After"?: number;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /**
+         * @description The account of the caller was deleted (DELETE /v1/me). Nothing is
+         *     read or written; the client erases its local copy.
+         */
+        AccountDeleted: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
     };
     parameters: never;
     requestBodies: never;
@@ -291,6 +353,49 @@ export interface operations {
                 };
             };
             401: components["responses"]["Problem"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    deleteMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The records and the Clerk user are deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Problem"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["Problem"];
+        };
+    };
+    deleteData: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The records are deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Problem"];
+            429: components["responses"]["TooManyRequests"];
             500: components["responses"]["Problem"];
         };
     };
@@ -319,7 +424,10 @@ export interface operations {
             };
             400: components["responses"]["Problem"];
             401: components["responses"]["Problem"];
+            410: components["responses"]["AccountDeleted"];
+            429: components["responses"]["TooManyRequests"];
             500: components["responses"]["Problem"];
+            504: components["responses"]["Problem"];
         };
     };
     pushChanges: {
@@ -346,8 +454,11 @@ export interface operations {
             };
             400: components["responses"]["Problem"];
             401: components["responses"]["Problem"];
+            410: components["responses"]["AccountDeleted"];
             413: components["responses"]["Problem"];
+            429: components["responses"]["TooManyRequests"];
             500: components["responses"]["Problem"];
+            504: components["responses"]["Problem"];
         };
     };
 }

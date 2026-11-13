@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { Measurement } from '../../../lib/types'
 import { derive, fmt, fmtDate, progressPct, todayISO } from '../../../lib/calc'
-import { MEASUREMENT_KEYS, MEASUREMENT_LABELS, MEASUREMENT_STEPS, MEASUREMENT_UNITS } from '../../../lib/plan'
+import { MEASUREMENT_KEYS, MEASUREMENT_LABELS, MEASUREMENT_STEPS, MEASUREMENT_UNITS, UNSET_GOAL } from '../../../lib/plan'
 import { useDerivedMeasurements, useStore } from '../../../lib/store'
 import Chart, { type Series } from '../components/Chart'
 import { Tile, useToast } from '../../../components/ui'
@@ -27,7 +27,17 @@ export default function Measure() {
 
   const base = rows[0]
   const last = rows[rows.length - 1]
-  const goal = derive({ date: config.blockEnd, ...config.goal }, config.heightCm)
+  // Goals skipped in the welcome are stored as UNSET_GOAL: no target to show.
+  const isSet = (v: number) => v !== UNSET_GOAL
+  // Unset goals become absent before deriving, so charts, the goal row and the
+  // derived values (lean mass, ratio, BMI) show "—" instead of a target of 0.
+  const setGoals = Object.fromEntries(
+    Object.entries(config.goal).map(([k, v]) => [k, typeof v === 'number' && isSet(v) ? v : undefined]),
+  ) as unknown as Omit<Measurement, 'date'>
+  const goal = derive({ date: config.blockEnd, ...setGoals }, config.heightCm)
+  const anyGoalSet = Object.values(config.goal).some(v => typeof v === 'number' && isSet(v))
+  const goalProps = (v: number, text: string, progress?: number) =>
+    isSet(v) ? { goalText: text, progress } : {}
 
   const submit = async () => {
     const weight = Number(form.weight)
@@ -59,30 +69,30 @@ export default function Measure() {
 
   return (
     <>
-      <div className="eyebrow">{fmtDate(last.date)} · medición {rows.length}</div>
+      {last && <div className="eyebrow">{`${fmtDate(last.date)} · medición ${rows.length}`}</div>}
       <h1>Cuerpo</h1>
 
       {base && last && (
         <div className="tiles">
           <Tile label="Peso" value={last.weight} unit="kg" delta={last.weight - base.weight} deltaGood="lower"
-            progress={progressPct(last.weight, base.weight, config.goal.weight)}
-            goalText={`meta ${fmt(config.goal.weight)} kg`} />
+            {...goalProps(config.goal.weight, `meta ${fmt(config.goal.weight)} kg`,
+              progressPct(last.weight, base.weight, config.goal.weight))} />
           <Tile label="Masa grasa" value={last.fatMass ?? null} unit="kg"
             delta={last.fatMass != null && base.fatMass != null ? last.fatMass - base.fatMass : null} deltaGood="lower"
-            progress={last.fatMass != null && base.fatMass != null ? progressPct(last.fatMass, base.fatMass, config.goal.fatMass) : undefined}
-            goalText={`meta ${fmt(config.goal.fatMass)} kg`} />
+            {...goalProps(config.goal.fatMass, `meta ${fmt(config.goal.fatMass)} kg`,
+              last.fatMass != null && base.fatMass != null ? progressPct(last.fatMass, base.fatMass, config.goal.fatMass) : undefined)} />
           <Tile label="Músculo" value={last.muscle ?? null} unit="kg"
             delta={last.muscle != null && base.muscle != null ? last.muscle - base.muscle : null} deltaGood="higher"
-            progress={last.muscle != null && base.muscle != null ? progressPct(last.muscle, base.muscle, config.goal.muscle) : undefined}
-            goalText={`meta ${fmt(config.goal.muscle)} kg`} />
+            {...goalProps(config.goal.muscle, `meta ${fmt(config.goal.muscle)} kg`,
+              last.muscle != null && base.muscle != null ? progressPct(last.muscle, base.muscle, config.goal.muscle) : undefined)} />
           <Tile label="Ratio músculo/grasa" value={last.ratio} dec={2}
             delta={last.ratio != null && base.ratio != null ? last.ratio - base.ratio : null} deltaGood="higher"
-            progress={last.ratio != null && base.ratio != null && goal.ratio != null ? progressPct(last.ratio, base.ratio, goal.ratio) : undefined}
-            goalText={`meta ${fmt(goal.ratio, 2)}`} />
+            {...goalProps(isSet(config.goal.fatMass) && isSet(config.goal.muscle) ? 1 : UNSET_GOAL, `meta ${fmt(goal.ratio, 2)}`,
+              last.ratio != null && base.ratio != null && goal.ratio != null ? progressPct(last.ratio, base.ratio, goal.ratio) : undefined)} />
           <Tile label="Cintura" value={last.waist ?? null} unit="cm"
             delta={last.waist != null && base.waist != null ? last.waist - base.waist : null} deltaGood="lower"
-            progress={last.waist != null && base.waist != null ? progressPct(last.waist, base.waist, config.goal.waist) : undefined}
-            goalText={`meta ${fmt(config.goal.waist)} cm`} />
+            {...goalProps(config.goal.waist, `meta ${fmt(config.goal.waist)} cm`,
+              last.waist != null && base.waist != null ? progressPct(last.waist, base.waist, config.goal.waist) : undefined)} />
           <Tile label="FFMI" value={last.ffmi} dec={1}
             delta={last.ffmi != null && base.ffmi != null ? last.ffmi - base.ffmi : null} deltaGood="higher"
             goalText="22–24 entrenado" />
@@ -186,7 +196,7 @@ export default function Measure() {
                 </td>
               </tr>
             ))}
-            <tr className="goal">
+            {anyGoalSet && <tr className="goal">
               <td>Meta sem 8</td>
               <td className="num">{fmt(goal.weight)}</td>
               <td className="num">{fmt(goal.fatPct)}</td>
@@ -202,7 +212,7 @@ export default function Measure() {
               <td className="num">{fmt(goal.chest)}</td>
               <td className="num">{fmt(goal.neck)}</td>
               <td />
-            </tr>
+            </tr>}
           </tbody>
         </table>
       </div>

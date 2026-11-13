@@ -1,6 +1,11 @@
-import type { SyncStatus } from './engine'
+import { AUTH_EXPIRED_ERROR, type SyncStatus } from './engine'
+import type { RejectedEntry } from './syncDb'
 
 export const OFFLINE_TEXT = 'Sin conexión: se sincroniza al volver la señal'
+/** Arranque en frío de la API (plan gratuito): tarda en responder. */
+export const CONNECTING_TEXT = 'Conectando con el servidor…'
+/** 401 de la API: la cola espera, nada se pierde. */
+export const AUTH_EXPIRED_TEXT = AUTH_EXPIRED_ERROR
 
 function ago(ms: number): string {
   const min = Math.floor(ms / 60_000)
@@ -16,7 +21,9 @@ function ago(ms: number): string {
 export function syncStatusLines(s: SyncStatus, now = Date.now()): string[] {
   const lines: string[] = []
   if (s.state === 'syncing') lines.push('Sincronizando…')
+  else if (s.state === 'connecting') lines.push(CONNECTING_TEXT)
   else if (s.state === 'offline') lines.push(OFFLINE_TEXT)
+  else if (s.state === 'auth_expired') lines.push(AUTH_EXPIRED_TEXT)
   else if ((s.state === 'error' || s.state === 'blocked') && s.lastError) lines.push(s.lastError)
   else if (s.lastSyncAt != null) lines.push(`Sincronizado ${ago(now - s.lastSyncAt)}`)
   else lines.push('Todavía no se sincroniza')
@@ -27,6 +34,19 @@ export function syncStatusLines(s: SyncStatus, now = Date.now()): string[] {
   }
   return lines
 }
+
+/** Nombre legible de un cambio rechazado, para la lista de Ajustes. */
+export function rejectedLabel(e: Pick<RejectedEntry, 'entity' | 'key' | 'body'>): string {
+  if (e.entity === 'session') {
+    const date = (e.body as { date?: unknown } | null)?.date
+    return `Sesión del ${typeof date === 'string' ? date : e.key}`
+  }
+  if (e.entity === 'measurement') return `Medición del ${e.key}`
+  if (e.entity === 'document') return e.key === 'plan' ? 'Plan de entrenamiento' : 'Configuración'
+  return 'Notas de un ejercicio'
+}
+
+export const REJECTED_DISCARD_HINT = 'Descartar solo quita el aviso: el dato sigue en este dispositivo.'
 
 export const BACKUP_NOTICE = 'Guardamos una copia de tus datos anteriores'
 
@@ -47,3 +67,21 @@ export const wipeConfirmTexts = (signedIn: boolean): [string, string] =>
         'Esto borra todas las sesiones y mediciones de este dispositivo. ¿Seguro?',
         'Última confirmación: no hay forma de deshacerlo sin un respaldo.',
       ]
+
+export type IndicatorTone = 'ok' | 'busy' | 'warn' | 'alert'
+
+/** Texto y tono del indicador pequeño de la estructura de la app. */
+export function shellIndicator(s: SyncStatus): { tone: IndicatorTone; label: string } {
+  const pending = s.pending > 0 ? (s.pending === 1 ? '1 cambio pendiente' : `${s.pending} cambios pendientes`) : null
+  switch (s.state) {
+    case 'syncing': return { tone: 'busy', label: 'Sincronizando…' }
+    case 'connecting': return { tone: 'busy', label: CONNECTING_TEXT }
+    case 'offline': return { tone: 'warn', label: pending ? `Sin conexión · ${pending}` : 'Sin conexión' }
+    case 'auth_expired': return { tone: 'alert', label: AUTH_EXPIRED_TEXT }
+    case 'blocked': return { tone: 'alert', label: 'Sincronización en pausa' }
+    case 'error': return { tone: 'alert', label: 'No se pudo sincronizar' }
+    default:
+      if (s.rejected > 0) return { tone: 'warn', label: s.rejected === 1 ? '1 cambio no se pudo subir' : `${s.rejected} cambios no se pudieron subir` }
+      return pending ? { tone: 'warn', label: pending } : { tone: 'ok', label: 'Sincronizado' }
+  }
+}

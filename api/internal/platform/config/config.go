@@ -3,8 +3,11 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 const defaultPort = "8080"
@@ -20,8 +23,19 @@ type Config struct {
 	AppEnv string
 	// DatabaseURL is the Postgres connection string. Required unless AppEnv is "test".
 	DatabaseURL string
+	// MigrationDatabaseURL is an optional Postgres connection string used only
+	// for the boot migrations. When empty, migrations run on DatabaseURL.
+	MigrationDatabaseURL string
 	// ClerkSecretKey is the Clerk backend API key. Required unless AppEnv is "test".
 	ClerkSecretKey string
+	// ClerkJWTKey is the Clerk instance's JWT public key. Optional: when set,
+	// session tokens are verified without calling the Clerk API.
+	ClerkJWTKey string
+	// RateLimitRPS is the sustained per-user request rate on /v1/*; 0 means
+	// unset (the HTTP adapter applies its default).
+	RateLimitRPS float64
+	// RateLimitBurst is the per-user bucket size; 0 means unset.
+	RateLimitBurst int
 }
 
 // IsTest reports whether the service runs in the test environment.
@@ -38,12 +52,29 @@ func Load(getenv func(string) string) (Config, error) {
 		AllowedOrigins: splitList(getenv("ALLOWED_ORIGINS")),
 		DatabaseURL:    strings.TrimSpace(getenv("DATABASE_URL")),
 		ClerkSecretKey: strings.TrimSpace(getenv("CLERK_SECRET_KEY")),
+		ClerkJWTKey:    strings.TrimSpace(getenv("CLERK_JWT_KEY")),
+
+		MigrationDatabaseURL: strings.TrimSpace(getenv("MIGRATION_DATABASE_URL")),
 	}
 	if cfg.Port == "" {
 		cfg.Port = defaultPort
 	}
 	if n, err := strconv.Atoi(cfg.Port); err != nil || n < 1 || n > 65535 {
 		return Config{}, fmt.Errorf("config: invalid PORT %q: must be an integer between 1 and 65535", cfg.Port)
+	}
+	if raw := strings.TrimSpace(getenv("RATE_LIMIT_RPS")); raw != "" {
+		n, err := strconv.ParseFloat(raw, 64)
+		if err != nil || math.IsNaN(n) || math.IsInf(n, 0) || n <= 0 {
+			return Config{}, fmt.Errorf("config: invalid RATE_LIMIT_RPS %q: must be a positive number", raw)
+		}
+		cfg.RateLimitRPS = n
+	}
+	if raw := strings.TrimSpace(getenv("RATE_LIMIT_BURST")); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 {
+			return Config{}, fmt.Errorf("config: invalid RATE_LIMIT_BURST %q: must be an integer of at least 1", raw)
+		}
+		cfg.RateLimitBurst = n
 	}
 	if !cfg.IsTest() {
 		if cfg.DatabaseURL == "" {
@@ -53,7 +84,42 @@ func Load(getenv func(string) string) (Config, error) {
 			return Config{}, fmt.Errorf("config: CLERK_SECRET_KEY is required (set APP_ENV=test to run without it)")
 		}
 	}
+	if cfg.IsProduction() {
+		// An empty list disables the token's azp check, so production must name its origins.
+		if len(cfg.AllowedOrigins) == 0 {
+			return Config{}, fmt.Errorf("config: ALLOWED_ORIGINS is required when APP_ENV=production")
+		}
+		if !requiresTLS(cfg.DatabaseURL) {
+			return Config{}, fmt.Errorf("config: DATABASE_URL must set sslmode=require, verify-ca or verify-full when APP_ENV=production")
+		}
+		// The migration role owns the schema: same TLS rule when it is set.
+		if cfg.MigrationDatabaseURL != "" && !requiresTLS(cfg.MigrationDatabaseURL) {
+			return Config{}, fmt.Errorf("config: MIGRATION_DATABASE_URL must set sslmode=require, verify-ca or verify-full when APP_ENV=production")
+		}
+	}
 	return cfg, nil
+}
+
+// IsProduction reports whether the service runs in production, where the
+// origin list and database TLS are mandatory.
+func (c Config) IsProduction() bool { return c.AppEnv == "production" }
+
+// requiresTLS reports whether pgx would connect to the database only over TLS.
+// It parses the string with pgconn, the same parser the pool uses, so repeated
+// or oddly written sslmode settings are judged exactly as they will be applied:
+// the primary config and every fallback must carry a TLS config (sslmode
+// require, verify-ca or verify-full; prefer and allow fall back to plaintext).
+func requiresTLS(dsn string) bool {
+	pc, err := pgconn.ParseConfig(dsn)
+	if err != nil || pc.TLSConfig == nil {
+		return false
+	}
+	for _, fb := range pc.Fallbacks {
+		if fb.TLSConfig == nil {
+			return false
+		}
+	}
+	return true
 }
 
 func splitList(raw string) []string {

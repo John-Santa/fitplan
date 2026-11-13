@@ -8,6 +8,11 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type DeletedUser struct {
+	UserIDSha256 []byte             `json:"user_id_sha256"`
+	DeletedAt    pgtype.Timestamptz `json:"deleted_at"`
+}
+
 type ExerciseMetum struct {
 	UserID          string             `json:"user_id"`
 	ExerciseID      string             `json:"exercise_id"`

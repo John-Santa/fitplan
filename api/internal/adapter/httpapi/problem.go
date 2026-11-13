@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -62,8 +63,13 @@ func writeError(w http.ResponseWriter, r *http.Request, log *slog.Logger, err er
 		writeUnauthorized(w, r)
 	case errors.Is(err, port.ErrNotFound):
 		WriteProblem(w, http.StatusNotFound, "not found")
+	case errors.Is(err, port.ErrGone):
+		WriteProblem(w, http.StatusGone, "account deleted")
 	case errors.Is(err, port.ErrUnavailable):
 		WriteProblem(w, http.StatusServiceUnavailable, "service unavailable")
+	case errors.Is(err, context.DeadlineExceeded):
+		// The handler deadline cancelled the work. The cause stays out of the body.
+		WriteProblem(w, http.StatusGatewayTimeout, "gateway timeout")
 	default:
 		log.LogAttrs(r.Context(), slog.LevelError, "request failed", slog.Any("error", err))
 		WriteProblem(w, http.StatusInternalServerError, "internal server error")

@@ -11,6 +11,16 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const deleteSessions = `-- name: DeleteSessions :exec
+DELETE FROM sessions WHERE user_id = $1
+`
+
+// Deletes every row of one user, tombstones included (DELETE /v1/data).
+func (q *Queries) DeleteSessions(ctx context.Context, userID string) error {
+	_, err := q.db.Exec(ctx, deleteSessions, userID)
+	return err
+}
+
 const getSession = `-- name: GetSession :one
 SELECT user_id, id, kind, date, finished_at, body, rev, updated_at, deleted_at, server_updated_at FROM sessions WHERE user_id = $1 AND id = $2
 `

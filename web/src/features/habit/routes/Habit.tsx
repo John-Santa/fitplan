@@ -4,6 +4,7 @@ import { todayISO } from '../../../lib/calc'
 import { bestStreak, consistency, habitGrid, intentionFor, streak, votes, type DayStatus, type HabitContext } from '../lib/habit'
 import { restAllowance, weekSummary } from '../lib/week'
 import type { Intention, WeeklyIntentions } from '../../../lib/types'
+import { ReminderSettings } from '../../reminders/components/ReminderSettings'
 import './habit.css'
 
 const ROW_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
@@ -76,6 +77,7 @@ export default function Habit() {
 
   return (
     <div className="hab">
+      <h1 className="sr-only">Hábito</h1>
       <section className="hab-card hab-hero" aria-label="Racha actual">
         <div className="hab-row">
           <span className="hab-badge warm">No rompas la cadena</span>
@@ -174,6 +176,8 @@ export default function Habit() {
           })}
         </ul>
       </section>
+
+      <ReminderSettings />
     </div>
   )
 }

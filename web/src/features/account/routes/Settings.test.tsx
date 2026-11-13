@@ -33,6 +33,31 @@ describe('estado de sincronización en la tarjeta Cuenta', () => {
     expect(html).toContain('Sin conexión: se sincroniza al volver la señal')
   })
 
+  it('con la sesión expirada muestra el aviso y deja "Sincronizar ahora" disponible', () => {
+    const html = renderToString(<SyncStatusLines status={{ ...status, state: 'auth_expired', lastError: 'Tu sesión expiró, vuelve a iniciar sesión' }} onSync={() => {}} />)
+    expect(html).toContain('Tu sesión expiró, vuelve a iniciar sesión')
+    expect(html).toContain('2 cambios pendientes')
+    expect(html).not.toMatch(/<button[^>]*disabled[^>]*>Sincronizar ahora/)
+  })
+
+  it('lista cada cambio rechazado con "Reintentar" y "Descartar"', () => {
+    const entries = [
+      { entity: 'session' as const, key: 'a', body: { date: '2026-11-01' }, updatedAt: 1, deletedAt: null, error: 'body contains NUL', rejectedAt: 2 },
+      { entity: 'measurement' as const, key: '2026-10-05', body: {}, updatedAt: 1, deletedAt: null, error: 'bad date', rejectedAt: 2 },
+    ]
+    const html = renderToString(<SyncStatusLines status={{ ...status, rejected: 2 }} onSync={() => {}} rejectedEntries={entries} />)
+    expect(html).toContain('Sesión del 2026-11-01')
+    expect(html).toContain('Medición del 2026-10-05')
+    expect(html).toContain('body contains NUL')
+    expect(html.match(/Reintentar/g)).toHaveLength(2)
+    expect(html.match(/Descartar/g)).toHaveLength(3) // dos botones y la nota
+  })
+
+  it('sin rechazados no muestra la lista', () => {
+    const html = renderToString(<SyncStatusLines status={status} onSync={() => {}} rejectedEntries={[]} />)
+    expect(html).not.toContain('Reintentar')
+  })
+
   it('sin copia previa no muestra el aviso ni el botón de descarga', () => {
     const html = renderToString(<SyncStatusLines status={status} onSync={() => {}} />)
     expect(html).not.toContain('Guardamos una copia de tus datos anteriores')
@@ -48,5 +73,26 @@ describe('estado de sincronización en la tarjeta Cuenta', () => {
   it('muestra cuántos cambios no se pudieron subir y el primer error', () => {
     const html = renderToString(<SyncStatusLines status={{ ...status, pending: 0, rejected: 3, rejectedError: 'body contains NUL' }} onSync={() => {}} now={1_000} />)
     expect(html).toContain('3 cambios no se pudieron subir: body contains NUL')
+  })
+})
+
+describe('cuenta bloqueada por datos de otra cuenta', () => {
+  const blocked = { state: 'blocked' as const, pending: 0, lastSyncAt: null, lastError: 'Esta app tiene datos de otra cuenta.', rejected: 0, rejectedError: null, backupAt: null }
+
+  it('ofrece "Exportar y cambiar" junto a "Sincronizar ahora"', () => {
+    const html = renderToString(<SyncStatusLines status={blocked} onSync={() => {}} onExportAndSwitch={() => {}} />)
+    expect(html).toContain('Exportar y cambiar')
+    expect(html).toContain('Sincronizar ahora')
+  })
+
+  it('no lo ofrece en los demás estados', () => {
+    for (const state of ['idle', 'syncing', 'offline', 'error'] as const) {
+      const html = renderToString(<SyncStatusLines status={{ ...blocked, state }} onSync={() => {}} onExportAndSwitch={() => {}} />)
+      expect(html).not.toContain('Exportar y cambiar')
+    }
+  })
+
+  it('no lo ofrece si no hay acción para ejecutarlo', () => {
+    expect(renderToString(<SyncStatusLines status={blocked} onSync={() => {}} />)).not.toContain('Exportar y cambiar')
   })
 })

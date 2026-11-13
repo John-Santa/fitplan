@@ -21,12 +21,47 @@ const requestIDHeader = "X-Request-ID"
 // requires a valid Bearer token; unrouted requests fall through to 404/405.
 var publicPaths = []string{"/health", "/readyz"}
 
-// requestID reuses an incoming X-Request-ID (up to 128 chars) or generates
-// one, echoes it back, and stores it in the context for the logger.
+// handlerTimeout bounds the work of one request. It stays below the server
+// WriteTimeout so database calls are cancelled before the connection is cut.
+const handlerTimeout = 25 * time.Second
+
+// securityHeaders sets the response headers every API answer carries. The API
+// serves JSON only, so the policy forbids loading or framing anything, and
+// personal data must not be kept by browser or intermediary caches.
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		h.Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
+		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("Cache-Control", "no-store")
+		next.ServeHTTP(w, r)
+	})
+}
+
+// safeRequestID reports whether id is 1 to 128 characters of [A-Za-z0-9._-],
+// the only incoming values echoed back and written to the logs.
+func safeRequestID(id string) bool {
+	if id == "" || len(id) > 128 {
+		return false
+	}
+	for _, c := range []byte(id) {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '.', c == '_', c == '-':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// requestID reuses a safe incoming X-Request-ID or generates one, echoes it
+// back, and stores it in the context for the logger.
 func requestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := r.Header.Get(requestIDHeader)
-		if id == "" || len(id) > 128 {
+		if !safeRequestID(id) {
 			id = newID()
 			r.Header.Set(requestIDHeader, id)
 		}
@@ -47,11 +82,15 @@ type statusRecorder struct {
 	wrote  bool
 }
 
+// WriteHeader forwards only the first status. A later call, such as the
+// deadline middleware's 504 after a handler already answered, would only make
+// net/http log a superfluous WriteHeader line.
 func (r *statusRecorder) WriteHeader(code int) {
-	if !r.wrote {
-		r.status = code
-		r.wrote = true
+	if r.wrote {
+		return
 	}
+	r.status = code
+	r.wrote = true
 	r.ResponseWriter.WriteHeader(code)
 }
 
@@ -112,6 +151,8 @@ const (
 	corsMethods = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
 	corsHeaders = "Authorization, Content-Type"
 	corsMaxAge  = "600"
+	// corsExpose lets a cross-origin page read Retry-After on a 429.
+	corsExpose = "Retry-After"
 )
 
 // cors allows cross-origin requests only from the configured origins and
@@ -128,6 +169,7 @@ func cors(allowed []string) func(http.Handler) http.Handler {
 			ok := slices.Contains(allowed, origin)
 			if ok {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Access-Control-Expose-Headers", corsExpose)
 			}
 			isPreflight := r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != ""
 			if isPreflight {

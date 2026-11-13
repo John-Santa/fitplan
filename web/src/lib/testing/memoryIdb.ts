@@ -1,8 +1,11 @@
 // IndexedDB en memoria para probar db.ts en el entorno node de vitest.
 // Cubre solo lo que usa db.ts: open con upgrade, get, getAll, put, clear y
 // delete sobre almacenes con keyPath o con llaves externas. Es un doble de
-// prueba, no una implementacion fiel: sin indices, sin versiones, sin
-// transacciones reales.
+// prueba, no una implementacion fiel: sin indices, sin versiones. Las
+// transacciones de un solo almacen (transaction('x')) no son atomicas; las
+// de varios almacenes (transaction(['x', 'y'])) si: si una peticion falla se
+// restauran los almacenes (rollback) y se dispara onabort; si todas terminan,
+// oncomplete.
 type Row = unknown
 interface Store {
   keyPath?: string
@@ -49,6 +52,71 @@ export function installMemoryIdb(): MemoryIdb {
     return r
   }
 
+  // Transaccion sobre varios almacenes con rollback completo ante un fallo.
+  function makeAtomicTransaction(stores: Record<string, Store>, names: string[]) {
+    const snapshot = new Map(names.map(n => [n, new Map(stores[n].rows)]))
+    let pending = 0
+    let finished = false
+    const t: {
+      error?: unknown
+      oncomplete?: () => void
+      onabort?: () => void
+      abort(): void
+      objectStore(name: string): unknown
+    } = {
+      abort() {
+        if (finished) throw new Error('InvalidStateError')
+        finished = true
+        for (const [n, rows] of snapshot) stores[n].rows = new Map(rows)
+        setTimeout(() => t.onabort?.())
+      },
+      objectStore(name: string) {
+        const s = stores[name]
+        const op = <R>(run: () => R): FakeRequest<R> => {
+          const r: FakeRequest<R> = {}
+          pending++
+          setTimeout(() => {
+            pending--
+            if (finished) {
+              r.error = new Error('AbortError')
+              r.onerror?.()
+              return
+            }
+            try {
+              r.result = run()
+              r.onsuccess?.()
+            } catch (e) {
+              r.error = e
+              t.error = e
+              r.onerror?.()
+              t.abort()
+              return
+            }
+            setTimeout(() => {
+              if (!finished && pending === 0) {
+                finished = true
+                t.oncomplete?.()
+              }
+            })
+          })
+          return r
+        }
+        return {
+          put: (v: unknown, k?: unknown) =>
+            op(() => {
+              const key = s.keyPath ? (v as Record<string, unknown>)[s.keyPath] : k
+              if (shouldFail?.(name, key)) throw new Error('QuotaExceededError')
+              s.rows.set(key, structuredClone(v))
+              return key
+            }),
+          clear: () => op(() => void s.rows.clear()),
+          delete: (k: unknown) => op(() => void s.rows.delete(k)),
+        }
+      },
+    }
+    return t
+  }
+
   const makeDatabase = (stores: Record<string, Store>) => ({
     objectStoreNames: { contains: (name: string) => name in stores },
     createObjectStore(name: string, opts?: { keyPath?: string }) {
@@ -56,7 +124,8 @@ export function installMemoryIdb(): MemoryIdb {
       return { createIndex() {} }
     },
     onversionchange: null as null | (() => void),
-    transaction(name: string) {
+    transaction(name: string | string[]) {
+      if (Array.isArray(name)) return makeAtomicTransaction(stores, name)
       return {
         objectStore() {
           const s = stores[name]

@@ -138,3 +138,11 @@ describe('formatTarget', () => {
     expect(formatTarget({ kind: 'note' })).toBe('')
   })
 })
+
+describe("phaseForWeek (comportamiento fijado antes de blockStatus)", () => {
+  it("devuelve null despues de la ultima fila y la fila exacta dentro del plan", () => {
+    expect(phaseForWeek(plan, 13)).toBeNull()
+    expect(phaseForWeek(plan, 12)).toBe(plan.phases[4])
+    expect(phaseForWeek(plan, 1)).toBe(plan.phases[0])
+  })
+})

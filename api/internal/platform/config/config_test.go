@@ -37,9 +37,13 @@ func TestLoadValues(t *testing.T) {
 		"ALLOWED_ORIGINS":  " https://app.magnifit.co , http://localhost:5173,,",
 		"DATABASE_URL":     "postgres://example",
 		"CLERK_SECRET_KEY": "placeholder",
+		"CLERK_JWT_KEY":    " jwt-key ",
 	}))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ClerkJWTKey != "jwt-key" {
+		t.Errorf("ClerkJWTKey = %q, want jwt-key", cfg.ClerkJWTKey)
 	}
 	if cfg.Port != "9090" || cfg.DatabaseURL != "postgres://example" || cfg.ClerkSecretKey != "placeholder" {
 		t.Errorf("unexpected config: %+v", cfg)
@@ -77,5 +81,126 @@ func TestLoadRequiresDatabaseAndClerkOutsideTest(t *testing.T) {
 	cfg, err := config.Load(env(map[string]string{"APP_ENV": "test"}))
 	if err != nil || cfg.AppEnv != "test" {
 		t.Errorf("APP_ENV=test without secrets: cfg=%+v err=%v, want ok", cfg, err)
+	}
+}
+
+// production returns a valid production environment with one override.
+func production(key, value string) map[string]string {
+	m := map[string]string{
+		"APP_ENV":          "production",
+		"ALLOWED_ORIGINS":  "https://app.magnifit.co",
+		"DATABASE_URL":     "postgres://u:p@db.example/app?sslmode=require",
+		"CLERK_SECRET_KEY": "placeholder",
+	}
+	m[key] = value
+	return m
+}
+
+func TestLoadProductionRequiresAllowedOrigins(t *testing.T) {
+	_, err := config.Load(env(production("ALLOWED_ORIGINS", " , ")))
+	if err == nil || !strings.Contains(err.Error(), "ALLOWED_ORIGINS") {
+		t.Errorf("production without ALLOWED_ORIGINS: err = %v, want it to name ALLOWED_ORIGINS", err)
+	}
+}
+
+func TestLoadProductionRequiresDatabaseTLS(t *testing.T) {
+	for _, url := range []string{
+		"postgres://u:p@db.example/app",
+		"postgres://u:p@db.example/app?sslmode=disable",
+		"postgresql://u:p@db.example/app?sslmode=prefer",
+		"host=db.example dbname=app sslmode=allow",
+		"host=db.example dbname=app",
+		// pgx applies the last sslmode, so a later insecure value must not slip through.
+		"postgres://u:p@db.example/app?sslmode=require&sslmode=disable",
+		"host=db.example dbname=app sslmode=require sslmode=disable",
+	} {
+		_, err := config.Load(env(production("DATABASE_URL", url)))
+		if err == nil || !strings.Contains(err.Error(), "sslmode") {
+			t.Errorf("production DATABASE_URL %q: err = %v, want an sslmode error", url, err)
+		}
+	}
+	for _, url := range []string{
+		"postgres://u:p@db.example/app?sslmode=require",
+		"postgresql://u:p@db.example/app?sslmode=verify-full&channel_binding=require",
+		"postgres://u:p@db.example/app?sslmode=verify-ca",
+		"host=db.example dbname=app sslmode=verify-full",
+	} {
+		if _, err := config.Load(env(production("DATABASE_URL", url))); err != nil {
+			t.Errorf("production DATABASE_URL %q: err = %v, want ok", url, err)
+		}
+	}
+}
+
+// Outside production the guards stay off, so local runs keep working.
+func TestLoadNonProductionKeepsLocalRuns(t *testing.T) {
+	for _, appEnv := range []string{"", "development"} {
+		cfg, err := config.Load(env(map[string]string{
+			"APP_ENV":          appEnv,
+			"DATABASE_URL":     "postgres://u:p@localhost/app?sslmode=disable",
+			"CLERK_SECRET_KEY": "placeholder",
+		}))
+		if err != nil || len(cfg.AllowedOrigins) != 0 {
+			t.Errorf("APP_ENV=%q local run: cfg=%+v err=%v, want ok", appEnv, cfg, err)
+		}
+	}
+}
+
+func TestLoadRateLimit(t *testing.T) {
+	cfg, err := config.Load(env(map[string]string{"APP_ENV": "test"}))
+	if err != nil || cfg.RateLimitRPS != 0 || cfg.RateLimitBurst != 0 {
+		t.Errorf("unset: cfg = %+v err = %v, want zero values (the router applies its defaults)", cfg, err)
+	}
+	cfg, err = config.Load(env(map[string]string{"APP_ENV": "test", "RATE_LIMIT_RPS": " 2.5 ", "RATE_LIMIT_BURST": "20"}))
+	if err != nil || cfg.RateLimitRPS != 2.5 || cfg.RateLimitBurst != 20 {
+		t.Errorf("set: cfg = %+v err = %v, want 2.5 and 20", cfg, err)
+	}
+}
+
+func TestLoadRejectsInvalidRateLimit(t *testing.T) {
+	for _, tc := range []struct{ name, value string }{
+		{"RATE_LIMIT_RPS", "fast"},
+		{"RATE_LIMIT_RPS", "0"},
+		{"RATE_LIMIT_RPS", "-1"},
+		{"RATE_LIMIT_BURST", "many"},
+		{"RATE_LIMIT_BURST", "0"},
+	} {
+		_, err := config.Load(env(map[string]string{"APP_ENV": "test", tc.name: tc.value}))
+		if err == nil || !strings.Contains(err.Error(), tc.name) {
+			t.Errorf("%s=%q: err = %v, want it to name %s", tc.name, tc.value, err, tc.name)
+		}
+	}
+}
+
+// The migration role owns the schema, so its connection needs TLS in
+// production just like DATABASE_URL; unset, nothing changes.
+func TestLoadProductionRequiresMigrationDatabaseTLS(t *testing.T) {
+	for _, url := range []string{
+		"postgres://owner:p@db.example/app",
+		"postgres://owner:p@db.example/app?sslmode=disable",
+		"postgres://owner:p@db.example/app?sslmode=require&sslmode=disable",
+		"host=db.example dbname=app sslmode=prefer",
+	} {
+		_, err := config.Load(env(production("MIGRATION_DATABASE_URL", url)))
+		if err == nil || !strings.Contains(err.Error(), "MIGRATION_DATABASE_URL") || !strings.Contains(err.Error(), "sslmode") {
+			t.Errorf("production MIGRATION_DATABASE_URL %q: err = %v, want an sslmode error naming MIGRATION_DATABASE_URL", url, err)
+		}
+	}
+	for _, url := range []string{
+		"",
+		"postgres://owner:p@db.example/app?sslmode=require",
+		"postgres://owner:p@db.example/app?sslmode=verify-full",
+		"host=db.example dbname=app sslmode=verify-ca",
+	} {
+		if _, err := config.Load(env(production("MIGRATION_DATABASE_URL", url))); err != nil {
+			t.Errorf("production MIGRATION_DATABASE_URL %q: err = %v, want ok", url, err)
+		}
+	}
+	// Outside production an insecure migration URL stays allowed (local runs).
+	if _, err := config.Load(env(map[string]string{
+		"DATABASE_URL":           "postgres://u:p@localhost/app?sslmode=disable",
+		"MIGRATION_DATABASE_URL": "postgres://owner:p@localhost/app?sslmode=disable",
+		"CLERK_SECRET_KEY":       "placeholder",
+	})); err != nil {
+		t.Errorf("local insecure MIGRATION_DATABASE_URL: err = %v, want ok", err)
 	}
 }

@@ -18,6 +18,11 @@ import (
 // MaxPushBytes caps the body of POST /v1/sync.
 const MaxPushBytes = 5 << 20
 
+// MaxPushRecords caps the records (all collections together) in one push. The
+// client uploads in batches of at most 200 records, so 500 leaves room for
+// older or other clients while bounding the work one request can cause.
+const MaxPushRecords = 500
+
 const (
 	defaultPullLimit = 200
 	maxPullLimit     = 500
@@ -34,9 +39,14 @@ type syncHandlers struct {
 	log *slog.Logger
 }
 
-// user reads the id the auth middleware stored; it answers 401 itself when
-// missing, as a second line of defense.
+// user reads the id the auth middleware stored (see requireUser).
 func (v syncHandlers) user(w http.ResponseWriter, r *http.Request) (shared.UserID, bool) {
+	return requireUser(w, r)
+}
+
+// requireUser reads the id the auth middleware stored; it answers 401 itself
+// when missing, as a second line of defense.
+func requireUser(w http.ResponseWriter, r *http.Request) (shared.UserID, bool) {
 	id, ok := port.UserIDFrom(r.Context())
 	if !ok {
 		writeUnauthorized(w, r)
@@ -98,6 +108,10 @@ func (v syncHandlers) push(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		WriteProblem(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if n := len(in.Documents) + len(in.Sessions) + len(in.Measurements) + len(in.ExerciseMeta); n > MaxPushRecords {
+		WriteProblem(w, http.StatusRequestEntityTooLarge, "too many records in one push (max "+strconv.Itoa(MaxPushRecords)+")")
 		return
 	}
 	res, err := v.svc.Push(r.Context(), id, in.toDomain())

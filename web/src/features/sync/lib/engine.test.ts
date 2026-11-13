@@ -19,6 +19,10 @@ function fakeServer(pageSize = 500) {
   let active = 0
   let maxActive = 0
   let offline = false
+  // Cuenta eliminada (DELETE /v1/me): la API responde 410 a todo /v1/sync.
+  let gone = false
+  let failWith: number | null = null
+  let delay = 2
 
   function seed(coll: Coll, key: string, body: unknown, updatedAt = 1000, deletedAt: number | null = null) {
     rows.set(`${coll}:${key}`, { coll, key, body, updatedAt, deletedAt, rev: ++rev })
@@ -26,10 +30,12 @@ function fakeServer(pageSize = 500) {
 
   const fetch = vi.fn(async (url: string, init?: RequestInit) => {
     if (offline) throw new TypeError('Failed to fetch')
+    if (gone) return json({ type: 'about:blank', title: 'Gone', status: 410, detail: 'account deleted' }, 410)
     active++
     maxActive = Math.max(maxActive, active)
     try {
-      await new Promise(r => setTimeout(r, 2))
+      await new Promise(r => setTimeout(r, delay))
+      if (failWith) return json({ detail: `fake ${failWith}` }, failWith)
       if (init?.method === 'POST') {
         const cs = JSON.parse(String(init.body)) as Record<Coll, Record<string, unknown>[]>
         pushes.push(cs)
@@ -77,6 +83,10 @@ function fakeServer(pageSize = 500) {
     seed,
     get maxActive() { return maxActive },
     setOffline(v: boolean) { offline = v },
+    setGone(v: boolean) { gone = v },
+    /** Todas las respuestas pasan a ser este estado HTTP (null: normal). */
+    setFailWith(v: number | null) { failWith = v },
+    setDelay(ms: number) { delay = ms },
     gets: () => fetch.mock.calls.filter(c => !c[1] || c[1].method !== 'POST').length,
   }
 }
@@ -336,6 +346,41 @@ describe('concurrencia y errores', () => {
     expect(mods.engine.getSyncStatus()).toMatchObject({ state: 'idle', lastError: null })
   })
 
+  it('un 429 es transitorio: conserva el outbox y reintenta tras Retry-After', async () => {
+    await asKnownUser()
+    await mods.local.saveSession(session('s1') as never)
+    const limited = (retryAfter: string) =>
+      new Response(JSON.stringify({ type: 'about:blank', title: 'Too Many Requests', status: 429, detail: 'too many requests' }), {
+        status: 429,
+        headers: { 'Content-Type': 'application/problem+json', 'Retry-After': retryAfter },
+      })
+    // Retry delays only: the cold-start timer (COLD_START_MS) of every run is not a retry.
+    const delays = () =>
+      timers.mock.calls.map(c => c[1]).filter(d => typeof d === 'number' && d >= 1_000 && d !== mods.engine.COLD_START_MS)
+    const timers = vi.spyOn(globalThis, 'setTimeout')
+    const real = server.fetch.getMockImplementation()!
+    server.fetch.mockImplementationOnce(async () => limited('42'))
+    await mods.engine.syncNow()
+    expect(outbox().has('session:s1')).toBe(true)
+    expect(mods.engine.getSyncStatus()).toMatchObject({ state: 'error', pending: 1 })
+    expect(mods.engine.getSyncStatus().lastError).toContain('42')
+    // Pide 42 s: gana a los 5 s del retroceso base.
+    expect(delays()).toEqual([42_000])
+
+    // Un Retry-After corto no acorta el retroceso exponencial.
+    timers.mockClear()
+    server.fetch.mockImplementation(real)
+    server.fetch.mockImplementationOnce(async () => limited('1'))
+    await mods.engine.syncNow()
+    expect(delays()).toEqual([10_000])
+    timers.mockRestore()
+
+    // Pasada la espera, la sincronización normal sube lo pendiente.
+    await mods.engine.syncNow()
+    expect(outbox().size).toBe(0)
+    expect(mods.engine.getSyncStatus()).toMatchObject({ state: 'idle', lastError: null })
+  })
+
   it('ClerkOfflineError cuenta como sin conexión', async () => {
     await asKnownUser()
     const auth = await import('../../account/lib/auth')
@@ -351,6 +396,52 @@ describe('concurrencia y errores', () => {
     await mods.engine.syncNow()
     expect(server.fetch).not.toHaveBeenCalled()
     expect(outbox().size).toBe(1)
+  })
+})
+
+describe('cuenta eliminada (S4)', () => {
+  it('un 410 al subir borra la copia local y el estado de sincronización, y deja de sincronizar', async () => {
+    await asKnownUser()
+    await mods.local.saveSession(session('s1') as never)
+    await mods.local.saveMeasurement(measurement('2026-11-01', 80) as never)
+    server.setGone(true)
+    await mods.engine.syncNow()
+
+    expect(sessionsOnDisk().size).toBe(0)
+    expect(idb.dump('measurements', 'fitplan').size).toBe(0)
+    expect(outbox().size).toBe(0)
+    expect((await mods.syncDb.getMeta()).userId).toBeNull()
+    expect(mods.engine.getSyncStatus()).toMatchObject({
+      state: 'blocked', lastError: mods.engine.ACCOUNT_DELETED_ERROR, pending: 0,
+    })
+    // Sin reintentos: la siguiente vuelta no toca la red.
+    const calls = server.fetch.mock.calls.length
+    await mods.engine.syncNow()
+    expect(server.fetch.mock.calls.length).toBe(calls)
+  })
+
+  it('un 410 al bajar también borra la copia local y recarga la tienda', async () => {
+    await asKnownUser()
+    await mods.db.saveSession(session('s1') as never)
+    const reload = vi.fn()
+    mods.engine.setRemoteChangeHandler(reload)
+    server.setGone(true)
+    await mods.engine.syncNow()
+
+    expect(sessionsOnDisk().size).toBe(0)
+    expect(reload).toHaveBeenCalledTimes(1)
+    expect(mods.engine.getSyncStatus().state).toBe('blocked')
+  })
+
+  it('otros errores del servidor no borran nada', async () => {
+    await asKnownUser()
+    await mods.local.saveSession(session('s1') as never)
+    server.fetch.mockImplementationOnce(async () => json({ detail: 'boom' }, 500))
+    await mods.engine.syncNow()
+
+    expect(sessionsOnDisk().size).toBe(1)
+    expect(outbox().has('session:s1')).toBe(true)
+    expect(mods.engine.getSyncStatus().state).toBe('error')
   })
 })
 
@@ -487,6 +578,49 @@ describe('primer ingreso con semillas (B1)', () => {
   })
 })
 
+describe('first sign-in after the welcome (F1)', () => {
+  /** What the welcome writes on a new phone with the given template. */
+  async function finishWelcome(d: Device, template: 'espalda-protegida' | 'general') {
+    const { buildOnboarding, initialAnswers } = await import('../../onboarding/lib/onboarding')
+    const today = new Date(2026, 10, 12)
+    const out = buildOnboarding({ ...initialAnswers(today), height: '168', template }, today)
+    await d.db.savePlan(out.plan)
+    await d.db.saveConfig(out.config)
+  }
+
+  it('a phone that just chose the general template takes the account plan without a backup copy', async () => {
+    const { defaultPlanWithLegacy } = await import('../../../lib/defaultPlan')
+    server.seed('documents', 'plan', { ...defaultPlanWithLegacy(), name: 'Mi plan' })
+    const d = await device()
+    await finishWelcome(d, 'general')
+    d.engine.setSyncUser('u1')
+    await d.engine.syncNow()
+
+    expect((d.idb.dump('config', 'fitplan').get('plan') as { name: string }).name).toBe('Mi plan')
+    expect(await d.syncDb.getPreBootstrapBackup()).toBeUndefined()
+    // The welcome's config was this phone's only one: it goes up.
+    expect((server.rows.get('documents:config')?.body as { heightCm: number }).heightCm).toBe(168)
+  })
+
+  it('an edited plan is not overwritten by the general template another phone left on the server', async () => {
+    const other = await device()
+    await finishWelcome(other, 'general')
+    other.engine.setSyncUser('u1')
+    await other.engine.syncNow()
+    expect((server.rows.get('documents:plan')?.body as { id: string }).id).toBe('general')
+
+    const old = await device()
+    await seedFirstOpen(old)
+    const plan = old.idb.dump('config', 'fitplan').get('plan') as Record<string, unknown>
+    await old.db.savePlan({ ...plan, name: 'Mi plan' } as never)
+    old.engine.setSyncUser('u1')
+    await old.engine.syncNow()
+
+    expect((old.idb.dump('config', 'fitplan').get('plan') as { name: string }).name).toBe('Mi plan')
+    expect((server.rows.get('documents:plan')?.body as { name: string }).name).toBe('Mi plan')
+  })
+})
+
 describe('convergencia (B2, B3, A1)', () => {
   it('C3: con un reloj adelantado, el stale vuelve a bajar todo y ambos teléfonos convergen', async () => {
     const { DEFAULT_CONFIG } = await import('../../../lib/plan')
@@ -507,8 +641,11 @@ describe('convergencia (B2, B3, A1)', () => {
     await b.engine.syncNow()
     clock.mockRestore()
 
-    expect((server.rows.get('documents:config')?.body as { heightCm: number }).heightCm).toBe(170)
-    expect((fitplanState(b).config as { heightCm: number }).heightCm).toBe(170)
+    // S15: b had already pulled a's 170 when it wrote 185, so 185 is the only
+    // change against the base. The stale push is merged, not dropped, and it
+    // wins despite b's clock being behind.
+    expect((server.rows.get('documents:config')?.body as { heightCm: number }).heightCm).toBe(185)
+    expect((fitplanState(b).config as { heightCm: number }).heightCm).toBe(185)
     await a.engine.syncNow()
     expect(fitplanState(b)).toEqual(fitplanState(a))
     expect(b.engine.getSyncStatus()).toMatchObject({ state: 'idle', lastError: null, pending: 0, rejected: 0 })
@@ -559,5 +696,212 @@ describe('convergencia (B2, B3, A1)', () => {
     await a.engine.syncNow()
     expect(liveServerSessions()).toEqual(['bad', 'fromB', 'good'])
     expect(a.engine.getSyncStatus().rejected).toBe(0)
+  })
+})
+
+/** Intercepta los temporizadores largos del motor (reintento 5 s+, debounce
+ *  3 s, arranque en frío 4 s) para verlos y dispararlos a mano; los cortos
+ *  (IndexedDB y servidor falsos) siguen siendo reales. */
+function captureEngineTimers() {
+  const real = globalThis.setTimeout
+  const scheduled: { fn: () => void; ms: number; cleared: boolean }[] = []
+  vi.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void, ms?: number) => {
+    if ((ms ?? 0) < 1000) return real(fn, ms)
+    const entry = { fn, ms: ms as number, cleared: false }
+    scheduled.push(entry)
+    return entry as never
+  }) as never)
+  vi.spyOn(globalThis, 'clearTimeout').mockImplementation(((t: unknown) => {
+    const e = scheduled.find(x => x === t)
+    if (e) e.cleared = true
+  }) as never)
+  return {
+    /** Temporizadores largos vivos (programados y no cancelados). */
+    live: () => scheduled.filter(e => !e.cleared),
+    fire: (ms: number) => {
+      const e = scheduled.find(x => x.ms === ms && !x.cleared)
+      if (!e) throw new Error(`no hay temporizador de ${ms} ms`)
+      e.cleared = true
+      e.fn()
+    },
+  }
+}
+
+describe('reintentos y estados de error (F23)', () => {
+  it('sin conexión: programa un reintento y se recupera al volver la red', async () => {
+    const timers = captureEngineTimers()
+    await asKnownUser()
+    await mods.local.saveSession(session('s1') as never)
+    server.setOffline(true)
+    await mods.engine.syncNow()
+    expect(mods.engine.getSyncStatus().state).toBe('offline')
+    expect(timers.live().map(t => t.ms)).toContain(5_000)
+    server.setOffline(false)
+    timers.fire(5_000)
+    await vi.waitFor(() => expect(mods.engine.getSyncStatus().state).toBe('idle'))
+    expect(outbox().size).toBe(0)
+  })
+
+  it('error genérico (500): queda en error con el mensaje, conserva el outbox y se reintenta', async () => {
+    const timers = captureEngineTimers()
+    await asKnownUser()
+    await mods.local.saveSession(session('s1') as never)
+    server.setFailWith(500)
+    await mods.engine.syncNow()
+    expect(mods.engine.getSyncStatus()).toMatchObject({ state: 'error', lastError: 'No se pudo sincronizar: fake 500', pending: 1 })
+    expect(timers.live().map(t => t.ms)).toContain(5_000)
+    server.setFailWith(null)
+    timers.fire(5_000)
+    await vi.waitFor(() => expect(mods.engine.getSyncStatus().state).toBe('idle'))
+    expect(outbox().size).toBe(0)
+  })
+
+  it('un 401 pasa a auth_expired: no programa reintentos y conserva el outbox', async () => {
+    const timers = captureEngineTimers()
+    await asKnownUser()
+    await mods.local.saveSession(session('s1') as never)
+    // Quita el debounce de la escritura: solo importa lo que programa el 401.
+    for (const t of timers.live()) t.cleared = true
+    server.setFailWith(401)
+    await mods.engine.syncNow()
+    expect(mods.engine.getSyncStatus()).toMatchObject({ state: 'auth_expired', pending: 1, lastError: mods.engine.AUTH_EXPIRED_ERROR })
+    expect(mods.engine.AUTH_EXPIRED_ERROR).toBe('Tu sesión expiró, vuelve a iniciar sesión')
+    expect((await mods.syncDb.getMeta()).lastError).toBe(mods.engine.AUTH_EXPIRED_ERROR)
+    expect(timers.live()).toEqual([])
+    expect(outbox().has('session:s1')).toBe(true)
+  })
+
+  it('en auth_expired una escritura local no programa la sincronización automática', async () => {
+    const timers = captureEngineTimers()
+    await asKnownUser()
+    server.setFailWith(401)
+    await mods.engine.syncNow()
+    await mods.local.saveSession(session('s2') as never)
+    expect(timers.live()).toEqual([])
+    expect(outbox().has('session:s2')).toBe(true)
+    await vi.waitFor(() => expect(mods.engine.getSyncStatus().pending).toBe(1))
+  })
+
+  it('al llegar un token nuevo reanuda con la cola intacta', async () => {
+    await asKnownUser()
+    await mods.local.saveSession(session('s1') as never)
+    server.setFailWith(401)
+    await mods.engine.syncNow()
+    expect(mods.engine.getSyncStatus().state).toBe('auth_expired')
+
+    server.setFailWith(null)
+    mods.engine.resumeAfterAuth()
+    await vi.waitFor(() => expect(mods.engine.getSyncStatus()).toMatchObject({ state: 'idle', lastError: null, pending: 0 }))
+    expect(liveServerSessions()).toEqual(['s1'])
+    expect(outbox().size).toBe(0)
+  })
+
+  it('resumeAfterAuth no hace nada si la sesión no estaba expirada', async () => {
+    await asKnownUser()
+    mods.engine.resumeAfterAuth()
+    await new Promise(r => setTimeout(r, 20))
+    expect(server.fetch).not.toHaveBeenCalled()
+  })
+
+  it('Clerk sin conexión sigue contando como sin conexión, no como sesión expirada', async () => {
+    await asKnownUser()
+    const auth = await import('../../account/lib/auth')
+    auth.setTokenGetter(async () => {
+      throw Object.assign(new Error('offline'), { code: 'clerk_offline' })
+    })
+    await mods.engine.syncNow()
+    expect(mods.engine.getSyncStatus().state).toBe('offline')
+  })
+})
+
+describe('cambios rechazados: Reintentar y Descartar (F28)', () => {
+  /** Un teléfono con la sesión 'bad' rechazada por el servidor (400). */
+  async function withRejected() {
+    await asKnownUser()
+    await mods.local.saveSession(session('bad', 'x') as never)
+    server.setFailWith(400)
+    await mods.engine.syncNow()
+    expect(mods.engine.getSyncStatus().rejected).toBe(1)
+    expect(outbox().size).toBe(0)
+  }
+  const rejected = () => idb.dump('rejected', 'magnifit-sync')
+
+  it('Reintentar vuelve a subir el registro y lo quita de los rechazados', async () => {
+    await withRejected()
+    server.setFailWith(null)
+    await mods.engine.retryRejected('session', 'bad')
+    expect(liveServerSessions()).toEqual(['bad'])
+    expect(rejected().size).toBe(0)
+    expect(outbox().size).toBe(0)
+    expect(mods.engine.getSyncStatus()).toMatchObject({ rejected: 0, rejectedError: null, state: 'idle' })
+  })
+
+  it('Reintentar con el servidor aún rechazando lo deja en rechazados, sin perderlo', async () => {
+    await withRejected()
+    await mods.engine.retryRejected('session', 'bad')
+    expect([...rejected().keys()]).toEqual(['session:bad'])
+    expect(outbox().size).toBe(0)
+    expect(mods.engine.getSyncStatus().rejected).toBe(1)
+    expect(sessionsOnDisk().has('bad')).toBe(true)
+  })
+
+  it('Reintentar no pisa una versión más nueva del registro que ya espera en el outbox', async () => {
+    await withRejected()
+    server.setFailWith(null)
+    await mods.syncDb.enqueueUpsert('session', 'bad', session('bad', 'corregida'), Date.now() + 10)
+    await mods.engine.retryRejected('session', 'bad')
+    const row = server.rows.get('sessions:bad')
+    expect((row?.body as { notes: string }).notes).toBe('corregida')
+    expect(rejected().size).toBe(0)
+  })
+
+  it('Descartar quita el registro de los rechazados sin tocar el outbox ni los datos locales', async () => {
+    await withRejected()
+    await mods.engine.discardRejected('session', 'bad')
+    expect(rejected().size).toBe(0)
+    expect(outbox().size).toBe(0)
+    expect(sessionsOnDisk().has('bad')).toBe(true)
+    expect(mods.engine.getSyncStatus()).toMatchObject({ rejected: 0, rejectedError: null })
+  })
+
+  it('getRejected devuelve los registros con su mensaje para mostrarlos', async () => {
+    await withRejected()
+    const list = await mods.syncDb.getRejected()
+    expect(list.map(r => [r.entity, r.key, r.error])).toEqual([['session', 'bad', 'fake 400']])
+  })
+})
+
+describe('arranque en frío del servidor (F34)', () => {
+  it('si el servidor tarda en responder pasa a connecting y vuelve a idle al terminar', async () => {
+    const timers = captureEngineTimers()
+    await asKnownUser()
+    server.setDelay(120)
+    const done = mods.engine.syncNow()
+    await vi.waitFor(() => expect(mods.engine.getSyncStatus().state).toBe('syncing'))
+    expect(timers.live().map(t => t.ms)).toContain(4_000)
+    timers.fire(4_000)
+    expect(mods.engine.getSyncStatus().state).toBe('connecting')
+    await done
+    expect(mods.engine.getSyncStatus()).toMatchObject({ state: 'idle', lastError: null })
+  })
+
+  it('si responde a tiempo no queda ningún aviso de arranque en frío pendiente', async () => {
+    const timers = captureEngineTimers()
+    await asKnownUser()
+    await mods.engine.syncNow()
+    expect(mods.engine.getSyncStatus().state).toBe('idle')
+    expect(timers.live().filter(t => t.ms === 4_000)).toEqual([])
+  })
+
+  it('un 401 durante el arranque en frío termina en auth_expired, no en connecting', async () => {
+    const timers = captureEngineTimers()
+    await asKnownUser()
+    server.setDelay(120)
+    server.setFailWith(401)
+    const done = mods.engine.syncNow()
+    await vi.waitFor(() => expect(mods.engine.getSyncStatus().state).toBe('syncing'))
+    timers.fire(4_000)
+    await done
+    expect(mods.engine.getSyncStatus().state).toBe('auth_expired')
   })
 })

@@ -1,17 +1,23 @@
 // Puente con Clerk. Solo se importa dinámicamente cuando hay clave (ver
 // main.tsx y Settings.tsx), así el build sin clave no ejecuta nada de Clerk.
-import { useEffect, useMemo, type ReactNode } from 'react'
-import { ClerkProvider, SignInButton, UserButton, useAuth, useUser } from '@clerk/react'
-import { AuthContext, setTokenGetter, type AuthState } from '../lib/auth'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { ClerkProvider, SignInButton, SignUpButton, UserButton, useAuth, useClerk, useUser } from '@clerk/react'
+import { AuthContext, setSignOutHandler, setTokenGetter, type AuthState } from '../lib/auth'
+import SignOutDialog from './SignOutDialog'
 
 function Bridge({ children }: { children: ReactNode }) {
-  const { isLoaded, isSignedIn, userId, getToken } = useAuth()
+  const { isLoaded, isSignedIn, userId, getToken, signOut } = useAuth()
   const { user } = useUser()
 
   useEffect(() => {
     setTokenGetter(() => getToken())
     return () => setTokenGetter(null)
   }, [getToken])
+
+  useEffect(() => {
+    setSignOutHandler(() => signOut())
+    return () => setSignOutHandler(null)
+  }, [signOut])
 
   const value = useMemo<AuthState>(
     () => ({
@@ -37,10 +43,44 @@ export function ClerkAuthProvider({ publishableKey, children }: { publishableKey
   )
 }
 
+/** "Cerrar sesión": opens the dialog that syncs, warns and asks what to do
+ *  with the data on the device. Needs the Clerk provider (useClerk). */
+export function SignOutControl() {
+  const clerk = useClerk()
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button onClick={() => setOpen(true)}>Cerrar sesión</button>
+      {open && <SignOutDialog signOut={() => clerk.signOut()} onClose={() => setOpen(false)} />}
+    </>
+  )
+}
+
+/** Account entry outside Perfil (welcome and Hoy): create an account or sign
+ *  in, both in Clerk's modal. Goes inside ClerkAuthProvider. */
+export function AccountEntryButtons() {
+  return (
+    <div className="btnrow">
+      <SignUpButton mode="modal">
+        <button className="primary">Crear cuenta</button>
+      </SignUpButton>
+      <SignInButton mode="modal">
+        <button>Iniciar sesión</button>
+      </SignInButton>
+    </div>
+  )
+}
+
 /** Botón de entrar / avatar de la cuenta. Va dentro del ClerkAuthProvider. */
 export function AccountControls({ isSignedIn }: { isSignedIn: boolean }) {
   return isSignedIn ? (
-    <UserButton />
+    // Only "Manage account": signing out goes through SignOutControl so the
+    // person always chooses between keeping and erasing the device's data.
+    <UserButton>
+      <UserButton.MenuItems>
+        <UserButton.Action label="manageAccount" />
+      </UserButton.MenuItems>
+    </UserButton>
   ) : (
     <SignInButton mode="modal">
       <button className="primary">Iniciar sesión</button>

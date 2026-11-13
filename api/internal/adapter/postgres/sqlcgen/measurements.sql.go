@@ -11,6 +11,16 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const deleteMeasurements = `-- name: DeleteMeasurements :exec
+DELETE FROM measurements WHERE user_id = $1
+`
+
+// Deletes every row of one user, tombstones included (DELETE /v1/data).
+func (q *Queries) DeleteMeasurements(ctx context.Context, userID string) error {
+	_, err := q.db.Exec(ctx, deleteMeasurements, userID)
+	return err
+}
+
 const getMeasurement = `-- name: GetMeasurement :one
 SELECT user_id, date, body, rev, updated_at, deleted_at, server_updated_at FROM measurements WHERE user_id = $1 AND date = $2
 `
