@@ -132,6 +132,19 @@ export async function rejectOutboxEntry(sent: OutboxEntry, error: string, now = 
   }
 }
 
+/** "Reintentar": devuelve un rechazado al outbox con su updatedAt original y
+ *  lo quita de la lista. Si el registro ya tiene una entrada más nueva en el
+ *  outbox, esa gana y el rechazado solo se descarta. Devuelve si hubo algo
+ *  que reintentar. */
+export async function requeueRejected(entity: Entity, key: string): Promise<boolean> {
+  const entry = (await getRejected()).find(r => r.entity === entity && r.key === key)
+  if (!entry) return false
+  const { error: _error, rejectedAt: _rejectedAt, ...pending } = entry
+  if (!(await getOutboxEntry(entity, key))) await putOutboxEntry(pending)
+  await removeRejected(entity, key)
+  return true
+}
+
 /* ---------- copia previa al primer ingreso ---------- */
 
 export const getPreBootstrapBackup = () =>

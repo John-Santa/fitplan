@@ -45,6 +45,7 @@ export const OTHER_ACCOUNT_ERROR =
 export const OFFLINE_ERROR = 'Sin conexión'
 export const ACCOUNT_DELETED_ERROR =
   'Esta cuenta fue eliminada. Borramos sus datos de este dispositivo; para volver a sincronizar, crea una cuenta nueva.'
+export const AUTH_EXPIRED_ERROR = 'Tu sesión expiró, vuelve a iniciar sesión'
 
 export const PUSH_MAX_ITEMS = 200
 export const PUSH_MAX_BYTES = 4 * 1024 * 1024
@@ -52,8 +53,12 @@ export const PULL_PAGE = 200
 const WRITE_DEBOUNCE_MS = 3_000
 const RETRY_BASE_MS = 5_000
 const RETRY_MAX_MS = 5 * 60_000
+/** Pasado este tiempo sin respuesta, la API del plan gratuito está arrancando. */
+export const COLD_START_MS = 4_000
 
-export type SyncState = 'idle' | 'syncing' | 'offline' | 'error' | 'blocked'
+/** 'connecting': la vuelta lleva más de COLD_START_MS sin terminar (arranque
+ *  en frío del servidor). */
+export type SyncState = 'idle' | 'syncing' | 'connecting' | 'offline' | 'error' | 'blocked' | 'auth_expired'
 
 export type SyncStatus = {
   state: SyncState
@@ -79,6 +84,7 @@ let runAgain = false
 let failures = 0
 let retryTimer: ReturnType<typeof setTimeout> | null = null
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
+let coldStartTimer: ReturnType<typeof setTimeout> | null = null
 let status: SyncStatus = IDLE
 const listeners = new Set<(s: SyncStatus) => void>()
 
@@ -129,10 +135,26 @@ export async function refreshStatus() {
   })
 }
 
+/** "Reintentar" de un cambio rechazado: vuelve al outbox y se sube de nuevo. */
+export async function retryRejected(entity: Entity, key: string) {
+  await sdb.requeueRejected(entity, key)
+  await refreshStatus()
+  if (currentUser) await syncNow()
+}
+
+/** "Descartar" un cambio rechazado: solo quita el aviso; el dato sigue en
+ *  este dispositivo. */
+export async function discardRejected(entity: Entity, key: string) {
+  await sdb.removeRejected(entity, key)
+  await refreshStatus()
+}
+
 /** Aviso de escritura local: sincroniza 3 s después de la última. */
 export function noteLocalWrite() {
   void refreshStatus().catch(() => {})
-  if (!currentUser) return
+  // Con la sesión expirada no se insiste solo: la cola espera a que vuelva
+  // un token (resumeAfterAuth) o a que la persona pida sincronizar.
+  if (!currentUser || status.state === 'auth_expired') return
   if (debounceTimer) clearTimeout(debounceTimer)
   debounceTimer = setTimeout(() => {
     debounceTimer = null
@@ -174,6 +196,10 @@ async function runOnce(): Promise<boolean> {
     return false
   }
   setStatus({ state: 'syncing' })
+  coldStartTimer = setTimeout(() => {
+    coldStartTimer = null
+    if (status.state === 'syncing') setStatus({ state: 'connecting' })
+  }, COLD_START_MS)
   const changed = { value: false }
   try {
     if (!meta.userId) await bootstrap(uid, changed)
@@ -197,6 +223,15 @@ async function runOnce(): Promise<boolean> {
       changed.value = true
       return false
     }
+    if (!isOffline(e) && isUnauthorized(e)) {
+      // El servidor no acepta el token: reintentar solo repetiría el 401. El
+      // outbox y el cursor quedan como están hasta que llegue un token nuevo.
+      await sdb.updateMeta({ lastError: AUTH_EXPIRED_ERROR }).catch(() => {})
+      setStatus({ state: 'auth_expired', lastError: AUTH_EXPIRED_ERROR })
+      clearTimers()
+      failures = 0
+      return false
+    }
     const offline = isOffline(e)
     const waitMs = rateLimitWait(e)
     const message = offline
@@ -209,9 +244,11 @@ async function runOnce(): Promise<boolean> {
     scheduleRetry(waitMs ?? 0)
     return false
   } finally {
+    if (coldStartTimer) clearTimeout(coldStartTimer)
+    coldStartTimer = null
     if (changed.value) await Promise.resolve(onRemoteChange?.()).catch(() => {})
     await refreshStatus().catch(() => {})
-    if (status.state === 'syncing') setStatus({ state: 'idle' })
+    if (status.state === 'syncing' || status.state === 'connecting') setStatus({ state: 'idle' })
   }
 }
 
@@ -235,6 +272,15 @@ function isOffline(e: unknown): boolean {
   // fetch sin red lanza TypeError; Clerk sin red lanza ClerkOfflineError.
   const err = e as { name?: unknown; code?: unknown } | null
   return e instanceof TypeError || err?.code === 'clerk_offline' || err?.name === 'ClerkOfflineError'
+}
+
+const isUnauthorized = (e: unknown) => e instanceof ApiError && e.status === 401
+
+/** Lo llama la app cuando Clerk entrega un token nuevo (o vuelve a iniciar
+ *  sesión): si la sincronización estaba detenida por un 401, reanuda con el
+ *  outbox intacto. Con cualquier otro estado no hace nada. */
+export function resumeAfterAuth() {
+  if (status.state === 'auth_expired' && currentUser) void syncNow()
 }
 
 /** Un 429 es transitorio: devuelve la espera que pidió el servidor (Retry-After,
@@ -578,6 +624,8 @@ export async function enqueueAllLocalChanges() {
 /** Solo para pruebas: olvida el estado del módulo. */
 export function resetSyncEngineForTests() {
   clearTimers()
+  if (coldStartTimer) clearTimeout(coldStartTimer)
+  coldStartTimer = null
   currentUser = null
   onRemoteChange = null
   inflight = null

@@ -6,6 +6,8 @@ import Habit from '../features/habit/routes/Habit'
 import Settings from '../features/account/routes/Settings'
 import { loadActiveDraft } from '../features/session/lib/activeSession'
 import MovedNotice from './MovedNotice'
+import { PwaPrompts } from '../features/pwa/components/PwaPrompts'
+import { SyncIndicator } from '../features/sync/components/SyncIndicator'
 
 const Train = lazy(() => import('../features/session/routes/Train'))
 const Measure = lazy(() => import('../features/progress/routes/Measure'))
@@ -66,6 +68,10 @@ function Shell() {
     <div className="app">
       <MovedNotice />
       <main className="main">
+        <div className="app-notices">
+          <SyncIndicator onOpenAccount={() => selectTab('perfil')} />
+          <PwaPrompts />
+        </div>
         <Suspense fallback={<ScreenFallback />}>
         {guideOpen ? (
           <Guide onBack={() => setGuideOpen(false)} />

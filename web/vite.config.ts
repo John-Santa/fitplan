@@ -11,7 +11,11 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt': la versión nueva espera hasta que la persona toque Actualizar,
+      // y el aviso no aparece en medio de un entrenamiento (features/pwa).
+      registerType: 'prompt',
+      // El registro lo hace features/pwa/lib/useUpdatePrompt.ts (no un script inyectado).
+      injectRegister: false,
       includeAssets: ['icon-192.png', 'icon-512.png', 'apple-touch-icon.png'],
       manifest: {
         name: 'MagniFit',
