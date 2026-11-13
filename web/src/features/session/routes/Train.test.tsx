@@ -52,7 +52,6 @@ function renderTrain(active: SessionKind, sessions: Session[] = [], draft: Sessi
   state.sessions = sessions
   const api = disciplineActions({
     config: { ...DEFAULT_CONFIG, disciplines: ['strength', 'swim'] },
-    sessions,
     stored: active,
     setStored: () => {},
     saveConfig: async () => {},

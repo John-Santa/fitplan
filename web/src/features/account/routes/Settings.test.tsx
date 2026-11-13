@@ -10,7 +10,7 @@ import type { SessionKind } from '../../../lib/types'
 
 describe('Ajustes regrouped by concern (S9)', () => {
   const render = (list: SessionKind[], props: { onBack?: () => void } = {}) => {
-    const api = disciplineActions({ config: mergeConfig({}), sessions: [], stored: null, setStored: () => {}, saveConfig: async () => {} })
+    const api = disciplineActions({ config: mergeConfig({}), stored: null, setStored: () => {}, saveConfig: async () => {} })
     return renderToString(
       <StoreProvider>
         <DisciplineCtx.Provider value={{ ...api, list }}>

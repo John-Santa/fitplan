@@ -10,7 +10,7 @@ import WeekReview from './WeekReview'
 
 const as = (kind: SessionKind, node: ReactNode) => {
   const api = disciplineActions({
-    config: { ...DEFAULT_CONFIG, disciplines: ['strength', 'swim'] }, sessions: [], stored: kind,
+    config: { ...DEFAULT_CONFIG, disciplines: ['strength', 'swim'] }, stored: kind,
     setStored: () => {}, saveConfig: async () => {},
   })
   return <DisciplineCtx.Provider value={api}>{node}</DisciplineCtx.Provider>

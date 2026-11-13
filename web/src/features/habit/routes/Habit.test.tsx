@@ -21,7 +21,7 @@ vi.mock('../../reminders/components/ReminderSettings', () => ({ ReminderSettings
 import Habit from './Habit'
 
 const as = (kind: SessionKind) => {
-  const api = disciplineActions({ config, sessions: [], stored: kind, setStored: () => {}, saveConfig: async () => {} })
+  const api = disciplineActions({ config, stored: kind, setStored: () => {}, saveConfig: async () => {} })
   return renderToString(<DisciplineCtx.Provider value={api}><Habit /></DisciplineCtx.Provider>).replace(/<!-- -->/g, '')
 }
 

@@ -22,7 +22,6 @@ function renderProfile(active: SessionKind): string {
   })
   const api = disciplineActions({
     config: { ...DEFAULT_CONFIG, disciplines: ['strength', 'swim'] },
-    sessions: [],
     stored: active,
     setStored: noop,
     saveConfig: async () => {},

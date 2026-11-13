@@ -21,7 +21,6 @@ const { DEFAULT_CONFIG } = await import('../../../lib/plan')
 function render(active: SessionKind) {
   const api = disciplineActions({
     config: { ...DEFAULT_CONFIG, disciplines: ['strength', 'swim'] },
-    sessions: [],
     stored: active,
     setStored: () => {},
     saveConfig: async () => {},
