@@ -3,8 +3,10 @@
 // - The list ("Tus disciplinas") is Config.disciplines: synced, and filled by
 //   mergeConfig with DEFAULT_DISCIPLINES whenever a stored body lacks it.
 // - D2-A adds Natación for a user who already swam. It needs the sessions,
-//   which mergeConfig does not have, so it is applied here, where the list is
-//   resolved, and never stored on its own: booting writes nothing for it.
+//   which mergeConfig does not have, so it is applied once, as a local
+//   migration, wherever a raw config body without a list is still visible
+//   (withDisciplines: boot, backup import, pull). From then on the list is
+//   stored and read as is, so hiding a discipline persists.
 // - The selected discipline is per device, in localStorage, behind try/catch;
 //   a missing, invalid or unreadable value resolves to the first of the list.
 //
@@ -13,6 +15,8 @@
 import { DISCIPLINES } from './disciplines'
 import { DEFAULT_DISCIPLINES } from './plan'
 import type { Config, Session, SessionKind } from './types'
+
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 
 /** Every discipline this build knows, in catalog order. */
 export const DISCIPLINE_CATALOG = Object.keys(DISCIPLINES) as SessionKind[]
@@ -23,9 +27,6 @@ export const DISCIPLINE_STORAGE_KEY = 'fitplan:discipline'
 
 const isKind = (v: unknown): v is SessionKind => typeof v === 'string' && (DISCIPLINE_CATALOG as string[]).includes(v)
 
-const sameList = (a: readonly SessionKind[], b: readonly SessionKind[]) =>
-  a.length === b.length && a.every((k, i) => k === b[i])
-
 /** D2-A: Gimnasio, plus every other discipline the user already has a
  *  session of (today only Natación), in catalog order. */
 export function defaultDisciplines(sessions: readonly Session[]): SessionKind[] {
@@ -33,10 +34,34 @@ export function defaultDisciplines(sessions: readonly Session[]): SessionKind[] 
   return DISCIPLINE_CATALOG.filter(k => DEFAULT_DISCIPLINES.includes(k) || kinds.has(k))
 }
 
-/** The user's list: the stored one, or D2-A while the stored one is still
- *  the default (a config that never stored a list reads as the default). */
-export function disciplineList(config: Pick<Config, 'disciplines'>, sessions: readonly Session[]): SessionKind[] {
-  return sameList(config.disciplines, DEFAULT_DISCIPLINES) ? defaultDisciplines(sessions) : config.disciplines
+/** The user's list, exactly as stored. D2-A is not applied here: it was
+ *  applied once when the list was first stored (withDisciplines), and
+ *  applying it on every read would bring back a hidden Natación. */
+export function disciplineList(config: Pick<Config, 'disciplines'>): SessionKind[] {
+  return config.disciplines
+}
+
+/** True when a raw stored or synced config body carries a discipline list
+ *  (any array: mergeConfig validates it). Bodies written before the field,
+ *  or by an older client, do not. */
+export function hasDisciplines(body: unknown): boolean {
+  return isObject(body) && Array.isArray(body.disciplines)
+}
+
+/** The one-time D2-A migration. `config` is `body` already read through
+ *  mergeConfig; when `body` carries no list, `config` gets `fallback()`
+ *  instead of the plain default (callers pass defaultDisciplines of the
+ *  sessions that will be stored, or the local list a pulled body must not
+ *  undo). A body that carries a list is returned untouched, so the
+ *  migration never runs twice and a hidden discipline stays hidden. */
+export async function withDisciplines(
+  body: unknown,
+  config: Config,
+  fallback: () => readonly SessionKind[] | Promise<readonly SessionKind[]>,
+): Promise<Config> {
+  if (hasDisciplines(body)) return config
+  const list = [...new Set((await fallback()).filter(isKind))]
+  return list.length ? { ...config, disciplines: list } : config
 }
 
 /** The selected discipline: `stored` when it is in the list, else the first
@@ -100,7 +125,6 @@ export interface DisciplineApi {
 
 export interface DisciplineDeps {
   config: Config
-  sessions: readonly Session[]
   /** The raw stored selection (readStoredDiscipline), held as shared state. */
   stored: unknown
   /** Updates that shared state, so every consumer re-renders. */
@@ -110,8 +134,8 @@ export interface DisciplineDeps {
 }
 
 /** The hook's behavior without React: useDiscipline wraps this. */
-export function disciplineActions({ config, sessions, stored, setStored, saveConfig }: DisciplineDeps): DisciplineApi {
-  const list = disciplineList(config, sessions)
+export function disciplineActions({ config, stored, setStored, saveConfig }: DisciplineDeps): DisciplineApi {
+  const list = disciplineList(config)
   const active = resolveActive(stored, list)
   const choose = (kind: SessionKind) => {
     writeStoredDiscipline(kind)

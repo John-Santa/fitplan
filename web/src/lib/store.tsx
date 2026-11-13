@@ -5,7 +5,7 @@ import { DEFAULT_CONFIG, mergeConfig } from './plan'
 import { derive } from './calc'
 import { defaultPlanWithLegacy } from './defaultPlan'
 import { applyPlanMigration } from './migration'
-import { disciplineActions, readStoredDiscipline, type DisciplineApi } from './disciplineSelection'
+import { defaultDisciplines, disciplineActions, readStoredDiscipline, withDisciplines, type DisciplineApi } from './disciplineSelection'
 import { authEnabled, useAuthState } from '../features/account/lib/auth'
 import * as local from '../features/sync/lib/localWrites'
 import { useSyncTriggers } from '../features/sync/lib/useSync'
@@ -76,7 +76,10 @@ export async function prepareLocalData(): Promise<{ needsOnboarding: boolean }> 
   // reescribimos una sola vez. La comparacion por JSON es un chequeo de
   // idempotencia barato, no un contrato de igualdad profunda: si el orden
   // de claves difiere se reescribe una vez y a partir de ahi coincide.
-  const current = mergeConfig(stored)
+  // A config from before the discipline list gets D2-A once here (Gimnasio,
+  // plus Natación when there is a swim session). Local write only, like the
+  // rest of this completion: nothing is queued for sync.
+  const current = await withDisciplines(stored, mergeConfig(stored), async () => defaultDisciplines((await db.getSessions()).sessions))
   if (JSON.stringify(stored) !== JSON.stringify(current)) await db.saveConfig(current)
   // Migracion unica al plan editable (S5): solo escribe el registro del
   // plan y, si la semana o el bloque son los de antes, la config.
@@ -180,8 +183,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const { saveConfig } = value
   const discipline = useMemo(
-    () => disciplineActions({ config, sessions, stored: storedDiscipline, setStored: setStoredDiscipline, saveConfig }),
-    [config, sessions, storedDiscipline, saveConfig],
+    () => disciplineActions({ config, stored: storedDiscipline, setStored: setStoredDiscipline, saveConfig }),
+    [config, storedDiscipline, saveConfig],
   )
 
   return (

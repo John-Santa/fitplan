@@ -16,10 +16,12 @@ import {
   defaultDisciplines,
   disciplineActions,
   disciplineList,
+  hasDisciplines,
   hideDiscipline,
   readStoredDiscipline,
   removeStoredDiscipline,
   resolveActive,
+  withDisciplines,
   writeStoredDiscipline,
 } from './disciplineSelection'
 
@@ -64,20 +66,56 @@ describe('defaultDisciplines (D2-A)', () => {
 })
 
 describe('disciplineList', () => {
-  it('applies D2-A to a config that holds the default list', () => {
-    expect(disciplineList(mergeConfig({}), [swim])).toEqual(['strength', 'swim'])
-    expect(disciplineList(mergeConfig({}), [strength])).toEqual(['strength'])
+  it('is the stored list as is: a stored ["strength"] stays Gimnasio only', () => {
+    expect(disciplineList(mergeConfig({}))).toEqual(['strength'])
+    expect(disciplineList(withList(['strength']))).toEqual(['strength'])
   })
 
   it('keeps a list the user chose', () => {
-    expect(disciplineList(withList(['swim']), [strength])).toEqual(['swim'])
-    expect(disciplineList(withList(['swim', 'strength']), [])).toEqual(['swim', 'strength'])
+    expect(disciplineList(withList(['swim']))).toEqual(['swim'])
+    expect(disciplineList(withList(['swim', 'strength']))).toEqual(['swim', 'strength'])
+  })
+})
+
+describe('withDisciplines (the one-time D2-A migration)', () => {
+  const todays = () => {
+    const c = structuredClone(DEFAULT_CONFIG) as Partial<Config>
+    delete c.disciplines
+    return c
+  }
+
+  it('a body without a list gets the fallback', async () => {
+    const body = todays()
+    expect((await withDisciplines(body, mergeConfig(body), () => defaultDisciplines([swim]))).disciplines).toEqual(['strength', 'swim'])
+    expect((await withDisciplines(body, mergeConfig(body), async () => ['swim'])).disciplines).toEqual(['swim'])
   })
 
-  it('never stores anything (pure)', () => {
-    const config = mergeConfig({})
-    disciplineList(config, [swim])
-    expect(config.disciplines).toEqual(['strength'])
+  it('a body with a list is returned untouched and the fallback never runs', async () => {
+    const body = { ...todays(), disciplines: ['strength'] }
+    const config = mergeConfig(body)
+    let ran = false
+    expect(await withDisciplines(body, config, () => { ran = true; return ['strength', 'swim'] })).toBe(config)
+    expect(ran).toBe(false)
+  })
+
+  it('keeps the field position and every other field', async () => {
+    const body = todays()
+    const out = await withDisciplines(body, mergeConfig(body), () => ['strength', 'swim'])
+    expect(Object.keys(out)).toEqual(Object.keys(mergeConfig(body)))
+    expect({ ...out, disciplines: ['strength'] }).toEqual(mergeConfig(body))
+  })
+
+  it('an empty or invalid fallback keeps the default', async () => {
+    const body = todays()
+    expect((await withDisciplines(body, mergeConfig(body), () => [])).disciplines).toEqual(['strength'])
+    expect((await withDisciplines(body, mergeConfig(body), () => ['running' as SessionKind, 'swim', 'swim'])).disciplines).toEqual(['swim'])
+  })
+
+  it('hasDisciplines is true only for a body carrying an array', () => {
+    expect(hasDisciplines({ disciplines: [] })).toBe(true)
+    expect(hasDisciplines({})).toBe(false)
+    expect(hasDisciplines({ disciplines: 'swim' })).toBe(false)
+    expect(hasDisciplines(undefined)).toBe(false)
   })
 })
 
@@ -153,14 +191,13 @@ describe('addDiscipline / hideDiscipline (S3)', () => {
 })
 
 describe('disciplineActions (the core of useDiscipline)', () => {
-  function setup(config: Config, sessions: Session[] = [], stored: unknown = null) {
+  function setup(config: Config, stored: unknown = null) {
     const rows = stubLocalStorage()
     if (typeof stored === 'string') rows.set(DISCIPLINE_STORAGE_KEY, stored)
     const saved: Config[] = []
     const chosen: SessionKind[] = []
     const api = disciplineActions({
       config,
-      sessions,
       stored,
       setStored: k => void chosen.push(k),
       saveConfig: async c => void saved.push(c),
@@ -169,7 +206,7 @@ describe('disciplineActions (the core of useDiscipline)', () => {
   }
 
   it('exposes the resolved list and the active discipline', () => {
-    const { api } = setup(mergeConfig({}), [swim], 'swim')
+    const { api } = setup(withList(['strength', 'swim']), 'swim')
     expect(api.list).toEqual(['strength', 'swim'])
     expect(api.active).toBe('swim')
   })
@@ -208,7 +245,7 @@ describe('disciplineActions (the core of useDiscipline)', () => {
 
   it('hide saves the shorter list; hiding the active one selects the first remaining', async () => {
     const config = withList(['strength', 'swim'])
-    const { api, rows, saved, chosen } = setup(config, [], 'strength')
+    const { api, rows, saved, chosen } = setup(config, 'strength')
     await api.hide('strength')
     expect(saved).toEqual([{ ...config, disciplines: ['swim'] }])
     expect(rows.get(DISCIPLINE_STORAGE_KEY)).toBe('swim')
@@ -216,7 +253,7 @@ describe('disciplineActions (the core of useDiscipline)', () => {
   })
 
   it('hiding another discipline keeps the active one', async () => {
-    const { api, saved, chosen } = setup(withList(['strength', 'swim']), [], 'strength')
+    const { api, saved, chosen } = setup(withList(['strength', 'swim']), 'strength')
     await api.hide('swim')
     expect(saved.map(c => c.disciplines)).toEqual([['strength']])
     expect(chosen).toEqual([])
@@ -228,12 +265,11 @@ describe('disciplineActions (the core of useDiscipline)', () => {
     expect(saved).toEqual([])
   })
 
-  it('hiding deletes no session: the sessions handed in are untouched', async () => {
-    const sessions = [strength, swim]
-    const before = JSON.stringify(sessions)
-    const { api } = setup(withList(['strength', 'swim']), sessions)
+  it('hiding changes only the list in the saved config', async () => {
+    const config = { ...withList(['strength', 'swim']), heightCm: 181 }
+    const { api, saved } = setup(config)
     await api.hide('swim')
-    expect(JSON.stringify(sessions)).toBe(before)
+    expect(saved).toEqual([{ ...config, disciplines: ['strength'] }])
   })
 })
 
@@ -247,8 +283,8 @@ describe('useDiscipline', () => {
   it('is shared by StoreProvider: every consumer reads the same state', () => {
     stubLocalStorage().set(DISCIPLINE_STORAGE_KEY, 'swim')
     const html = renderToString(createElement(StoreProvider, null, createElement(Probe, { name: 'a' }), createElement(Probe, { name: 'b' })))
-    // Before the first load the config is DEFAULT_CONFIG and there are no
-    // sessions: the list is Gimnasio only, so the stored 'swim' resolves to it.
+    // Before the first load the config is DEFAULT_CONFIG: the list is
+    // Gimnasio only, so the stored 'swim' resolves to it.
     expect(text(html)).toBe('<p>a:strength:strength</p><p>b:strength:strength</p>')
   })
 
@@ -259,7 +295,7 @@ describe('useDiscipline', () => {
   })
 
   it('reads the DisciplineCtx value and throws outside StoreProvider', () => {
-    const api = disciplineActions({ config: withList(['swim', 'strength']), sessions: [], stored: null, setStored: () => {}, saveConfig: async () => {} })
+    const api = disciplineActions({ config: withList(['swim', 'strength']), stored: null, setStored: () => {}, saveConfig: async () => {} })
     const html = renderToString(createElement(DisciplineCtx.Provider, { value: api }, createElement(Probe, { name: 'x' })))
     expect(text(html)).toBe('<p>x:swim:swim,strength</p>')
     expect(() => renderToString(createElement(Probe, { name: 'y' }))).toThrow('useDiscipline fuera de StoreProvider')
