@@ -602,7 +602,7 @@ figcaption {
   border-bottom-color: var(--alert);
 }
 
-/* Paso 3 — Progresión: tile de acento para "Mejor serie". */
+/* Paso 3 — Progresión: tile de acento para "Mejor peso". */
 .tile.accent {
   background: var(--accent);
   color: var(--on-accent);

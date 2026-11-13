@@ -15,6 +15,7 @@ import SlotCard from './SlotCard'
 import WarmupStep from './WarmupStep'
 import { ArrowRightIcon, CheckCircle } from './PlanIcons'
 import { completionPatch, refFor } from './SlotCard'
+import { useRecordNotice } from '../lib/recordNotices'
 
 interface Props {
   session: StrengthSession
@@ -172,6 +173,7 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
 
   const totalDone = steps.reduce((a, st) => a + stepDone(st), 0)
   const totalTarget = steps.reduce((a, st) => a + stepTarget(st), 0)
+  const recordNotice = useRecordNotice(session, strengthSessions, steps.flatMap(st => st.slots).map(sl => ({ exerciseId: sl.exerciseId, name: nameOf(sl), target: targetOf(sl) })))
 
   const safeIndex = Math.min(currentIndex, Math.max(items.length - 1, 0))
   const item = items[safeIndex]
@@ -256,6 +258,7 @@ function StrengthSessionView({ session, routine, onChange, onFinish, onDiscard }
       onDiscard={onDiscard}
       onAlarm={() => setFlagsOpen(true)}
       progress={progress}
+      notice={recordNotice}
       showEnd={isLastItem}
       footer={startRest => {
         const complete = () => {

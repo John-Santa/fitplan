@@ -26,6 +26,9 @@ interface Props {
   showEnd?: boolean
   /** Zona del pulgar propia. Si se omite: un solo boton "Terminar entrenamiento". */
   footer?: (startRest: (sec: number) => void) => ReactNode
+  /** Mensaje para el toast del caparazon (p. ej. un record nuevo). Cada `key`
+   *  nueva lo muestra una vez. */
+  notice?: { text: string; key: number } | null
   /** El cuerpo especifico de cada disciplina recibe `startRest` para poder
    *  disparar el temporizador de descanso, que el caparazon posee (junto
    *  con el toast que muestra "Descanso terminado"). */
@@ -61,12 +64,18 @@ export default function SessionShell({
   progress,
   showEnd = true,
   footer,
+  notice,
   children,
 }: Props) {
   const toast = useToast()
   const [rest, setRest] = useState<{ sec: number; key: number } | null>(null)
   const startRest = (sec: number) => setRest({ sec, key: Date.now() })
   const elapsed = useElapsed(startedAt)
+
+  useEffect(() => {
+    if (notice) toast.show(notice.text)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notice?.key])
 
   useEffect(() => {
     document.body.classList.add('fp-focus')
